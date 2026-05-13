@@ -190,6 +190,8 @@
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import {FBXLoader} from 'three/addons/loaders/FBXLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 /* ============================================================
    Urban Legend Mouse — PS1-style prototype
@@ -307,6 +309,48 @@ const game={
   rats:[],humans:[],props:[]
 };
 let player=null;
+
+// ===== FBX loaders — the actual skeletal animations =====
+// Running Crawl.fbx → rat crawl cycle. Fast Run.fbx → human run cycle.
+// Both files are Mixamo humanoid rigs (same skeleton, different clip).
+// We use one of the FBX scenes as the shared mesh source and keep the
+// other one's animation clip; SkeletonUtils.clone gives each character
+// an independent skeleton so per-instance mixers don't interfere.
+const fbxLoader=new FBXLoader();
+let crawlFBX=null,runFBX=null;
+let crawlClip=null,runClip=null;
+let characterSource=null;  // the FBX scene we clone for every character
+
+function loadFBXAsync(path,onProgress){
+  return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
+}
+
+// Recursively pin every texture on a hierarchy to NearestFilter so the
+// FBX textures honour the PS1 brief. Also flips the material to
+// MeshLambertMaterial — cheaper than the Phong/Standard materials FBX
+// sometimes hands us — and disables fog by mistake on rigged skinned
+// meshes by leaving the default fog flag true.
+function ps1ifyCharacterMaterials(root,tint){
+  root.traverse(o=>{
+    if(!o.isMesh)return;
+    o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    const replaced=mats.map(src=>{
+      const m=new THREE.MeshLambertMaterial({skinning:true});
+      if(src){
+        if(src.color) m.color.copy(src.color);
+        if(src.map){
+          m.map=src.map;
+          pixelate(m.map);
+          m.map.colorSpace=THREE.SRGBColorSpace;
+        }
+      }
+      if(tint && m.color) m.color.multiply(tint);
+      return m;
+    });
+    o.material=Array.isArray(o.material)?replaced:replaced[0];
+  });
+}
 
 // ===== Face texture (selfie or procedural default) =====
 const FACE_PX=128;        // very small — PS1 character maps were 64-128px
@@ -891,158 +935,174 @@ function ensureChunksAroundX(x){
    capsule + tail cylinders + ears). Lit with MeshLambertMaterial —
    the only dynamic actor that gets real-time shading.
    ============================================================ */
-function buildRat({isPlayer=false}={}){
-  const root=new THREE.Group();
-  root.position.y=RAT_FOOT_OFFSET;
-  // Body — single squashed sphere keeps the silhouette readable.
-  const fur=new THREE.MeshLambertMaterial({color:isPlayer?'#5d4a3a':'#3e2f24'});
-  const body=new THREE.Mesh(new THREE.SphereGeometry(0.13,8,6),fur);
-  body.scale.set(1.55,0.78,0.95);
-  body.position.set(-0.04,0.14,0);
-  root.add(body);
-  // Head — pixel-sphere with the face texture (player only).
-  const headMat=isPlayer
-    ? new THREE.MeshLambertMaterial({map:faceTexture})
-    : new THREE.MeshLambertMaterial({color:'#bfa078'});
-  const head=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8),headMat);
-  head.position.set(0.18,0.18,0);
-  root.add(head);
-  // Ears — flat thin quads as billboards would be too noisy here.
-  const earMat=new THREE.MeshLambertMaterial({color:'#7a5b46'});
-  const earL=new THREE.Mesh(new THREE.SphereGeometry(0.045,6,4),earMat);
-  earL.scale.set(1,0.7,1);earL.position.set(0.18,0.32,-0.10);root.add(earL);
-  const earR=earL.clone();earR.position.z=0.10;root.add(earR);
-  // Legs — four boxes positioned at the corners of the body.
-  const legMat=new THREE.MeshLambertMaterial({color:'#3e2f24'});
-  const legs=[];
-  const legSpots=[
-    [ 0.08,-0.085],
-    [ 0.08, 0.085],
-    [-0.16,-0.090],
-    [-0.16, 0.090]
-  ];
-  for(const [px,pz] of legSpots){
-    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.16,0.05),legMat);
-    leg.position.set(px,0.08,pz);
-    root.add(leg);legs.push(leg);
-  }
-  // Tail — chain of 4 boxes, gently curved.
-  const tailParts=[];
-  let prevX=-0.22,prevY=0.14;
-  for(let i=0;i<4;i++){
-    const seg=new THREE.Mesh(new THREE.BoxGeometry(0.085,0.03,0.03),legMat);
-    seg.position.set(prevX-0.05-i*0.08,prevY+i*0.012,0);
-    seg.rotation.z=-0.15-i*0.04;
-    prevX=seg.position.x;
-    root.add(seg);tailParts.push(seg);
-  }
-  scene.add(root);
-  return {
-    kind:'rat',root,isPlayer,
-    parts:{body,head,legs,tailParts},
-    vel:new THREE.Vector3(),
-    curSpeed:0,yaw:0,vy:0,isAir:false,
-    controllable:isPlayer,
-    walkPhase:0,bobBase:0,height:0.30
-  };
-}
+/* Clone the shared Mixamo character mesh + build an AnimationMixer
+   that plays the supplied AnimationClip. Returns { root, mixer,
+   action, headBone, height }. The root needs to be positioned + added
+   to the scene by the caller.
 
-/* Approximation of Running Crawl.fbx — purely scripted; no skin mixer.
-   Legs cycle in diagonal pairs (FL+BR up while FR+BL down). Tail and
-   body sway. Stride speed scales with the rat's curSpeed so the
-   animation matches the gameplay velocity. */
-function animateRat(rat,dt){
-  const speed=Math.max(0.05,rat.curSpeed);
-  rat.walkPhase+=dt*speed*7;
-  const p=rat.walkPhase;
-  const a=Math.sin(p),b=Math.sin(p+Math.PI);
-  rat.parts.legs[0].rotation.x= a*0.7;     // front-left
-  rat.parts.legs[3].rotation.x= a*0.7;     // back-right
-  rat.parts.legs[1].rotation.x= b*0.7;     // front-right
-  rat.parts.legs[2].rotation.x= b*0.7;     // back-left
-  // Body bob and yaw
-  rat.parts.body.position.y=0.14+Math.abs(a)*0.025;
-  rat.parts.head.position.y=0.18+Math.abs(a)*0.020;
-  rat.parts.head.rotation.y=Math.sin(p*0.5)*0.10;
-  // Tail swish — increasing amplitude toward the tip.
-  for(let i=0;i<rat.parts.tailParts.length;i++){
-    const part=rat.parts.tailParts[i];
-    part.rotation.y=Math.sin(p*0.8+i*0.6)*(0.10+i*0.05);
+   `targetHeight` is in metres — the bbox of the clone is measured
+   after material conversion and the clone is uniformly scaled so its
+   final height matches. Mixamo bones use centimetres internally, so
+   targeting metres here means small rats (0.30 m) end up at scale
+   ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
+function buildSkinnedActor({clip,targetHeight,tint=null}){
+  const root=SkeletonUtils.clone(characterSource);
+  // Replace the FBX-supplied materials with PS1 Lambert; pixelate any
+  // textures the FBX brought along. Skinning is preserved.
+  ps1ifyCharacterMaterials(root,tint);
+  // Measure pre-scale height, then scale uniformly to the target. The
+  // bind-pose bounding box is computed in world space after we attach
+  // an outer wrapper so the matrix world is up to date.
+  const outer=new THREE.Group();
+  outer.add(root);
+  root.updateMatrixWorld(true);
+  const bbox=new THREE.Box3().setFromObject(root);
+  const rawH=bbox.max.y-bbox.min.y;
+  if(rawH>0.001){
+    const s=targetHeight/rawH;
+    root.scale.multiplyScalar(s);
+    root.updateMatrixWorld(true);
   }
+  // After scaling, drop the feet to the wrapper's local y=0.
+  const bbox2=new THREE.Box3().setFromObject(root);
+  root.position.y-=bbox2.min.y;
+  // Find the head bone — the face plate attaches here so it tracks
+  // the animation. Mixamo names it "mixamorigHead" (after FBXLoader
+  // normalises the colon out).
+  let headBone=null;
+  root.traverse(o=>{
+    if(o.isBone && !headBone){
+      const n=(o.name||'').toLowerCase();
+      if(n.includes('head')) headBone=o;
+    }
+  });
+  // Build the mixer and start the clip.
+  const mixer=new THREE.AnimationMixer(root);
+  const action=clip?mixer.clipAction(clip):null;
+  if(action){
+    action.setEffectiveTimeScale(1);
+    action.play();
+  }
+  return {outer,root,mixer,action,headBone,
+    height:Math.max(0.001,(bbox2.max.y-bbox2.min.y)*(root.scale.x||1))};
 }
 
 /* ============================================================
-   Low-poly procedural human (~40 tris) — head + torso + 2 arms +
-   2 legs as boxes. The Fast Run.fbx animation is approximated via
-   scripted limb swing whose amplitude and frequency scale with the
-   human's curSpeed (walk: small swing; run: big swing + bigger
-   stride). MeshLambertMaterial so the figure picks up the sun's
-   warm dusk light — the static city around them stays unlit.
+   Rat — Mixamo humanoid clone scaled to ~30 cm, playing the
+   Running Crawl.fbx animation. The player's selfie texture is
+   attached as a small face plate child of the head bone, so it
+   tracks the crawling head every frame.
+   ============================================================ */
+function buildRat({isPlayer=false}={}){
+  if(!characterSource||!crawlClip){
+    // FBX still loading — bail with a placeholder so we never silently
+    // skip a spawn. The mixer-less placeholder reads as a tiny brown
+    // block while the FBX finishes downloading.
+    const root=new THREE.Group();
+    root.position.y=RAT_FOOT_OFFSET;
+    const ph=new THREE.Mesh(new THREE.BoxGeometry(0.30,0.12,0.18),
+      new THREE.MeshLambertMaterial({color:'#3e2f24'}));
+    ph.position.y=0.08;root.add(ph);
+    scene.add(root);
+    return {kind:'rat',root,isPlayer,inst:null,vel:new THREE.Vector3(),
+      curSpeed:0,yaw:0,vy:0,isAir:false,controllable:isPlayer,height:0.30};
+  }
+  const tint=isPlayer?null:new THREE.Color('#9d7f6a');
+  const inst=buildSkinnedActor({clip:crawlClip,targetHeight:0.34,tint});
+  const root=inst.outer;
+  root.position.y=RAT_FOOT_OFFSET;
+  scene.add(root);
+  // Face plate — a small quad textured with the selfie. Position is in
+  // the head bone's local space (centimetres because the bone hasn't
+  // had its scale baked in). The empirical numbers below put the plate
+  // flush to the rig's face for the standard Mixamo head bone.
+  if(isPlayer && inst.headBone){
+    const facePlate=new THREE.Mesh(
+      new THREE.PlaneGeometry(15,15),
+      new THREE.MeshLambertMaterial({map:faceTexture,transparent:true,
+        side:THREE.DoubleSide,depthWrite:false})
+    );
+    pixelate(faceTexture);
+    facePlate.position.set(0,8,14);
+    facePlate.rotation.set(0,0,0);
+    inst.headBone.add(facePlate);
+  }
+  return {
+    kind:'rat',root,isPlayer,
+    inst,
+    vel:new THREE.Vector3(),
+    curSpeed:0,yaw:0,vy:0,isAir:false,
+    controllable:isPlayer,
+    height:inst.height
+  };
+}
+
+/* ============================================================
+   Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
+   Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
 function buildHuman({position,role='wanderer'}={}){
-  const root=new THREE.Group();
+  if(!characterSource||!runClip){
+    const root=new THREE.Group();
+    root.position.copy(position);
+    const ph=new THREE.Mesh(new THREE.CapsuleGeometry(0.30,1.10,4,8),
+      new THREE.MeshLambertMaterial({color:role==='cleaner'?'#4a6b8c':'#6b7a52'}));
+    ph.position.y=0.95;root.add(ph);
+    scene.add(root);
+    return {kind:'human',role,root,inst:null,shoulderRat:ph,
+      vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
+      vy:0,isAir:false,controllable:false,parasitised:false,
+      wanderTimer:rand(0.4,2.2),height:1.72};
+  }
+  const tint=role==='cleaner'
+    ? new THREE.Color('#a8c8e8')
+    : new THREE.Color().setHSL(Math.random(),0.4,0.85);
+  const inst=buildSkinnedActor({clip:runClip,targetHeight:1.72,tint});
+  const root=inst.outer;
   root.position.copy(position);
   scene.add(root);
-  const shirtColour=role==='cleaner'?'#4a6b8c':pick(['#6b7a52','#a83a3a','#3a5a7a','#7a5a3a','#5a3a5a']);
-  const trousers=new THREE.MeshLambertMaterial({color:'#2a2438'});
-  const shirt=new THREE.MeshLambertMaterial({color:shirtColour});
-  const skin=new THREE.MeshLambertMaterial({color:'#d9b89a'});
-  // Legs (long boxes for the chunky PS1 silhouette).
-  const legL=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.78,0.22),trousers);
-  legL.position.set(-0.14,0.42,0);root.add(legL);
-  const legR=legL.clone();legR.position.x=0.14;root.add(legR);
-  // Torso
-  const torso=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.62,0.32),shirt);
-  torso.position.y=1.10;root.add(torso);
-  // Arms
-  const armL=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.62,0.18),shirt);
-  armL.position.set(-0.36,1.10,0);root.add(armL);
-  const armR=armL.clone();armR.position.x=0.36;root.add(armR);
-  // Head — chunky cube + skin material.
-  const head=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.40,0.36),skin);
-  head.position.y=1.60;root.add(head);
-  // Hair — small dark box on top.
-  const hair=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.10,0.40),new THREE.MeshLambertMaterial({color:'#1a1318'}));
-  hair.position.y=1.84;root.add(hair);
-  // Shoulder rat indicator (hidden until parasitised).
+  // Shoulder-rat marker — a low-poly box parented under the head bone
+  // so it tracks the host's spine. Hidden until parasitised.
   const shoulderRat=new THREE.Mesh(
-    new THREE.SphereGeometry(0.10,6,4),
-    new THREE.MeshLambertMaterial({color:'#5d4a3a'})
+    new THREE.BoxGeometry(0.14,0.10,0.18),
+    new THREE.MeshLambertMaterial({color:'#3e2f24'})
   );
-  shoulderRat.position.set(0.22,1.40,0);shoulderRat.visible=false;
-  root.add(shoulderRat);
+  shoulderRat.visible=false;
+  if(inst.headBone){
+    // In head-bone local centimetres.
+    shoulderRat.position.set(15,-6,0);
+    shoulderRat.scale.setScalar(1/(root.scale.x||1));
+    inst.headBone.add(shoulderRat);
+  }else{
+    shoulderRat.position.set(0.22,1.40,0);
+    root.add(shoulderRat);
+  }
   return {
     kind:'human',role,root,
-    parts:{legL,legR,torso,armL,armR,head,hair,shoulderRat},
+    inst,
     shoulderRat,
     vel:new THREE.Vector3(),
     curSpeed:0,yaw:Math.random()*Math.PI*2,vy:0,isAir:false,
     controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),walkPhase:0,height:1.72
+    wanderTimer:rand(0.4,2.2),height:inst.height
   };
 }
 
-/* Approximation of Fast Run.fbx for humans — limb swing scales with
-   curSpeed. Below ~0.4 m/s the human is "idle" (no swing). Above
-   ~3 m/s the swing peaks at a run amplitude with extra body lean. */
-function animateHuman(h,dt){
-  const speed=Math.max(0,h.curSpeed);
-  const intensity=clamp(speed/HOST_MAX_SPEED,0,1);
-  h.walkPhase+=dt*lerp(0,12,intensity);
-  const p=h.walkPhase;
-  const amp=lerp(0,0.85,intensity);
-  // Opposing legs / arms.
-  h.parts.legL.rotation.x= Math.sin(p)*amp;
-  h.parts.legR.rotation.x=-Math.sin(p)*amp;
-  h.parts.armL.rotation.x=-Math.sin(p)*amp*0.85;
-  h.parts.armR.rotation.x= Math.sin(p)*amp*0.85;
-  // Slight forward lean while running.
-  h.parts.torso.rotation.x=-intensity*0.18;
-  h.parts.head.rotation.x =-intensity*0.10;
-  h.parts.hair.rotation.x =-intensity*0.10;
-  // Body bob — small vertical oscillation.
-  const bob=Math.abs(Math.sin(p))*0.04*intensity;
-  h.root.position.y=bob;
+/* Per-frame mixer advance. Stride frequency tracks the entity's
+   current speed — when standing still we slow the mixer right down
+   so the run cycle doesn't look out of place on an idle wanderer. */
+function tickActor(ent,dt){
+  if(!ent.inst||!ent.inst.mixer)return;
+  let scale;
+  if(ent.kind==='rat'){
+    // Crawl cycle ramps from 0.4× at idle to 1.6× at full pelt.
+    scale=lerp(0.4,1.6,clamp(ent.curSpeed/PLAYER_MAX_SPEED,0,1));
+  }else{
+    // Run cycle goes from a slow march at idle to 1.4× at full speed.
+    scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
+  }
+  if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
+  ent.inst.mixer.update(dt);
 }
 
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
@@ -1307,7 +1367,7 @@ function tickHumans(dt){
       while(diff<-Math.PI)diff+=Math.PI*2;
       h.root.rotation.y=curY+diff*Math.min(1,dt*6);
     }
-    animateHuman(h,dt);
+    tickActor(h,dt);
   }
 }
 
@@ -1338,7 +1398,7 @@ function tickFollowerRats(dt){
     r.root.position.z+=Math.cos(a)*spd*dt;
     r.root.rotation.y=a;
     r.curSpeed=spd;
-    animateRat(r,dt);
+    tickActor(r,dt);
   }
 }
 
@@ -1403,17 +1463,17 @@ function tick(){
       tickHumans(dt);
       tickBreeding(dt);
       tickFollowerRats(dt);
-      // The controlled rat's own crawl cycle (other rats are handled in
-      // tickFollowerRats so we don't animate them twice).
-      if(game.controlMode==='rat') animateRat(player,dt);
-      else if(game.parasitisedHost) animateHuman(game.parasitisedHost,dt);
+      // The controlled rat's own crawl cycle. Non-player rats already
+      // advanced inside tickFollowerRats; humans inside tickHumans.
+      if(game.controlMode==='rat') tickActor(player,dt);
+      // (Parasitised host already animated by tickHumans.)
       updateHUD(dt);
       ensureChunksAroundX(player.root.position.x);
     }else if(gameState==='intro'){
-      // Just spin the limbs gently so the world doesn't look frozen
-      // behind the intro card.
-      for(const h of game.humans){h.curSpeed=0.05;animateHuman(h,dt)}
-      if(player){player.curSpeed=0.0;animateRat(player,dt)}
+      // Tick mixers gently so the actors don't freeze behind the
+      // intro card. We feed a non-zero speed so the clip plays.
+      for(const h of game.humans){h.curSpeed=0.4;tickActor(h,dt)}
+      if(player){player.curSpeed=0.4;tickActor(player,dt)}
     }
     updateCam();
 
@@ -1426,27 +1486,61 @@ function tick(){
 }
 
 // ===== Init =====
-function init(){
-  setIntroProgress(15,'BOOT');
+async function init(){
+  setIntroProgress(2,'BOOT');
   initSharedTextures();
-  setIntroProgress(45,'TEXTURES');
+  setIntroProgress(8,'TEXTURES');
 
-  // Build the player rat first so the camera has something to follow.
+  // Start the render loop immediately so the intro card sits over a
+  // live scene rather than a black square. Players still see progress
+  // ticking up while the FBX assets stream in.
+  last=performance.now();
+  tick();
+
+  // The two FBX files weigh ~18 MB and ~23 MB respectively. We track
+  // their byte progress live so the intro progress bar reflects real
+  // download state, not just step numbers.
+  let crawlLoaded=0,runLoaded=0,crawlTotal=24e6,runTotal=19e6;
+  const refreshDownloadProgress=()=>{
+    const total=crawlTotal+runTotal;
+    const got=crawlLoaded+runLoaded;
+    const pct=8+(got/total)*72;   // 8% → 80% of the progress bar
+    setIntroProgress(pct,'ANIM');
+  };
+  const onCrawlProgress=e=>{if(e.lengthComputable){crawlLoaded=e.loaded;crawlTotal=e.total||crawlTotal;refreshDownloadProgress()}};
+  const onRunProgress  =e=>{if(e.lengthComputable){runLoaded=e.loaded;runTotal=e.total||runTotal;refreshDownloadProgress()}};
+
+  try{
+    [crawlFBX,runFBX]=await Promise.all([
+      loadFBXAsync('asset/Running Crawl.fbx',onCrawlProgress),
+      loadFBXAsync('asset/Fast Run.fbx',     onRunProgress),
+    ]);
+    crawlClip=crawlFBX.animations[0]||null;
+    runClip  =runFBX  .animations[0]||null;
+    // We use the Fast Run scene as the shared mesh source — both clips
+    // come off the same Mixamo skeleton, so the clone retargets cleanly.
+    characterSource=runFBX;
+    console.log('[fbx] crawl anims:',crawlFBX.animations.map(c=>c.name));
+    console.log('[fbx] run anims:',  runFBX.animations.map(c=>c.name));
+  }catch(e){
+    console.error('[fbx] load failed — characters will use placeholder boxes',e);
+  }
+  setIntroProgress(82,'WORLD');
+
+  // Build the player rat (with FBX skin if it loaded).
   player=buildRat({isPlayer:true});
   player.root.position.set(12,RAT_FOOT_OFFSET,4.2);
   game.rats.push(player);
   game.controlled=player;
-  setIntroProgress(70,'RAT');
+  setIntroProgress(90,'WORLD');
 
-  // Streamed chunks around the player's starting X.
+  // Streamed chunks around the player's starting X — this is also when
+  // the wandering humans get spawned for the first three live chunks.
   ensureChunksAroundX(player.root.position.x);
-  setIntroProgress(95,'WORLD');
+  setIntroProgress(100,'READY');
 
-  last=performance.now();
-  tick();
   startBtn.disabled=false;
   startBtn.textContent='BEGIN';
-  setIntroProgress(100,'READY');
   introProgressText.textContent='READY — TAP BEGIN';
   console.log('[boot] PS1 scene ready — humans='+game.humans.length+' rats='+game.rats.length);
 }
