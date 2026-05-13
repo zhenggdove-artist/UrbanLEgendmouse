@@ -6,10 +6,15 @@
 <title>Urban Legend Mouse — PS1</title>
 <meta name="description" content="Retro PS1-style 3D action: parasitise the alley as a human-headed rat."/>
 <style>
+  @font-face{
+    font-family:"HydrogenWhiskey";
+    src:url("../../都市傳說2/都市傳說2/urban-legend-framework/FONTS/Hydrogen Whiskey.otf") format("opentype");
+    font-weight:normal;font-style:normal;font-display:swap;
+  }
   :root{
-    --ink:#f6efe4;--ink-soft:#bfb6a8;
-    --panel:#171425;--panel-edge:#2a2440;
-    --accent:#ff5a8a;--accent-soft:#ffa1bf;
+    --ink:#1a0f24;--ink-soft:#806472;
+    --panel:#fff7d3;--panel-edge:#c8b17a;
+    --accent:#ff5a8a;--accent-soft:#ffe970;
     --chaos:#ffd166;--host:#7cf8c0;
   }
   html,body{width:100%;height:100%;height:100dvh;margin:0;padding:0;overflow:hidden;background:#000;
@@ -28,12 +33,22 @@
   input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
+  #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none}
+  #viewport-frame .viewport-edge{position:fixed;background-position:center;background-repeat:no-repeat;pointer-events:none}
+  #viewport-frame-top{left:50%;top:8.4%;transform:translate(-50%,-50%);width:100%;height:34%;
+    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_top_edge.png");background-size:100% 100%}
+  #viewport-frame-bottom{left:50%;top:91.6%;transform:translate(-50%,-50%);width:100%;height:40%;
+    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_bottom_edge.png");background-size:100% 100%}
+  #viewport-frame-left{left:11%;top:50%;transform:translate(-50%,-50%);width:22%;height:100%;
+    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_left_edge.png");background-size:100% 100%}
+  #viewport-frame-right{left:89%;top:50%;transform:translate(-50%,-50%);width:22%;height:100%;
+    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_right_edge.png");background-size:100% 100%}
 
   #hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;
     align-items:flex-start;gap:12px;pointer-events:none;z-index:12}
-  .hud-box{background:rgba(20,16,32,0.78);border:1px solid var(--panel-edge);
-    border-radius:6px;padding:6px 11px;font:600 11px/1.1 "Courier New",monospace;letter-spacing:0.12em;
-    color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,0.4);text-transform:uppercase}
+  .hud-box{background:linear-gradient(180deg,#fff7d3 0%,#fff1c2 100%);border:1px solid rgba(255,255,255,0.6);
+    border-radius:18px;padding:6px 14px;font:700 13px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.10em;
+    color:#7a746d;box-shadow:0 10px 20px rgba(0,0,0,0.28);text-transform:uppercase}
   .hud-box.mode-host{color:var(--host);border-color:rgba(124,248,192,0.45)}
   .hud-box.meter{min-width:140px}
   .hud-box .bar{position:relative;height:5px;margin-top:5px;background:#000;border-radius:2px;overflow:hidden}
@@ -42,16 +57,16 @@
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(8,5,14,0.92);z-index:30}
-  .intro-card{width:min(420px,calc(100vw - 32px));background:var(--panel);
-    border:1px solid var(--panel-edge);border-radius:8px;padding:20px;text-align:center;
+  .intro-card{width:min(420px,calc(100vw - 32px));background:linear-gradient(180deg,#fff7d3 0%,#fff1c2 100%);
+    border:1px solid rgba(255,255,255,0.58);border-radius:22px;padding:20px;text-align:center;
     box-shadow:0 24px 60px rgba(0,0,0,0.6);font-family:"Courier New",monospace}
-  .intro-card h1{margin:0 0 6px;font-size:20px;letter-spacing:0.18em;color:var(--accent-soft)}
-  .intro-card .tag{font-size:10px;letter-spacing:0.20em;color:var(--ink-soft);margin-bottom:14px;text-transform:uppercase}
-  .intro-copy{font-size:12px;line-height:1.6;color:var(--ink-soft);text-align:left;
-    background:#0e0a1a;border:1px solid #1f1a30;padding:10px 12px;margin-bottom:14px}
+  .intro-card h1{margin:0 0 6px;font-size:20px;letter-spacing:0.18em;color:#9b936d;font-family:"HydrogenWhiskey","Trebuchet MS",sans-serif}
+  .intro-card .tag{font-size:10px;letter-spacing:0.20em;color:#7d7161;margin-bottom:14px;text-transform:uppercase}
+  .intro-copy{font-size:12px;line-height:1.6;color:#5b4a3e;text-align:left;
+    background:rgba(255,251,236,0.72);border:1px solid rgba(200,177,122,0.55);padding:10px 12px;margin-bottom:14px}
   .intro-copy p{margin:0 0 8px} .intro-copy p:last-child{margin-bottom:0}
-  #start-btn{appearance:none;border:none;border-radius:4px;background:var(--accent);
-    color:#1a0917;font:700 13px/1 "Courier New",monospace;letter-spacing:0.20em;
+  #start-btn{appearance:none;border:none;border-radius:999px;background:linear-gradient(90deg,#ffb9d6,#f06ea8);
+    color:#4b1330;font:700 13px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.20em;
     padding:12px 22px;cursor:pointer;width:100%;text-transform:uppercase}
   #start-btn:disabled{filter:grayscale(0.4);opacity:0.7;cursor:wait}
   #intro-progress{margin-top:12px}
@@ -91,13 +106,17 @@
     background:rgba(255,255,255,0.86);box-shadow:0 4px 12px rgba(0,0,0,0.5);
     transition:transform .04s linear}
   .action-btn{position:fixed;width:74px;height:74px;border-radius:50%;border:none;
-    color:#1a0917;font:700 12px/1 "Courier New",monospace;letter-spacing:0.10em;
+    color:#fff;font:700 12px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.08em;
     cursor:pointer;touch-action:none;
-    box-shadow:0 6px 16px rgba(0,0,0,0.5)}
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,0.45),0 8px 18px rgba(0,0,0,0.35);overflow:visible;isolation:isolate}
+  .action-btn::before{content:'';position:absolute;left:50%;top:50%;
+    width:192%;height:192%;transform:translate(calc(-50% + 4px),calc(-50% + 4px));
+    background:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/action_frame_overlay.png") center/contain no-repeat;
+    pointer-events:none;z-index:2;filter:drop-shadow(0 0 8px rgba(244,238,92,0.18))}
   .action-btn:active{transform:translateY(2px)}
-  #jump-btn{right:6%;bottom:39%;background:#7cf8c0;color:#0a1f15}
-  #bite-btn{right:6%;bottom:24%;background:#ff5a8a;color:#1a0917}
-  #pickup-btn{right:6%;bottom:9%;background:#ffd166;color:#201300;display:none}
+  #jump-btn{right:6%;bottom:39%;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#a8d8ff 55%,#5a8fcf 100%);color:#fff}
+  #bite-btn{right:6%;bottom:24%;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#ff8fb8 55%,#c03870 100%);color:#fff}
+  #pickup-btn{right:6%;bottom:9%;background:radial-gradient(circle at 30% 20%,#fffdd1 0%,#ffe45a 50%,#d99400 100%);color:#4a2d00;display:none}
   #hint{position:fixed;top:64px;left:50%;transform:translateX(-50%);
     background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);border-radius:4px;
     padding:6px 12px;font:11px/1 "Courier New",monospace;letter-spacing:0.10em;
@@ -130,6 +149,12 @@
 </head>
 <body class="intro-active">
 <canvas id="c"></canvas>
+<div id="viewport-frame" aria-hidden="true">
+  <div class="viewport-edge" id="viewport-frame-top"></div>
+  <div class="viewport-edge" id="viewport-frame-bottom"></div>
+  <div class="viewport-edge" id="viewport-frame-left"></div>
+  <div class="viewport-edge" id="viewport-frame-right"></div>
+</div>
 
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
@@ -234,7 +259,7 @@ renderer.setPixelRatio(1);          // ignore device pixel ratio — PS1 is fixe
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.NoToneMapping;
 renderer.shadowMap.enabled=false;    // no real-time shadows
-renderer.setClearColor('#1a0e22');
+renderer.setClearColor('#ff4fa8');
 
 /* Low-resolution back-buffer. Each frame we render the scene to this
    target, then draw the target onto the canvas at full size through a
@@ -250,17 +275,67 @@ const lowResRT=new THREE.WebGLRenderTarget(LOW_W,LOW_H,{
 });
 const screenScene=new THREE.Scene();
 const screenCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const vhsUniforms={
+  map:{value:lowResRT.texture},
+  time:{value:0},
+  resolution:{value:new THREE.Vector2(W(),H())}
+};
 const screenQuad=new THREE.Mesh(
   new THREE.PlaneGeometry(2,2),
-  new THREE.MeshBasicMaterial({map:lowResRT.texture,depthTest:false,depthWrite:false})
+  new THREE.ShaderMaterial({
+    uniforms:vhsUniforms,
+    depthTest:false,depthWrite:false,
+    vertexShader:`
+      varying vec2 vUv;
+      void main(){
+        vUv=uv;
+        gl_Position=vec4(position.xy,0.0,1.0);
+      }
+    `,
+    fragmentShader:`
+      uniform sampler2D map;
+      uniform float time;
+      uniform vec2 resolution;
+      varying vec2 vUv;
+      float hash(vec2 p){
+        return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);
+      }
+      void main(){
+        vec2 uv=vUv;
+        float wobble=sin(uv.y*18.0+time*3.6)*0.0025;
+        float glitch=step(0.92,sin(time*0.8+uv.y*14.0))*0.004;
+        vec2 shift=vec2(wobble+glitch,0.0);
+        float r=texture2D(map,uv+shift*1.8).r;
+        float g=texture2D(map,uv+shift*0.6).g;
+        float b=texture2D(map,uv-shift*1.2).b;
+        vec3 colour=vec3(r,g,b);
+        float scanline=sin(uv.y*resolution.y*1.35)*0.055;
+        float noise=(hash(vec2(floor(uv.y*resolution.y*0.45),floor(time*48.0)))-0.5)*0.08;
+        float band=step(0.985,sin(time*1.7+uv.y*9.0))*0.08;
+        colour-=scanline;
+        colour+=noise;
+        colour=colour*(1.0-band);
+        gl_FragColor=vec4(colour,1.0);
+      }
+    `
+  })
 );
 screenScene.add(screenQuad);
 
 // ===== Scene & Camera =====
 const scene=new THREE.Scene();
 // Linear distance fog hides chunk pop-in. MeshBasicMaterial respects it.
-scene.fog=new THREE.Fog('#2a1838',14,96);
-scene.background=new THREE.Color('#2a1838');
+scene.fog=new THREE.Fog('#ff4fa8',18,104);
+const skyCV=document.createElement('canvas');skyCV.width=2;skyCV.height=256;
+const skyCtx=skyCV.getContext('2d');
+const skyTex=pixelate(new THREE.CanvasTexture(skyCV));
+const skyGrad=skyCtx.createLinearGradient(0,0,0,256);
+skyGrad.addColorStop(0,'#ff8fd4');
+skyGrad.addColorStop(0.45,'#ff4fa8');
+skyGrad.addColorStop(1,'#7a214f');
+skyCtx.fillStyle=skyGrad;skyCtx.fillRect(0,0,2,256);
+skyTex.needsUpdate=true;
+scene.background=skyTex;
 
 /* Lights — only used by the MeshLambertMaterials on the rat & humans.
    Static scene geometry is unlit MeshBasicMaterial. */
@@ -277,6 +352,7 @@ camera.lookAt(0,0.2,0);
 function onResize(){
   // The canvas covers the viewport; the back-buffer stays at LOW_W×LOW_H.
   renderer.setSize(W(),H(),false);
+  vhsUniforms.resolution.value.set(W(),H());
   // Update camera aspect to match the low-res buffer (NOT the viewport),
   // so the framing stays stable when the user rotates their phone.
   camera.aspect=LOW_W/LOW_H;
@@ -1246,7 +1322,7 @@ function generateChunk(idx){
   // --- Buildings on BOTH sides — staggered widths, heights, colours and
   // front/back offsets so the alley never reads as a repeated wall strip.
   const buildingFaces=[];
-  const facadeTints=['#f0ece2','#ddd4ca','#d6d9df','#cfc6bb','#e4d6cb','#cfcfd7'];
+  const facadeTints=['#4f3326','#6a4a39','#8b6b57','#595b61','#7d8288','#b7b1a7','#d8d4cd','#4a4542','#9f9487'];
   for(const sign of [-1,+1]){
     let cursor=xBase;
     let partIdx=0;
@@ -1653,7 +1729,7 @@ function buildHuman({position,role='wanderer'}={}){
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
     : new THREE.Color().setHSL(Math.random(),0.4,0.95);
-  const inst=buildSkinnedActor({targetHeight:1.72,tint,clips:HUMAN_CLIPS});
+  const inst=buildSkinnedActor({targetHeight:1.52,tint,clips:HUMAN_CLIPS});
   const root=inst.outer;
   root.position.set(position.x,0,position.z);
   scene.add(root);
@@ -2492,6 +2568,7 @@ function tick(){
   last=now;
   try{
     stepFrame(dt);
+    vhsUniforms.time.value=now*0.001;
 
     // Two-pass render — scene → low-res target → screen quad.
     renderer.setRenderTarget(lowResRT);
