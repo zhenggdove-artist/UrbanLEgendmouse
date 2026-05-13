@@ -1,883 +1,1141 @@
 <!DOCTYPE html>
-<html lang="en-GB">
+<html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover"/>
 <title>Urban Legend Mouse</title>
-<meta name="description" content="A black-humour 3D action prototype: parasitise a city as a human-headed rat."/>
+<meta name="title" content="Urban Legend Mouse"/>
+<meta name="description" content="A black-humour 3D action prototype: parasitise the city as a human-headed rat."/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="Urban Legend Mouse"/>
+<meta property="og:description" content="A black-humour 3D action prototype: parasitise the city as a human-headed rat."/>
 <style>
   :root{
-    --bg:#0c0a14;
-    --panel:#171425;
-    --panel-edge:#2a2440;
+    --bg:#0a0712;
     --ink:#f6efe4;
     --ink-soft:#bfb6a8;
+    --panel:#171425;
+    --panel-edge:#2a2440;
     --accent:#ff5a8a;
     --accent-soft:#ffa1bf;
     --chaos:#ffd166;
     --host:#7cf8c0;
+    --thorn-glow:0 0 0 1.5px rgba(255,90,138,0.55),
+                 0 0 14px rgba(255,90,138,0.35),
+                 0 8px 18px rgba(0,0,0,0.55);
   }
-  html,body{margin:0;padding:0;width:100%;height:100%;height:100dvh;
-    background:var(--bg);color:var(--ink);overflow:hidden;
-    font-family:"Trebuchet MS","Helvetica Neue",sans-serif;
+  html,body{width:100%;height:100%;height:100dvh;margin:0;padding:0;overflow:hidden;background:#000;
+    font-family:"Trebuchet MS",sans-serif;color:var(--ink);
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
-    touch-action:manipulation;overscroll-behavior:none}
+    touch-action:manipulation;-ms-touch-action:manipulation;overscroll-behavior:none}
   body{padding-top:env(safe-area-inset-top,0px);
     padding-bottom:env(safe-area-inset-bottom,0px);
     padding-left:env(safe-area-inset-left,0px);
-    padding-right:env(safe-area-inset-right,0px);box-sizing:border-box}
-  #c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+    padding-right:env(safe-area-inset-right,0px);
+    box-sizing:border-box;position:relative}
+  body *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+  #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
 
-  /* Selfie modal — opens on game start, only flow that calls getUserMedia. */
-  #selfie-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:rgba(8,6,16,0.92);z-index:200}
+  /* ===== HUD ===== */
+  #hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;
+    align-items:flex-start;gap:12px;pointer-events:none;z-index:12}
+  .hud-box{background:rgba(20,16,32,0.78);border:1px solid var(--panel-edge);
+    border-radius:10px;padding:7px 12px;font-size:12px;letter-spacing:0.08em;color:var(--ink);
+    box-shadow:0 6px 18px rgba(0,0,0,0.4)}
+  .hud-box.mode-host{color:var(--host);border-color:rgba(124,248,192,0.45);
+    box-shadow:0 6px 18px rgba(0,0,0,0.4),0 0 16px rgba(124,248,192,0.25)}
+  .hud-box.meter{min-width:150px}
+  .hud-box .bar{position:relative;height:6px;margin-top:5px;background:#000;border-radius:4px;overflow:hidden}
+  .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos);transition:width .2s ease}
+  .hud-box.rats .fill{background:var(--accent-soft)}
+
+  #title{position:fixed;top:54%;left:50%;transform:translate(-50%,-50%);
+    font-family:"Trebuchet MS",sans-serif;font-size:42px;letter-spacing:0.18em;font-weight:700;
+    color:var(--accent-soft);text-shadow:0 0 18px rgba(255,90,138,0.55);
+    pointer-events:none;z-index:11;display:none;text-transform:uppercase}
+  body.intro-active #title{display:block}
+
+  /* ===== Intro card ===== */
+  #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,5,14,0.88);z-index:30}
+  .intro-card{width:min(420px,calc(100vw - 32px));background:var(--panel);
+    border:1px solid var(--panel-edge);border-radius:18px;padding:22px 22px 18px;text-align:center;
+    box-shadow:0 24px 60px rgba(0,0,0,0.6)}
+  .intro-card h1{margin:0 0 4px;font-size:22px;letter-spacing:0.14em;color:var(--accent-soft)}
+  .intro-card .tag{font-size:11px;letter-spacing:0.18em;color:var(--ink-soft);margin-bottom:14px;
+    text-transform:uppercase}
+  .intro-copy{font-size:13px;line-height:1.55;color:var(--ink-soft);text-align:left;
+    background:rgba(8,5,14,0.4);border-radius:10px;padding:11px 14px;margin-bottom:14px}
+  .intro-copy p{margin:0 0 8px}
+  .intro-copy p:last-child{margin-bottom:0}
+  #start-btn{appearance:none;border:none;border-radius:12px;background:var(--accent);
+    color:#1a0917;font:700 15px/1 inherit;letter-spacing:0.12em;padding:13px 22px;cursor:pointer;
+    box-shadow:var(--thorn-glow);width:100%}
+  #start-btn:disabled{filter:grayscale(0.4);opacity:0.7;cursor:wait}
+  #intro-progress{margin-top:12px}
+  #intro-progress-text{font:11px monospace;letter-spacing:0.16em;color:var(--ink-soft)}
+  #intro-progress-track{height:4px;margin-top:5px;background:#000;border-radius:3px;overflow:hidden}
+  #intro-progress-fill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+
+  /* ===== Selfie modal ===== */
+  #selfie-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(8,5,14,0.92);z-index:40}
+  #selfie-modal.show{display:flex}
   .selfie-card{width:min(360px,calc(100vw - 32px));background:var(--panel);
     border:1px solid var(--panel-edge);border-radius:18px;padding:18px;text-align:center;
     box-shadow:0 16px 48px rgba(0,0,0,0.6)}
-  .selfie-card h1{font-size:18px;margin:0 0 4px;letter-spacing:0.04em}
-  .selfie-card p{font-size:13px;margin:0 0 14px;color:var(--ink-soft);line-height:1.45}
+  .selfie-card h2{margin:0 0 4px;font-size:18px;letter-spacing:0.06em;color:var(--accent-soft)}
+  .selfie-card p{font-size:12px;color:var(--ink-soft);margin:0 0 14px;line-height:1.5}
   .selfie-preview{width:240px;height:240px;margin:0 auto 12px;border-radius:50%;
     background:#000;overflow:hidden;position:relative;border:2px solid var(--panel-edge)}
   .selfie-preview video,.selfie-preview canvas,.selfie-preview img{
     position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
   .selfie-actions{display:flex;flex-direction:column;gap:8px}
   .selfie-actions button{appearance:none;border:none;border-radius:10px;
-    padding:11px 14px;font:600 14px/1 inherit;cursor:pointer;letter-spacing:0.04em}
+    padding:11px 14px;font:600 13px/1 inherit;letter-spacing:0.06em;cursor:pointer}
   .btn-primary{background:var(--accent);color:#1a0917}
   .btn-secondary{background:#27213a;color:var(--ink)}
   .btn-ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--panel-edge) !important}
 
-  /* HUD — mode badge, chaos bar, rat count, hint banner. */
-  #hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;
-    align-items:flex-start;gap:12px;pointer-events:none;z-index:50}
-  .badge{background:rgba(20,16,32,0.78);border:1px solid var(--panel-edge);
-    border-radius:999px;padding:6px 12px;font-size:12px;letter-spacing:0.08em}
-  .badge.host{color:var(--host);border-color:rgba(124,248,192,0.45)}
-  .meter{background:rgba(20,16,32,0.78);border:1px solid var(--panel-edge);
-    border-radius:8px;padding:6px 10px;min-width:140px;font-size:11px;letter-spacing:0.06em}
-  .meter .bar{position:relative;height:6px;margin-top:4px;background:#000;border-radius:4px;overflow:hidden}
-  .meter .fill{position:absolute;inset:0;width:0;background:var(--chaos);transition:width .25s ease}
-  .meter.rats .fill{background:var(--accent-soft)}
-  #hint{position:fixed;top:62px;left:50%;transform:translateX(-50%);
-    background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);
-    border-radius:8px;padding:6px 12px;font-size:12px;color:var(--ink-soft);
-    pointer-events:none;z-index:50;opacity:0;transition:opacity .2s ease}
-  #hint.show{opacity:1}
-
-  /* Joystick + action buttons. Pattern reused from 都市傳說2 with cleaner styling. */
-  #joystick-zone{position:fixed;left:6%;bottom:8%;width:130px;height:130px;
-    touch-action:none;z-index:60}
+  /* ===== Game controls — joystick + action buttons ===== */
+  #game-controls{position:fixed;inset:0;pointer-events:none;z-index:12}
+  #game-controls > *{pointer-events:auto}
+  #joystick-zone{position:fixed;left:6%;bottom:9%;width:130px;height:130px;touch-action:none}
   #joystick-base{position:absolute;inset:0;border-radius:50%;
     background:rgba(20,16,32,0.55);border:2px solid rgba(255,255,255,0.18)}
   #joystick-stick{position:absolute;left:50%;top:50%;width:42px;height:42px;
     margin-left:-21px;margin-top:-21px;border-radius:50%;
-    background:rgba(255,255,255,0.85);box-shadow:0 4px 12px rgba(0,0,0,0.5);
+    background:rgba(255,255,255,0.86);box-shadow:0 4px 12px rgba(0,0,0,0.5);
     transition:transform .04s linear}
-  .action-stack{position:fixed;right:6%;bottom:8%;display:flex;flex-direction:column-reverse;
-    gap:10px;z-index:60}
-  .action-btn{width:78px;height:78px;border-radius:50%;border:none;
-    background:rgba(255,90,138,0.92);color:#1a0917;font:700 14px/1 inherit;
-    letter-spacing:0.06em;box-shadow:0 8px 20px rgba(0,0,0,0.45);cursor:pointer;
-    touch-action:none}
-  .action-btn.jump{background:rgba(124,248,192,0.92);color:#0a1f15}
-  .action-btn.bite{background:rgba(255,90,138,0.92)}
+  .action-btn{position:fixed;width:76px;height:76px;border-radius:50%;border:none;
+    color:#1a0917;font:700 13px/1 inherit;letter-spacing:0.08em;
+    box-shadow:var(--thorn-glow);cursor:pointer;touch-action:none}
   .action-btn:active{transform:translateY(2px)}
+  #jump-btn{right:6%;bottom:24%;background:rgba(124,248,192,0.95);color:#0a1f15}
+  #bite-btn{right:6%;bottom:9%;background:rgba(255,90,138,0.95)}
+  #hint{position:fixed;top:64px;left:50%;transform:translateX(-50%);
+    background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);
+    border-radius:8px;padding:6px 12px;font-size:12px;color:var(--ink-soft);
+    pointer-events:none;z-index:14;opacity:0;transition:opacity .2s ease;
+    white-space:nowrap;max-width:80vw;text-align:center}
+  #hint.show{opacity:1}
 
-  /* Victory overlay. */
-  #victory{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
-    flex-direction:column;background:rgba(8,6,16,0.92);z-index:150;text-align:center;
-    padding:20px}
-  #victory h2{font-size:32px;letter-spacing:0.08em;margin:0 0 8px;color:var(--accent-soft)}
-  #victory p{margin:0;color:var(--ink-soft)}
+  /* Hide gameplay UI during intro / win. */
+  body.intro-active #hud,
+  body.intro-active #game-controls,
+  body.game-won #hud,
+  body.game-won #game-controls{display:none !important}
+
+  /* ===== Win overlay ===== */
+  #rats-win{position:fixed;inset:0;display:none;flex-direction:column;
+    align-items:center;justify-content:center;background:rgba(8,5,14,0.94);z-index:50;
+    text-align:center;padding:20px}
+  #rats-win.show{display:flex}
+  #rats-win .rw-text{font-size:38px;letter-spacing:0.18em;color:var(--accent-soft);
+    text-shadow:0 0 24px rgba(255,90,138,0.6);margin-bottom:6px}
+  #rats-win .rw-sub{font-size:13px;color:var(--ink-soft);letter-spacing:0.08em;margin-bottom:18px}
+  #rats-win .rw-btn{appearance:none;border:none;border-radius:10px;padding:11px 24px;
+    background:var(--accent);color:#1a0917;font:700 13px/1 inherit;letter-spacing:0.1em;cursor:pointer}
+
+  /* Fade overlay used for transitions. */
+  #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
+    transition:opacity .8s ease;z-index:60}
+  #fade.show{opacity:1}
+
+  /* Mobile-only tweaks. The desktop dev path keeps full HUD widths;
+     phones shrink the meters so they sit clear of the safe-area. */
+  @media (max-width:640px){
+    .hud-box{font-size:11px;padding:6px 9px}
+    .hud-box.meter{min-width:120px}
+    #title{font-size:30px;letter-spacing:0.16em;top:50%}
+    .intro-card{padding:18px 16px 14px}
+    .intro-card h1{font-size:18px}
+    .intro-copy{font-size:12px;padding:9px 12px}
+  }
 </style>
 </head>
-<body>
-  <canvas id="c"></canvas>
+<body class="intro-active">
+<canvas id="c"></canvas>
 
-  <!-- HUD -->
-  <div id="hud">
-    <div id="mode-badge" class="badge">CONTROL: RAT</div>
-    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-      <div class="meter">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
-      <div class="meter rats">RATS <span id="rat-count">1</span> / 30
-        <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
+<!-- ===== HUD ===== -->
+<div id="title">URBAN LEGEND MOUSE</div>
+<div id="hud">
+  <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
+  <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+    <div class="hud-box meter">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
+    <div class="hud-box meter rats">RATS <span id="rat-count">1</span> / <span id="rat-goal">30</span>
+      <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
+  </div>
+</div>
+<div id="hint"></div>
+
+<!-- ===== Intro card ===== -->
+<div id="intro">
+  <div class="intro-card">
+    <h1>URBAN LEGEND MOUSE</h1>
+    <div class="tag">— black-humour 3D action —</div>
+    <div class="intro-copy">
+      <p>You are a rat with a human head. <em>Your</em> human head.</p>
+      <p>Charge into the props of this filthy plaza. The more you tip over, the more <strong>chaos</strong> you cause — and the more rats arrive to join you.</p>
+      <p>Climb onto a human, bite their neck, and <strong>take over their body</strong> for larger destruction. When the rat count fills the bar, the city is yours.</p>
+    </div>
+    <button id="start-btn">BEGIN</button>
+    <div id="intro-progress">
+      <div id="intro-progress-text">READY</div>
+      <div id="intro-progress-track"><div id="intro-progress-fill"></div></div>
     </div>
   </div>
-  <div id="hint"></div>
+</div>
 
-  <!-- Selfie capture modal -->
-  <div id="selfie-modal">
-    <div class="selfie-card">
-      <h1>YOUR FACE FOR THE RAT</h1>
-      <p>Take a selfie — your face will be mapped onto the rat's head.
-         Skip to use the default face.</p>
-      <div class="selfie-preview" id="selfie-preview">
-        <img id="selfie-placeholder" alt="placeholder" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'&gt;&lt;rect width='240' height='240' fill='%23241a30'/&gt;&lt;circle cx='120' cy='95' r='40' fill='%23bfa884'/&gt;&lt;rect x='60' y='140' width='120' height='90' rx='40' fill='%23bfa884'/&gt;&lt;/svg&gt;"/>
-        <video id="selfie-video" autoplay playsinline muted style="display:none"></video>
-      </div>
-      <div class="selfie-actions">
-        <button class="btn-primary"   id="btn-open-cam">OPEN CAMERA</button>
-        <button class="btn-secondary" id="btn-capture" style="display:none">CAPTURE</button>
-        <button class="btn-secondary" id="btn-retake"  style="display:none">RETAKE</button>
-        <button class="btn-primary"   id="btn-confirm" style="display:none">USE THIS FACE</button>
-        <button class="btn-ghost"     id="btn-skip">SKIP — USE DEFAULT FACE</button>
-      </div>
+<!-- ===== Selfie capture modal ===== -->
+<div id="selfie-modal">
+  <div class="selfie-card">
+    <h2>YOUR FACE FOR THE RAT</h2>
+    <p>Take a selfie — your face will be mapped onto the rat's head in real time.<br>Skip to use the default face.</p>
+    <div class="selfie-preview" id="selfie-preview">
+      <img id="selfie-placeholder" alt="" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'&gt;&lt;rect width='240' height='240' fill='%23241a30'/&gt;&lt;circle cx='120' cy='95' r='40' fill='%23bfa884'/&gt;&lt;rect x='60' y='140' width='120' height='90' rx='40' fill='%23bfa884'/&gt;&lt;/svg&gt;"/>
+      <video id="selfie-video" autoplay playsinline muted style="display:none"></video>
+    </div>
+    <div class="selfie-actions">
+      <button class="btn-primary"   id="btn-open-cam">OPEN CAMERA</button>
+      <button class="btn-secondary" id="btn-capture" style="display:none">CAPTURE</button>
+      <button class="btn-secondary" id="btn-retake"  style="display:none">RETAKE</button>
+      <button class="btn-primary"   id="btn-confirm" style="display:none">USE THIS FACE</button>
+      <button class="btn-ghost"     id="btn-skip">SKIP — USE DEFAULT FACE</button>
     </div>
   </div>
+</div>
 
-  <!-- On-screen controls -->
+<!-- ===== Game controls ===== -->
+<div id="game-controls">
   <div id="joystick-zone"><div id="joystick-base"></div><div id="joystick-stick"></div></div>
-  <div class="action-stack">
-    <button class="action-btn bite" id="btn-action">BITE</button>
-    <button class="action-btn jump" id="btn-jump">JUMP</button>
-  </div>
+  <button id="jump-btn" class="action-btn" aria-label="Jump">JUMP</button>
+  <button id="bite-btn" class="action-btn" aria-label="Bite">BITE</button>
+</div>
 
-  <!-- Victory -->
-  <div id="victory">
-    <h2>THE CITY IS OURS</h2>
-    <p>The rats outnumber the humans. The chaos holds.</p>
-  </div>
+<!-- ===== Win overlay ===== -->
+<div id="rats-win">
+  <div class="rw-text">RATS WIN</div>
+  <div class="rw-sub">THE PLAZA BELONGS TO THE SWARM</div>
+  <button class="rw-btn" id="rw-replay">PLAY AGAIN</button>
+</div>
 
-<script type="importmap">
-{"imports":{
-  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
-  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
-}}
-</script>
+<div id="fade"></div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 
 /* ============================================================
    Urban Legend Mouse — single-file prototype
-   Conventions:
-     • British English for identifiers and comments throughout.
-     • One module-level `game` object holds shared state.
-     • Procedural primitives stand in for art; swap to GLBs later.
+   Conventions inherited from 都市傳說2 (Run Artist Run):
+     • One HTML + inline <script type="module"> file.
+     • British English for every identifier and comment.
+     • // ===== section banners; no build step.
+     • gameState machine drives the loop.
    ============================================================ */
 
-/* ---------- shared state ---------- */
-const game = {
-  phase: 'selfie',              // 'selfie' | 'briefing' | 'playing' | 'won'
-  controlMode: 'rat',           // 'rat' | 'host'
-  chaos: 0,                     // 0..1, drives rat-spawn rate
-  chaosTarget: 0,               // smoothed for HUD
-  rats: [],                     // [{ root, body, isPlayer, vel, ... }]
-  humans: [],                   // wandering host candidates
-  cleaners: [],                 // opposing AI (stub for now)
-  props: [],                    // rigidbody-style stand-ins
-  controlled: null,             // the entity currently being driven
-  parasitisedHost: null,        // non-null while controlMode==='host'
-  lastTime: performance.now()
+// ===== Helpers =====
+const W=()=>window.innerWidth;
+const H=()=>window.innerHeight;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>a+Math.random()*(b-a);
+
+// ===== Renderer / Scene / Camera =====
+const canvas=document.getElementById('c');
+const IS_MOBILE_LAYOUT=window.matchMedia('(max-width:640px),(pointer:coarse)').matches;
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.setSize(W(),H());
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.1;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene=new THREE.Scene();
+
+// Sky gradient — same CanvasTexture trick as 都市傳說2, repainted into a
+// dusk palette to suit the black-humour tone.
+const skyCV=document.createElement('canvas');skyCV.width=2;skyCV.height=512;
+const skyCtx=skyCV.getContext('2d');
+const skyTex=new THREE.CanvasTexture(skyCV);
+scene.background=skyTex;
+{
+  const g=skyCtx.createLinearGradient(0,0,0,512);
+  g.addColorStop(0,'#2c1840');
+  g.addColorStop(0.45,'#5a2d54');
+  g.addColorStop(0.78,'#a14a6f');
+  g.addColorStop(1,'#d28a8a');
+  skyCtx.fillStyle=g;skyCtx.fillRect(0,0,2,512);
+  skyTex.needsUpdate=true;
+}
+
+// Pearl environment, soft fog — same recipe as the 2 game.
+const envCV=document.createElement('canvas');envCV.width=256;envCV.height=128;
+{
+  const ctx=envCV.getContext('2d');
+  const g=ctx.createLinearGradient(0,0,envCV.width,0);
+  g.addColorStop(0,'#503060');g.addColorStop(0.4,'#5e3a72');g.addColorStop(0.7,'#7a4a6e');g.addColorStop(1,'#c98a7a');
+  ctx.fillStyle=g;ctx.fillRect(0,0,envCV.width,envCV.height);
+}
+const envTex=new THREE.CanvasTexture(envCV);
+envTex.mapping=THREE.EquirectangularReflectionMapping;
+scene.environment=envTex;
+
+scene.fog=new THREE.FogExp2('#2c1840',0.022);
+
+// Lights — Hemi + key Directional + ambient lift, matching 都市傳說2.
+scene.add(new THREE.HemisphereLight('#c4a8e0','#3a2638',0.65));
+const sun=new THREE.DirectionalLight('#ffe4c8',0.9);
+sun.position.set(10,18,6);
+sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+sun.shadow.camera.left=-18;sun.shadow.camera.right=18;
+sun.shadow.camera.top=18;sun.shadow.camera.bottom=-18;
+scene.add(sun);
+scene.add(new THREE.AmbientLight('#ffffff',0.18));
+
+const camera=new THREE.PerspectiveCamera(62,W()/H(),0.05,200);
+
+// ===== Post-processing (VHS-style — black-humour grain) =====
+const VHSShader={
+  uniforms:{tDiffuse:{value:null},time:{value:0},intensity:{value:0.85},resolution:{value:new THREE.Vector2(W(),H())}},
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`
+    uniform sampler2D tDiffuse;uniform float time;uniform float intensity;uniform vec2 resolution;varying vec2 vUv;
+    float rand(vec2 co){return fract(sin(dot(co,vec2(12.9898,78.233)))*43758.5453);}
+    void main(){
+      vec2 uv=vUv;
+      float wave=sin(uv.y*9.0+time*2.0)*0.0025*intensity;
+      wave+=sin(uv.y*36.0+time*4.0)*0.0008*intensity;
+      uv.x+=wave;
+      float shift=0.00018*intensity;
+      float r=texture2D(tDiffuse,vec2(uv.x+shift,uv.y)).r;
+      float g=texture2D(tDiffuse,uv).g;
+      float b=texture2D(tDiffuse,vec2(uv.x-shift,uv.y)).b;
+      vec3 col=vec3(r,g,b);
+      float scanline=sin(vUv.y*resolution.y*1.1)*0.018*intensity;
+      col-=scanline;
+      float noise=(rand(vUv*time)-0.5)*0.05*intensity;
+      col+=noise;
+      float vig=1.0-dot((vUv-0.5)*1.2,(vUv-0.5)*1.2);
+      col*=mix(1.0,vig,0.22*intensity);
+      gl_FragColor=vec4(col,1.0);
+    }`
 };
-const WIN_RAT_COUNT = 30;
-const NECK_BITE_RADIUS = 0.55;  // metres — how close the rat must be to a host's neck
-const CHAOS_PER_TIP = 0.04;     // how much a single knocked-over prop adds
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const vhsPass=new ShaderPass(VHSShader);
+composer.addPass(vhsPass);
+let vhsEnabled=true;
+// Shift+G mirrors 都市傳說2's toggle.
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey && (e.key==='G'||e.key==='g')){e.preventDefault();vhsEnabled=!vhsEnabled;vhsPass.enabled=vhsEnabled}
+});
 
-/* ---------- renderer / scene / camera ---------- */
-const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color('#1a1530');
-scene.fog = new THREE.Fog('#1a1530', 12, 40);
-
-const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 200);
-camera.position.set(0, 3, 4.5);
-
-function resize(){
-  const w = window.innerWidth, h = window.innerHeight;
-  renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+function onResize(){
+  renderer.setSize(W(),H());
+  camera.aspect=W()/H();camera.updateProjectionMatrix();
+  composer.setSize(W(),H());
+  vhsPass.uniforms.resolution.value.set(W(),H());
 }
-window.addEventListener('resize', resize);
-resize();
+window.addEventListener('resize',onResize);
+onResize();
 
-/* ---------- lighting ---------- */
-{
-  const hemi = new THREE.HemisphereLight('#b9b3ff', '#3a2f24', 0.55);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight('#fff0d6', 1.1);
-  sun.position.set(8, 12, 6);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
-  sun.shadow.camera.left = -14; sun.shadow.camera.right = 14;
-  sun.shadow.camera.top = 14;   sun.shadow.camera.bottom = -14;
-  scene.add(sun);
-}
+// ===== Shared state =====
+const PLAYER_MAX_SPEED=5.4;   // rat — fast on small legs
+const PLAYER_ACCEL=22;
+const PLAYER_DECEL=26;
+const HOST_MAX_SPEED=3.6;     // parasitised human is slower but heavier
+const HOST_ACCEL=14;
+const JUMP_VEL=6.6;
+const GRAVITY=22;
+const RAT_FOOT_OFFSET=0.18;   // rat root sits this far above the ground plane
+const HOST_FOOT_OFFSET=0.0;
+const NECK_BITE_RADIUS=0.65;
+const CHAOS_PER_TIP=0.045;
+const CHAOS_DECAY=0.012;      // per second — cleaners do the rest
+const WIN_RAT_COUNT=30;
+const BREED_MIN_CHAOS=0.25;
+document.getElementById('rat-goal').textContent=WIN_RAT_COUNT;
 
-/* ---------- ground ---------- */
-{
-  const groundGeo = new THREE.PlaneGeometry(60, 60);
-  const groundMat = new THREE.MeshStandardMaterial({color:'#241b34', roughness:0.95});
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-}
+let gameState='intro';        // intro | playing | won
+let gameTime=0;
+const game={
+  controlMode:'rat',          // rat | host
+  controlled:null,
+  parasitisedHost:null,
+  chaos:0,
+  chaosDisplay:0,
+  rats:[],
+  humans:[],
+  props:[]
+};
 
-/* ============================================================
-   POC #2 — selfie capture + dynamic face mapping
-   ============================================================ */
+// ===== Loaders =====
+// (No GLBs in the prototype — scene is built procedurally. Loader stubs
+// kept so the asset pipeline can be slotted in later without restructuring.)
+const textureLoader=new THREE.TextureLoader();
 
-/* Face is a CanvasTexture. We always start with a procedural default;
-   the selfie flow overwrites the centre region once a frame is captured.
-   The texture stays the same THREE.Texture object so any material that
-   references it picks the new pixels up via texture.needsUpdate. */
-const FACE_W = 1024, FACE_H = 512;
-const faceCanvas = document.createElement('canvas');
-faceCanvas.width = FACE_W; faceCanvas.height = FACE_H;
-const faceCtx = faceCanvas.getContext('2d');
-const faceTexture = new THREE.CanvasTexture(faceCanvas);
-faceTexture.colorSpace = THREE.SRGBColorSpace;
-/* Shift the canvas so its horizontal centre maps to the head's front.
-   Default SphereGeometry seams at +X (u=0); a 0.25 offset puts u=0.25
-   on the front-facing -Z hemisphere — visually we tune by eye. */
-faceTexture.offset.set(0.25, 0);
-faceTexture.wrapS = THREE.RepeatWrapping;
+// ===== Face texture — selfie or procedural default =====
+// One CanvasTexture is shared by the rat head. Selfie capture overwrites
+// the canvas in place; the texture object never changes identity.
+const FACE_W=1024,FACE_H=512;
+const faceCanvas=document.createElement('canvas');
+faceCanvas.width=FACE_W;faceCanvas.height=FACE_H;
+const faceCtx=faceCanvas.getContext('2d');
+const faceTexture=new THREE.CanvasTexture(faceCanvas);
+faceTexture.colorSpace=THREE.SRGBColorSpace;
+// Three's default SphereGeometry has its seam along +X; offset 0.25 puts
+// the canvas centre on the front-facing -Z hemisphere. Tweak by eye.
+faceTexture.offset.set(0.25,0);
+faceTexture.wrapS=THREE.RepeatWrapping;
 
 function paintDefaultFace(){
-  // A bald "cartoon human" head as the fallback. Skin tone, simple eyes,
-  // a stubby nose, a flat mouth. Painted into the same canvas as the
-  // selfie will be — so swapping looks identical from the GPU side.
-  faceCtx.fillStyle = '#caa078';
-  faceCtx.fillRect(0, 0, FACE_W, FACE_H);
-  const cx = FACE_W * 0.5, cy = FACE_H * 0.55;
+  faceCtx.fillStyle='#caa078';
+  faceCtx.fillRect(0,0,FACE_W,FACE_H);
+  const cx=FACE_W*0.5,cy=FACE_H*0.55;
   // Eyes
-  faceCtx.fillStyle = '#1a1320';
-  faceCtx.beginPath(); faceCtx.ellipse(cx - 60, cy - 30, 14, 18, 0, 0, Math.PI*2); faceCtx.fill();
-  faceCtx.beginPath(); faceCtx.ellipse(cx + 60, cy - 30, 14, 18, 0, 0, Math.PI*2); faceCtx.fill();
+  faceCtx.fillStyle='#1a1320';
+  faceCtx.beginPath();faceCtx.ellipse(cx-58,cy-30,13,18,0,0,Math.PI*2);faceCtx.fill();
+  faceCtx.beginPath();faceCtx.ellipse(cx+58,cy-30,13,18,0,0,Math.PI*2);faceCtx.fill();
   // Nose
-  faceCtx.strokeStyle = '#8a6a4c'; faceCtx.lineWidth = 5;
-  faceCtx.beginPath(); faceCtx.moveTo(cx, cy - 10); faceCtx.lineTo(cx - 8, cy + 24); faceCtx.lineTo(cx + 8, cy + 24); faceCtx.stroke();
+  faceCtx.strokeStyle='#8a6a4c';faceCtx.lineWidth=5;
+  faceCtx.beginPath();faceCtx.moveTo(cx,cy-10);faceCtx.lineTo(cx-8,cy+22);faceCtx.lineTo(cx+8,cy+22);faceCtx.stroke();
   // Mouth
-  faceCtx.strokeStyle = '#52303a'; faceCtx.lineWidth = 6; faceCtx.lineCap = 'round';
-  faceCtx.beginPath(); faceCtx.moveTo(cx - 40, cy + 80); faceCtx.quadraticCurveTo(cx, cy + 100, cx + 40, cy + 80); faceCtx.stroke();
-  faceTexture.needsUpdate = true;
+  faceCtx.strokeStyle='#52303a';faceCtx.lineWidth=6;faceCtx.lineCap='round';
+  faceCtx.beginPath();faceCtx.moveTo(cx-38,cy+78);faceCtx.quadraticCurveTo(cx,cy+98,cx+38,cy+78);faceCtx.stroke();
+  faceTexture.needsUpdate=true;
   console.log('[face] initial texture painted (preset)');
 }
 
 function paintSelfieOntoFace(source){
-  // `source` is an HTMLImageElement or HTMLCanvasElement holding a
-  // square-cropped, mirrored selfie. We paint a fur-like base, then
-  // clip an oval and draw the selfie inside it. The oval matches the
-  // visible front-of-head area on the sphere with the offset we set.
-  faceCtx.fillStyle = '#caa078';
-  faceCtx.fillRect(0, 0, FACE_W, FACE_H);
-  const cx = FACE_W * 0.5, cy = FACE_H * 0.5;
-  const rx = FACE_W * 0.28, ry = FACE_H * 0.5;
+  // Fur-like base, oval clip, cover-fit the selfie inside.
+  faceCtx.fillStyle='#caa078';
+  faceCtx.fillRect(0,0,FACE_W,FACE_H);
+  const cx=FACE_W*0.5,cy=FACE_H*0.5;
+  const rx=FACE_W*0.28,ry=FACE_H*0.5;
   faceCtx.save();
-  faceCtx.beginPath();
-  faceCtx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
-  faceCtx.clip();
-  // Cover-fit the source into the oval bounds.
-  const srcW = source.width || source.videoWidth || 512;
-  const srcH = source.height || source.videoHeight || 512;
-  const dstW = rx * 2.05, dstH = ry * 2.05;
-  faceCtx.drawImage(source, 0, 0, srcW, srcH, cx - dstW/2, cy - dstH/2, dstW, dstH);
+  faceCtx.beginPath();faceCtx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);faceCtx.clip();
+  const srcW=source.width||source.videoWidth||512;
+  const srcH=source.height||source.videoHeight||512;
+  const dstW=rx*2.05,dstH=ry*2.05;
+  faceCtx.drawImage(source,0,0,srcW,srcH,cx-dstW/2,cy-dstH/2,dstW,dstH);
   faceCtx.restore();
-  faceTexture.needsUpdate = true;
+  faceTexture.needsUpdate=true;
 }
 
-/* Selfie modal flow. getUserMedia is gated behind a user-tap because
-   iOS Safari refuses camera access from page-load JavaScript. */
-const selfieModal = document.getElementById('selfie-modal');
-const selfieVideo = document.getElementById('selfie-video');
-const selfiePlaceholder = document.getElementById('selfie-placeholder');
-const btnOpenCam = document.getElementById('btn-open-cam');
-const btnCapture = document.getElementById('btn-capture');
-const btnRetake  = document.getElementById('btn-retake');
-const btnConfirm = document.getElementById('btn-confirm');
-const btnSkip    = document.getElementById('btn-skip');
+// ===== Ground / Scene (procedural — JS only, per brief) =====
+// A circular tiled plaza. The radial gradient gives a "spotlight in a
+// filthy courtyard" feel. The tile lines are baked into a CanvasTexture
+// so the floor reads as paved without needing any GLB.
+const FLOOR_RADIUS=22;
+function makeFloorTexture(){
+  const c=document.createElement('canvas');c.width=c.height=1024;
+  const cx=c.getContext('2d');
+  const g=cx.createRadialGradient(512,512,40,512,512,520);
+  g.addColorStop(0,'#3a2842');g.addColorStop(0.7,'#241830');g.addColorStop(1,'#120a1a');
+  cx.fillStyle=g;cx.fillRect(0,0,1024,1024);
+  // Tile grid
+  cx.strokeStyle='rgba(255,255,255,0.05)';cx.lineWidth=1;
+  for(let i=0;i<=16;i++){
+    const p=i*64;
+    cx.beginPath();cx.moveTo(p,0);cx.lineTo(p,1024);cx.stroke();
+    cx.beginPath();cx.moveTo(0,p);cx.lineTo(1024,p);cx.stroke();
+  }
+  // Random splatters
+  for(let i=0;i<70;i++){
+    cx.fillStyle=`rgba(${30+Math.random()*60},${10+Math.random()*30},${30+Math.random()*40},${0.15+Math.random()*0.25})`;
+    const x=Math.random()*1024,y=Math.random()*1024,r=8+Math.random()*40;
+    cx.beginPath();cx.ellipse(x,y,r,r*(0.6+Math.random()*0.6),Math.random()*Math.PI,0,Math.PI*2);cx.fill();
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+{
+  const floorTex=makeFloorTexture();
+  const floor=new THREE.Mesh(
+    new THREE.CircleGeometry(FLOOR_RADIUS,64),
+    new THREE.MeshStandardMaterial({map:floorTex,roughness:0.95,metalness:0.0})
+  );
+  floor.rotation.x=-Math.PI/2;
+  floor.receiveShadow=true;
+  scene.add(floor);
+  // A simple outer ring — kerb — so the play area feels enclosed.
+  const kerb=new THREE.Mesh(
+    new THREE.RingGeometry(FLOOR_RADIUS-0.4,FLOOR_RADIUS,64,1),
+    new THREE.MeshStandardMaterial({color:'#1a0f24',roughness:1.0})
+  );
+  kerb.rotation.x=-Math.PI/2;kerb.position.y=0.01;scene.add(kerb);
+}
 
-let selfieStream = null;
-let selfieFrozenCanvas = null;  // populated after CAPTURE
+// ===== Prop factory — tipping rigidbody stand-ins =====
+// Each prop is a single box, recoloured per-instance. They start upright
+// and rotate around their base when the controlled body shoves them.
+// Phase-2 swap is Rapier3D, but the scripted version reads well enough
+// for the prototype and avoids a chunky physics dep on the critical path.
+const PROP_PALETTE=[
+  {colour:'#a86b3a',label:'crate'},
+  {colour:'#7a5d3e',label:'crate'},
+  {colour:'#3a4a5c',label:'bin'},
+  {colour:'#2a3a44',label:'bin'},
+  {colour:'#8c5a4a',label:'chair'},
+  {colour:'#6c4a3a',label:'chair'},
+  {colour:'#c79a52',label:'pallet'},
+  {colour:'#5a4036',label:'table'},
+];
+function spawnProp(x,z,w,h,d,paletteIdx=0){
+  const def=PROP_PALETTE[paletteIdx%PROP_PALETTE.length];
+  const m=new THREE.Mesh(
+    new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshStandardMaterial({color:def.colour,roughness:0.85,metalness:0.05})
+  );
+  m.position.set(x,h/2,z);
+  m.castShadow=true;m.receiveShadow=true;
+  scene.add(m);
+  return {mesh:m,baseY:h/2,height:h,radius:Math.max(w,d)*0.5+0.18,
+    tipped:false,chaosWeight:1+Math.max(0,h-0.5)*0.4};
+}
 
-async function openCamera(){
-  try{
-    selfieStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
-      audio: false
-    });
-    selfieVideo.srcObject = selfieStream;
-    await selfieVideo.play();
-    selfieVideo.style.display = 'block';
-    selfiePlaceholder.style.display = 'none';
-    btnOpenCam.style.display = 'none';
-    btnCapture.style.display = 'block';
-    console.log('[face] camera stream opened');
-  }catch(err){
-    console.warn('[face] camera unavailable', err);
-    alert('Cannot access camera — using the default face.');
-    finishSelfie(null);
+// Three concentric rings + a few outliers — JS-built scene, no GLB.
+for(let r=0;r<3;r++){
+  const radius=4.5+r*3.4;
+  const count=8+r*5;
+  for(let i=0;i<count;i++){
+    const a=(i/count)*Math.PI*2 + (r*0.3) + rand(-0.12,0.12);
+    const x=Math.cos(a)*radius+rand(-0.5,0.5);
+    const z=Math.sin(a)*radius+rand(-0.5,0.5);
+    const pal=Math.floor(Math.random()*PROP_PALETTE.length);
+    const tall=Math.random()<0.3;
+    const w=tall?0.42:rand(0.55,0.9);
+    const h=tall?rand(1.0,1.4):rand(0.45,0.85);
+    const d=tall?0.42:rand(0.55,0.9);
+    game.props.push(spawnProp(x,z,w,h,d,pal));
   }
 }
 
-function freezeFrame(){
-  // Square-crop the centre of the video into a 512x512 canvas, mirrored
-  // so the face on the rat shows the side that other people see.
-  const size = 512;
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  const vw = selfieVideo.videoWidth, vh = selfieVideo.videoHeight;
-  const s = Math.min(vw, vh);
-  const sx = (vw - s) / 2, sy = (vh - s) / 2;
-  // Note: the preview is CSS-mirrored, but the underlying video frame is
-  // not. We mirror here so the captured texture matches what the user saw.
-  ctx.save();
-  ctx.translate(size, 0);
-  ctx.scale(-1, 1);
-  ctx.drawImage(selfieVideo, sx, sy, s, s, 0, 0, size, size);
+// ===== Rat factory =====
+function buildRat({isPlayer=false}={}){
+  const root=new THREE.Group();
+  // Body — flattened capsule. CapsuleGeometry on its side reads as a
+  // long rodent body; the head is the oversized sphere on top.
+  const fur=new THREE.MeshStandardMaterial({color:isPlayer?'#5d4a3a':'#4a3a2e',roughness:0.85});
+  const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.16,0.30,6,12),fur);
+  body.rotation.z=Math.PI/2;body.castShadow=true;
+  root.add(body);
+  // Head — sphere with the face texture (player only). Sketch reference:
+  // the head is roughly as large as the body, slung low and forward.
+  const headMat=isPlayer
+    ? new THREE.MeshStandardMaterial({map:faceTexture,roughness:0.6})
+    : new THREE.MeshStandardMaterial({color:'#bfa078',roughness:0.7});
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.26,24,18),headMat);
+  head.position.set(0.30,0.02,0);head.castShadow=true;
+  root.add(head);
+  // Ears
+  const earGeo=new THREE.SphereGeometry(0.06,10,8);
+  const earMat=new THREE.MeshStandardMaterial({color:'#7a5b46'});
+  const earL=new THREE.Mesh(earGeo,earMat);earL.position.set(0.28,0.28,-0.13);root.add(earL);
+  const earR=earL.clone();earR.position.z=0.13;root.add(earR);
+  // Tail
+  const tail=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.022,0.008,0.50,8),
+    new THREE.MeshStandardMaterial({color:'#7a5b46'})
+  );
+  tail.rotation.z=Math.PI/2;tail.position.set(-0.30,0.02,0);root.add(tail);
+
+  scene.add(root);
+  root.position.y=RAT_FOOT_OFFSET;
+  return {
+    kind:'rat',root,body,head,
+    isPlayer,
+    vel:new THREE.Vector3(),
+    curSpeed:0,
+    yaw:0,
+    vy:0,
+    isAir:false,
+    controllable:isPlayer,
+    walkPhase:0
+  };
+}
+
+// ===== Human NPC factory =====
+function buildHuman({position,role='wanderer'}={}){
+  const root=new THREE.Group();
+  root.position.copy(position);
+  const tint=role==='cleaner'?'#4a6b8c':'#6b7a52';
+  const trousers=new THREE.MeshStandardMaterial({color:'#2a2438',roughness:0.95});
+  const shirt=new THREE.MeshStandardMaterial({color:tint,roughness:0.85});
+
+  // Legs (two short capsules so the body reads as humanoid).
+  const legGeo=new THREE.CapsuleGeometry(0.10,0.55,4,8);
+  const legL=new THREE.Mesh(legGeo,trousers);legL.position.set(-0.12,0.42,0);legL.castShadow=true;root.add(legL);
+  const legR=legL.clone();legR.position.x=0.12;root.add(legR);
+  // Torso
+  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(0.24,0.55,6,12),shirt);
+  torso.position.y=1.08;torso.castShadow=true;root.add(torso);
+  // Arms
+  const armGeo=new THREE.CapsuleGeometry(0.08,0.46,4,8);
+  const armL=new THREE.Mesh(armGeo,shirt);armL.position.set(-0.32,1.10,0);armL.rotation.z=0.15;armL.castShadow=true;root.add(armL);
+  const armR=armL.clone();armR.position.x=0.32;armR.rotation.z=-0.15;root.add(armR);
+  // Head — plain skin sphere (host candidates have no human-rat hybrid here).
+  const head=new THREE.Mesh(
+    new THREE.SphereGeometry(0.20,20,16),
+    new THREE.MeshStandardMaterial({color:'#d9b89a',roughness:0.6})
+  );
+  head.position.y=1.60;head.castShadow=true;root.add(head);
+  // Shoulder-rat — invisible until parasitised, then shows the rider.
+  const shoulderRat=new THREE.Mesh(
+    new THREE.SphereGeometry(0.11,12,8),
+    new THREE.MeshStandardMaterial({color:'#5d4a3a'})
+  );
+  shoulderRat.position.set(0.22,1.40,0);
+  shoulderRat.visible=false;
+  root.add(shoulderRat);
+
+  scene.add(root);
+  return {
+    kind:'human',role,root,torso,head,shoulderRat,
+    legL,legR,armL,armR,
+    vel:new THREE.Vector3(),
+    curSpeed:0,
+    yaw:Math.random()*Math.PI*2,
+    vy:0,
+    isAir:false,
+    controllable:false,
+    parasitised:false,
+    wanderTimer:rand(0.5,2.5),
+    walkPhase:0
+  };
+}
+
+// ===== World population =====
+const player=buildRat({isPlayer:true});
+player.controllable=true;
+game.rats.push(player);
+game.controlled=player;
+
+for(let i=0;i<5;i++){
+  const a=(i/5)*Math.PI*2 + rand(-0.3,0.3);
+  const r=8+rand(-1.5,1.5);
+  const h=buildHuman({position:new THREE.Vector3(Math.cos(a)*r,0,Math.sin(a)*r)});
+  game.humans.push(h);
+}
+
+// ===== Input — joystick + buttons + keyboard =====
+let joyX=0,joyY=0;
+const keys={w:false,a:false,s:false,d:false,up:false,down:false,left:false,right:false};
+const inputFlags={jump:false,action:false};
+
+// Joystick (pattern lifted from 都市傳說2).
+{
+  const zone=document.getElementById('joystick-zone');
+  const stick=document.getElementById('joystick-stick');
+  const STICK_MAX=38;
+  let ptrId=null,cx=0,cy=0;
+  zone.addEventListener('pointerdown',e=>{
+    if(ptrId!==null)return;
+    e.preventDefault();
+    ptrId=e.pointerId;zone.setPointerCapture(ptrId);
+    const r=zone.getBoundingClientRect();
+    cx=r.left+r.width/2;cy=r.top+r.height/2;
+  });
+  zone.addEventListener('pointermove',e=>{
+    if(e.pointerId!==ptrId)return;
+    e.preventDefault();
+    const dx=e.clientX-cx,dy=e.clientY-cy;
+    const d=Math.min(Math.hypot(dx,dy),STICK_MAX);
+    const a=Math.atan2(dy,dx);
+    const sx=Math.cos(a)*d,sy=Math.sin(a)*d;
+    stick.style.transform=`translate(${sx}px,${sy}px)`;
+    joyX=sx/STICK_MAX;joyY=sy/STICK_MAX;
+  });
+  const end=e=>{
+    if(e.pointerId!==ptrId)return;
+    ptrId=null;joyX=0;joyY=0;
+    stick.style.transform='translate(0,0)';
+  };
+  zone.addEventListener('pointerup',end);
+  zone.addEventListener('pointercancel',end);
+}
+
+// Jump + bite buttons.
+const jumpBtn=document.getElementById('jump-btn');
+const biteBtn=document.getElementById('bite-btn');
+jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
+biteBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.action=true});
+
+// Keyboard.
+window.addEventListener('keydown',e=>{
+  if(e.code==='KeyW')keys.w=true;
+  if(e.code==='KeyA')keys.a=true;
+  if(e.code==='KeyS')keys.s=true;
+  if(e.code==='KeyD')keys.d=true;
+  if(e.code==='ArrowUp')keys.up=true;
+  if(e.code==='ArrowDown')keys.down=true;
+  if(e.code==='ArrowLeft')keys.left=true;
+  if(e.code==='ArrowRight')keys.right=true;
+  if(e.code==='Space')inputFlags.jump=true;
+  if(e.code==='KeyE'||e.code==='KeyF')inputFlags.action=true;
+});
+window.addEventListener('keyup',e=>{
+  if(e.code==='KeyW')keys.w=false;
+  if(e.code==='KeyA')keys.a=false;
+  if(e.code==='KeyS')keys.s=false;
+  if(e.code==='KeyD')keys.d=false;
+  if(e.code==='ArrowUp')keys.up=false;
+  if(e.code==='ArrowDown')keys.down=false;
+  if(e.code==='ArrowLeft')keys.left=false;
+  if(e.code==='ArrowRight')keys.right=false;
+});
+
+// ===== Camera (third-person orbit, same controls as 都市傳說2) =====
+let camYaw=Math.PI,camPitch=0.35,camDist=3.6;
+let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
+canvas.addEventListener('pointerdown',e=>{
+  if(e.target!==canvas)return;
+  dragging=true;dragPId=e.pointerId;
+  dx0=e.clientX;dy0=e.clientY;yaw0=camYaw;pitch0=camPitch;
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!dragging||e.pointerId!==dragPId)return;
+  camYaw=yaw0-(e.clientX-dx0)/W()*4;
+  camPitch=clamp(pitch0+(e.clientY-dy0)/H()*3,-0.05,1.0);
+});
+const endDrag=e=>{if(e.pointerId===dragPId){dragging=false;dragPId=null}};
+canvas.addEventListener('pointerup',endDrag);
+canvas.addEventListener('pointercancel',endDrag);
+canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.012,2.2,8)},{passive:false});
+
+function updateCam(){
+  const ent=game.controlled;
+  if(!ent)return;
+  // Mode-dependent focus height: rat is small so the eye is just above
+  // the ground, host is tall so we look at head height.
+  const focusH=(game.controlMode==='host')?1.55:0.45;
+  const tx=ent.root.position.x;
+  const ty=ent.root.position.y+focusH;
+  const tz=ent.root.position.z;
+  const dist=(game.controlMode==='host')?Math.max(camDist,4.4):camDist;
+  const cx=tx+Math.sin(camYaw)*dist*Math.cos(camPitch);
+  const cy=ty+Math.sin(camPitch)*dist;
+  const cz=tz+Math.cos(camYaw)*dist*Math.cos(camPitch);
+  camera.position.set(cx,cy,cz);
+  camera.lookAt(tx,ty,tz);
+}
+
+// ===== Selfie capture flow =====
+const selfieModal=document.getElementById('selfie-modal');
+const selfieVideo=document.getElementById('selfie-video');
+const btnOpenCam=document.getElementById('btn-open-cam');
+const btnCapture=document.getElementById('btn-capture');
+const btnRetake=document.getElementById('btn-retake');
+const btnConfirm=document.getElementById('btn-confirm');
+const btnSkip=document.getElementById('btn-skip');
+let selfieStream=null;
+let selfieFrozenCanvas=null;
+
+async function openCamera(){
+  try{
+    selfieStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'user',width:{ideal:720},height:{ideal:720}},audio:false
+    });
+    selfieVideo.srcObject=selfieStream;
+    await selfieVideo.play();
+    selfieVideo.style.display='block';
+    document.getElementById('selfie-placeholder').style.display='none';
+    btnOpenCam.style.display='none';
+    btnCapture.style.display='block';
+    console.log('[face] camera stream opened');
+  }catch(err){
+    console.warn('[face] camera unavailable',err);
+    alert('Cannot access camera — using the default face.');
+    closeSelfieAnd(null);
+  }
+}
+
+function freezeSelfieFrame(){
+  // Square-crop the central region of the live video, mirrored so the
+  // captured pixels match what the user just saw in the preview.
+  const size=512;
+  const c=document.createElement('canvas');c.width=c.height=size;
+  const ctx=c.getContext('2d');
+  const vw=selfieVideo.videoWidth,vh=selfieVideo.videoHeight;
+  const s=Math.min(vw,vh);
+  ctx.save();ctx.translate(size,0);ctx.scale(-1,1);
+  ctx.drawImage(selfieVideo,(vw-s)/2,(vh-s)/2,s,s,0,0,size,size);
   ctx.restore();
   return c;
 }
 
-function stopCameraStream(){
-  if(!selfieStream) return;
-  for(const track of selfieStream.getTracks()) track.stop();
-  selfieStream = null;
-  selfieVideo.srcObject = null;
+function stopSelfieStream(){
+  if(!selfieStream)return;
+  for(const t of selfieStream.getTracks())t.stop();
+  selfieStream=null;selfieVideo.srcObject=null;
 }
 
-function finishSelfie(frozenCanvas){
-  stopCameraStream();
+function closeSelfieAnd(frozenCanvas){
+  stopSelfieStream();
   if(frozenCanvas){
     paintSelfieOntoFace(frozenCanvas);
-    console.log('[face] selfie captured (' + frozenCanvas.width + 'x' + frozenCanvas.height + ')');
+    console.log('[face] selfie captured ('+frozenCanvas.width+'x'+frozenCanvas.height+')');
   }
-  selfieModal.style.display = 'none';
-  game.phase = 'playing';
+  selfieModal.classList.remove('show');
+  // After the selfie step, finally start the game.
+  startGame();
 }
 
-btnOpenCam.addEventListener('click', openCamera);
-btnCapture.addEventListener('click', () => {
-  selfieFrozenCanvas = freezeFrame();
-  // Show the frozen frame in the preview area.
-  const tmpImg = document.createElement('canvas');
-  tmpImg.width = selfieFrozenCanvas.width; tmpImg.height = selfieFrozenCanvas.height;
-  tmpImg.getContext('2d').drawImage(selfieFrozenCanvas, 0, 0);
-  tmpImg.style.transform = 'scaleX(1)'; // already mirrored in pixels
-  // Replace the video with this canvas inside the preview.
-  selfieVideo.style.display = 'none';
-  const preview = document.getElementById('selfie-preview');
-  // Remove any previously-injected freeze canvas.
-  preview.querySelectorAll('canvas').forEach(n => n.remove());
-  preview.appendChild(tmpImg);
-  btnCapture.style.display = 'none';
-  btnRetake.style.display = 'block';
-  btnConfirm.style.display = 'block';
+btnOpenCam.addEventListener('click',openCamera);
+btnCapture.addEventListener('click',()=>{
+  selfieFrozenCanvas=freezeSelfieFrame();
+  selfieVideo.style.display='none';
+  document.querySelectorAll('#selfie-preview canvas').forEach(n=>n.remove());
+  document.getElementById('selfie-preview').appendChild(selfieFrozenCanvas);
+  selfieFrozenCanvas.style.transform='scaleX(1)'; // already mirrored in pixels
+  btnCapture.style.display='none';
+  btnRetake.style.display='block';
+  btnConfirm.style.display='block';
 });
-btnRetake.addEventListener('click', () => {
-  document.querySelectorAll('#selfie-preview canvas').forEach(n => n.remove());
-  selfieVideo.style.display = 'block';
-  btnRetake.style.display = 'none';
-  btnConfirm.style.display = 'none';
-  btnCapture.style.display = 'block';
+btnRetake.addEventListener('click',()=>{
+  document.querySelectorAll('#selfie-preview canvas').forEach(n=>n.remove());
+  selfieVideo.style.display='block';
+  btnRetake.style.display='none';btnConfirm.style.display='none';
+  btnCapture.style.display='block';
 });
-btnConfirm.addEventListener('click', () => finishSelfie(selfieFrozenCanvas));
-btnSkip.addEventListener('click', () => finishSelfie(null));
+btnConfirm.addEventListener('click',()=>closeSelfieAnd(selfieFrozenCanvas));
+btnSkip.addEventListener('click',()=>closeSelfieAnd(null));
 
-// Paint the preset face immediately so it's the default if the user skips.
 paintDefaultFace();
 
-/* ============================================================
-   Procedural rat-with-human-head
-   ============================================================ */
-function makeRat({isPlayer = false} = {}){
-  const root = new THREE.Group();
-  root.position.y = 0.18;
-  // Body — small flattened capsule (a low cylinder + two end spheres).
-  const bodyMat = new THREE.MeshStandardMaterial({color:'#5d4a3a', roughness:0.8});
-  const bodyGeo = new THREE.CapsuleGeometry(0.18, 0.32, 6, 12);
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.rotation.z = Math.PI / 2;
-  body.castShadow = true;
-  root.add(body);
-  // Head — sphere with the face texture. Oversized vs body, matching
-  // the user's sketch (big human head, tiny rat body).
-  const headMat = isPlayer
-    ? new THREE.MeshStandardMaterial({map: faceTexture, roughness:0.6})
-    : new THREE.MeshStandardMaterial({color:'#bfa078', roughness:0.7});
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 24, 18), headMat);
-  head.position.set(0.34, 0.04, 0);
-  head.castShadow = true;
-  root.add(head);
-  // Ears
-  const earGeo = new THREE.SphereGeometry(0.06, 10, 8);
-  const earMat = new THREE.MeshStandardMaterial({color:'#7a5b46'});
-  const earL = new THREE.Mesh(earGeo, earMat); earL.position.set(0.32, 0.30, -0.14); root.add(earL);
-  const earR = earL.clone(); earR.position.z =  0.14; root.add(earR);
-  // Tail — thin cylinder behind.
-  const tailGeo = new THREE.CylinderGeometry(0.025, 0.01, 0.5, 8);
-  const tail = new THREE.Mesh(tailGeo, new THREE.MeshStandardMaterial({color:'#7a5b46'}));
-  tail.rotation.z = Math.PI / 2; tail.position.set(-0.32, 0.04, 0);
-  root.add(tail);
+// ===== Intro / state transitions =====
+const startBtn=document.getElementById('start-btn');
+const introEl=document.getElementById('intro');
+const introProgressFill=document.getElementById('intro-progress-fill');
+const introProgressText=document.getElementById('intro-progress-text');
+const fadeEl=document.getElementById('fade');
+const ratsWinEl=document.getElementById('rats-win');
+const ratsWinReplay=document.getElementById('rw-replay');
 
-  const rat = {
-    root, body, head,
-    isPlayer,
-    vel: new THREE.Vector3(),
-    yaw: 0,
-    onGround: true,
-    controllable: isPlayer,
-    speed: isPlayer ? 4.5 : 1.6,
-    neckOffset: new THREE.Vector3(0.34, 0.04, 0)   // local-space neck-bite trigger for parasitism is on hosts, not on rats — kept here only to mirror the API
-  };
-  scene.add(root);
-  return rat;
+function setIntroProgress(p,label){
+  introProgressFill.style.width=clamp(p,0,100)+'%';
+  if(label)introProgressText.textContent=label+' '+Math.round(p)+'%';
 }
 
-/* ============================================================
-   Procedural human NPC (host candidate / cleaner)
-   ============================================================ */
-function makeHuman({position, role = 'wanderer'} = {}){
-  const root = new THREE.Group();
-  root.position.copy(position);
-  // Body — tall capsule.
-  const colour = role === 'cleaner' ? '#4a6b8c' : '#7c8a6a';
-  const bodyMat = new THREE.MeshStandardMaterial({color: colour, roughness:0.85});
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.95, 6, 12), bodyMat);
-  body.position.y = 0.85;
-  body.castShadow = true;
-  root.add(body);
-  // Head
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 20, 16),
-    new THREE.MeshStandardMaterial({color:'#d9b89a', roughness:0.6})
-  );
-  head.position.y = 1.62;
-  head.castShadow = true;
-  root.add(head);
-  // Shoulder rat — invisible by default. When parasitism succeeds we show
-  // a small rat clinging to the host's shoulder so the player can see what
-  // happened.
-  const shoulderRat = new THREE.Mesh(
-    new THREE.SphereGeometry(0.11, 12, 8),
-    new THREE.MeshStandardMaterial({color:'#5d4a3a'})
-  );
-  shoulderRat.position.set(0.22, 1.38, 0);
-  shoulderRat.visible = false;
-  root.add(shoulderRat);
+startBtn.addEventListener('click',()=>{
+  // 都市傳說2's start-button gating pattern. Disable while we open the
+  // selfie modal so a double-tap can't queue two start sequences.
+  if(gameState!=='intro')return;
+  startBtn.disabled=true;startBtn.textContent='LOADING…';
+  setIntroProgress(60,'FACE');
+  introEl.style.display='none';
+  document.body.classList.remove('intro-active');
+  selfieModal.classList.add('show');
+});
 
-  const human = {
-    root, body, head, shoulderRat,
-    role,
-    vel: new THREE.Vector3(),
-    yaw: Math.random() * Math.PI * 2,
-    wanderTimer: 0,
-    controllable: false,
-    speed: 1.4,
-    neckOffsetWorld: new THREE.Vector3(),
-    parasitised: false
-  };
-  scene.add(root);
-  return human;
+function startGame(){
+  gameState='playing';
+  gameTime=0;
+  game.chaos=0;game.chaosDisplay=0;
+  setIntroProgress(100,'READY');
+  console.log('[boot] startGame');
 }
 
-/* ---------- helper: world-space neck location of a human ---------- */
-const _tmpVec = new THREE.Vector3();
-function neckPositionOf(human, out = _tmpVec){
-  // The neck sits where the head's bottom meets the body's top. In our
-  // procedural model that is ~y=1.42 in local space.
-  out.set(0, 1.42, 0);
+function triggerRatsWin(){
+  if(gameState==='won')return;
+  gameState='won';
+  document.body.classList.add('game-won');
+  ratsWinEl.classList.add('show');
+  console.log('[win] rats triumphant');
+}
+
+ratsWinReplay.addEventListener('click',()=>{
+  // Hard refresh — simplest reset for a prototype. Avoids unwinding the
+  // mutated scene state by hand.
+  location.reload();
+});
+
+// ===== Parasitism — POC #4 =====
+const modeBadge=document.getElementById('mode-badge');
+const hintEl=document.getElementById('hint');
+let hintTimer=0;
+function showHint(text,seconds=2.2){
+  hintEl.textContent=text;hintEl.classList.add('show');hintTimer=seconds;
+}
+
+const _tmpVec=new THREE.Vector3();
+function neckPositionOf(human,out=_tmpVec){
+  // Neck = top of torso, ~y=1.42 in our humanoid rig.
+  out.set(0,1.42,0);
   return out.applyMatrix4(human.root.matrixWorld);
 }
 
-/* ============================================================
-   Scene population — props, host candidates, the player rat.
-   ============================================================ */
-function spawnProp(x, z, w, h, d, weight = 1){
-  const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({color:'#8a6f4f', roughness:0.85})
-  );
-  m.position.set(x, h/2, z);
-  m.castShadow = true; m.receiveShadow = true;
-  scene.add(m);
-  const prop = {
-    mesh: m,
-    originalY: h/2, originalRot: 0,
-    tipped: false,
-    chaosWeight: weight
-  };
-  game.props.push(prop);
-  return prop;
-}
-
-// A loose ring of props around the spawn area.
-for(let i = 0; i < 18; i++){
-  const a = (i / 18) * Math.PI * 2 + Math.random() * 0.2;
-  const r = 4 + Math.random() * 3;
-  const x = Math.cos(a) * r, z = Math.sin(a) * r;
-  const w = 0.4 + Math.random() * 0.4;
-  const h = 0.6 + Math.random() * 0.5;
-  spawnProp(x, z, w, h, w, 1);
-}
-// A few host candidates (wandering humans).
-for(let i = 0; i < 4; i++){
-  const a = (i / 4) * Math.PI * 2;
-  const r = 6 + Math.random() * 2;
-  const h = makeHuman({position: new THREE.Vector3(Math.cos(a)*r, 0, Math.sin(a)*r)});
-  game.humans.push(h);
-}
-
-// Player rat — the only one with the face texture, since the texture is
-// what makes the player visually distinct from breed-spawned rats.
-const player = makeRat({isPlayer: true});
-game.rats.push(player);
-game.controlled = player;
-
-/* ============================================================
-   Input — virtual joystick + buttons + keyboard fallback
-   ============================================================ */
-const input = { axis: new THREE.Vector2(), jump: false, action: false };
-const keys = new Set();
-
-{
-  const zone = document.getElementById('joystick-zone');
-  const stick = document.getElementById('joystick-stick');
-  const STICK_MAX = 38;
-  let ptrId = null, cx = 0, cy = 0;
-  zone.addEventListener('pointerdown', e => {
-    if(ptrId !== null) return;
-    e.preventDefault();
-    ptrId = e.pointerId; zone.setPointerCapture(ptrId);
-    const r = zone.getBoundingClientRect();
-    cx = r.left + r.width/2; cy = r.top + r.height/2;
-  });
-  zone.addEventListener('pointermove', e => {
-    if(e.pointerId !== ptrId) return;
-    e.preventDefault();
-    const dx = e.clientX - cx, dy = e.clientY - cy;
-    const d = Math.min(Math.hypot(dx, dy), STICK_MAX);
-    const a = Math.atan2(dy, dx);
-    const sx = Math.cos(a) * d, sy = Math.sin(a) * d;
-    stick.style.transform = `translate(${sx}px,${sy}px)`;
-    input.axis.set(sx / STICK_MAX, sy / STICK_MAX);
-  });
-  const end = e => {
-    if(e.pointerId !== ptrId) return;
-    ptrId = null;
-    input.axis.set(0, 0);
-    stick.style.transform = 'translate(0,0)';
-  };
-  zone.addEventListener('pointerup', end);
-  zone.addEventListener('pointercancel', end);
-}
-
-document.getElementById('btn-jump').addEventListener('pointerdown', e => { e.preventDefault(); input.jump = true; });
-document.getElementById('btn-action').addEventListener('pointerdown', e => { e.preventDefault(); input.action = true; });
-
-window.addEventListener('keydown', e => {
-  keys.add(e.code);
-  if(e.code === 'Space') input.jump = true;
-  if(e.code === 'KeyE') input.action = true;
-});
-window.addEventListener('keyup', e => keys.delete(e.code));
-
-function readKeyboardAxis(out){
-  let x = 0, y = 0;
-  if(keys.has('KeyW') || keys.has('ArrowUp'))    y -= 1;
-  if(keys.has('KeyS') || keys.has('ArrowDown'))  y += 1;
-  if(keys.has('KeyA') || keys.has('ArrowLeft'))  x -= 1;
-  if(keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
-  out.set(x, y);
-  if(out.lengthSq() > 1) out.normalize();
-}
-
-/* ============================================================
-   POC #4 — parasitism trigger + control transfer
-   ============================================================
-   Both halves of the game share a single "controlled entity" pointer.
-   The movement system always reads `game.controlled` and drives it from
-   `input.axis`; nothing in the movement code knows whether the body is
-   a rat or a human. That single-pointer design is what makes the camera
-   swap and the input swap trivial. */
-
-const modeBadge = document.getElementById('mode-badge');
-const hintEl = document.getElementById('hint');
-let hintTimer = 0;
-
-function showHint(text, seconds = 2.4){
-  hintEl.textContent = text;
-  hintEl.classList.add('show');
-  hintTimer = seconds;
-}
-
-function findHostCandidateNearRat(rat){
-  // Returns the nearest non-parasitised human whose neck is within
-  // NECK_BITE_RADIUS of the rat's head. Quadratic-time but `humans`
-  // is small; if the list ever grows past ~50, switch to a spatial grid.
-  const ratPos = rat.root.position;
-  let best = null, bestDist = NECK_BITE_RADIUS;
+function nearestBiteableHuman(rat){
+  const ratPos=rat.root.position;
+  let best=null,bestD=NECK_BITE_RADIUS;
   for(const h of game.humans){
-    if(h.parasitised) continue;
-    const neck = neckPositionOf(h);
-    const dist = neck.distanceTo(ratPos);
-    if(dist < bestDist){ bestDist = dist; best = h; }
+    if(h.parasitised)continue;
+    const d=neckPositionOf(h).distanceTo(ratPos);
+    if(d<bestD){bestD=d;best=h}
   }
   return best;
 }
 
-function enterHost(rat, host){
-  // 1. Hide the rat (still tracked, so we can exit later).
-  rat.root.visible = false;
-  rat.controllable = false;
-  // 2. Activate the host as a player-controlled body.
-  host.controllable = true;
-  host.parasitised = true;
-  host.shoulderRat.visible = true;
-  host.wanderTimer = 0;            // suspend its wandering AI
-  // 3. Swap state.
-  game.controlMode = 'host';
-  game.controlled = host;
-  game.parasitisedHost = host;
-  modeBadge.textContent = 'CONTROL: HOST';
-  modeBadge.classList.add('host');
-  showHint('You are inside the host. BITE to leave.');
-  console.log('[parasitism] host acquired: human#' + game.humans.indexOf(host));
+function enterHost(rat,host){
+  rat.root.visible=false;rat.controllable=false;
+  host.controllable=true;host.parasitised=true;
+  host.shoulderRat.visible=true;
+  game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
+  modeBadge.textContent='CONTROL · HOST';
+  modeBadge.classList.add('mode-host');
+  showHint('Inside the host. BITE to leave.');
+  console.log('[parasitism] host acquired: human#'+game.humans.indexOf(host));
 }
 
 function exitHost(){
-  const host = game.parasitisedHost;
-  if(!host) return;
-  // Drop the rat at the host's feet, facing the same yaw.
-  player.root.position.set(host.root.position.x, 0.18, host.root.position.z + 0.6);
-  player.yaw = host.yaw;
-  player.root.rotation.y = host.yaw;
-  player.root.visible = true;
-  player.controllable = true;
-  // Wake the host's wander AI again.
-  host.controllable = false;
-  host.parasitised = false;
-  host.shoulderRat.visible = false;
-  host.wanderTimer = 0;
-  game.controlMode = 'rat';
-  game.controlled = player;
-  game.parasitisedHost = null;
-  modeBadge.textContent = 'CONTROL: RAT';
-  modeBadge.classList.remove('host');
+  const host=game.parasitisedHost;
+  if(!host)return;
+  // Drop the rat slightly in front of the host.
+  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+  player.root.position.set(host.root.position.x+fx*0.6,RAT_FOOT_OFFSET,host.root.position.z+fz*0.6);
+  player.yaw=host.yaw;player.root.rotation.y=host.yaw;
+  player.root.visible=true;player.controllable=true;
+  host.controllable=false;host.parasitised=false;
+  host.shoulderRat.visible=false;host.wanderTimer=rand(0.5,2);
+  game.controlMode='rat';game.controlled=player;game.parasitisedHost=null;
+  modeBadge.textContent='CONTROL · RAT';
+  modeBadge.classList.remove('mode-host');
   showHint('Back in the rat.');
   console.log('[parasitism] host released');
 }
 
 function handleActionPress(){
-  if(game.controlMode === 'rat'){
-    const host = findHostCandidateNearRat(player);
-    if(host){
-      enterHost(player, host);
-    }else{
-      showHint('Get closer to a human’s neck.');
-    }
-  }else if(game.controlMode === 'host'){
+  if(game.controlMode==='rat'){
+    const host=nearestBiteableHuman(player);
+    if(host)enterHost(player,host);
+    else showHint('Get closer to a human’s neck.');
+  }else{
     exitHost();
   }
 }
 
-/* ============================================================
-   Movement — agnostic to rat vs host
-   ============================================================ */
-const _moveAxis = new THREE.Vector2();
-const _moveDir  = new THREE.Vector3();
-const GRAVITY = -18;
-const JUMP_VEL = 5.2;
+// ===== Movement — shared by rat & host =====
+function tickControlled(dt){
+  const ent=game.controlled;
+  if(!ent||!ent.controllable)return;
 
-function tickMovement(dt){
-  const ent = game.controlled;
-  if(!ent || !ent.controllable) return;
-
-  // Combine joystick + keyboard.
-  _moveAxis.copy(input.axis);
-  if(_moveAxis.lengthSq() < 0.001){
-    const kb = new THREE.Vector2();
-    readKeyboardAxis(kb);
-    _moveAxis.copy(kb);
-  }
-
-  // Camera-relative direction. The camera sits behind the controlled
-  // entity, so "forward" on the joystick (axis.y < 0) means "away from
-  // the camera".
-  const cameraForward = new THREE.Vector3();
-  camera.getWorldDirection(cameraForward);
-  cameraForward.y = 0; cameraForward.normalize();
-  const cameraRight = new THREE.Vector3().crossVectors(cameraForward, new THREE.Vector3(0,1,0)).normalize();
-  _moveDir.set(0,0,0)
-    .addScaledVector(cameraForward, -_moveAxis.y)
-    .addScaledVector(cameraRight,    _moveAxis.x);
-
-  if(_moveDir.lengthSq() > 0.001){
-    _moveDir.normalize();
-    const speed = ent.speed;
-    ent.vel.x = _moveDir.x * speed;
-    ent.vel.z = _moveDir.z * speed;
-    ent.yaw = Math.atan2(_moveDir.x, _moveDir.z);
+  // Camera-relative input direction. W / joystick-up should send the
+  // controlled body away from the camera.
+  const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
+  const rightX=Math.cos(camYaw),rightZ=-Math.sin(camYaw);
+  let kx=0,ky=0;
+  if(keys.w||keys.up)ky-=1;
+  if(keys.s||keys.down)ky+=1;
+  if(keys.a||keys.left)kx-=1;
+  if(keys.d||keys.right)kx+=1;
+  let ix=kx+joyX,iy=ky+joyY;
+  const il=Math.hypot(ix,iy);
+  if(il>1){ix/=il;iy/=il}
+  const hasInput=il>0.05;
+  const mdx=-iy*fwdX+ix*rightX;
+  const mdz=-iy*fwdZ+ix*rightZ;
+  const isHost=(ent.kind==='human');
+  const maxSpeed=isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED;
+  const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
+  if(hasInput){
+    ent.curSpeed=Math.min(maxSpeed,ent.curSpeed+accel*dt);
+    ent.yaw=Math.atan2(mdx,mdz);
   }else{
-    ent.vel.x *= 0.6; ent.vel.z *= 0.6;
+    ent.curSpeed=Math.max(0,ent.curSpeed-PLAYER_DECEL*dt);
   }
-
-  // Gravity / jump — only meaningful for the rat (host stays grounded).
-  if(input.jump){
-    if(ent.onGround){
-      ent.vel.y = JUMP_VEL;
-      ent.onGround = false;
+  if(ent.curSpeed>0){
+    ent.root.position.x+=mdx*ent.curSpeed*dt;
+    ent.root.position.z+=mdz*ent.curSpeed*dt;
+    // Clamp inside the plaza so they don't sail off the kerb.
+    const r=Math.hypot(ent.root.position.x,ent.root.position.z);
+    if(r>FLOOR_RADIUS-0.6){
+      const k=(FLOOR_RADIUS-0.6)/r;
+      ent.root.position.x*=k;ent.root.position.z*=k;
     }
-    input.jump = false;
-  }
-  ent.vel.y += GRAVITY * dt;
-
-  ent.root.position.x += ent.vel.x * dt;
-  ent.root.position.y += ent.vel.y * dt;
-  ent.root.position.z += ent.vel.z * dt;
-
-  // Naive ground plane.
-  const floorY = (ent === player) ? 0.18 : 0;
-  if(ent.root.position.y <= floorY){
-    ent.root.position.y = floorY;
-    ent.vel.y = 0; ent.onGround = true;
   }
 
-  ent.root.rotation.y = ent.yaw;
+  // Jump & gravity (rat only — hosts stay grounded for now).
+  if(!isHost){
+    if(inputFlags.jump){
+      if(!ent.isAir){ent.vy=JUMP_VEL;ent.isAir=true}
+      inputFlags.jump=false;
+    }
+    if(ent.isAir){
+      ent.vy-=GRAVITY*dt;
+      ent.root.position.y+=ent.vy*dt;
+      if(ent.root.position.y<=RAT_FOOT_OFFSET){
+        ent.root.position.y=RAT_FOOT_OFFSET;ent.vy=0;ent.isAir=false;
+      }
+    }
+  }else{
+    inputFlags.jump=false;
+    ent.root.position.y=HOST_FOOT_OFFSET;
+  }
+
+  // Smooth yaw — never snap.
+  let diff=ent.yaw-ent.root.rotation.y;
+  while(diff>Math.PI)diff-=Math.PI*2;
+  while(diff<-Math.PI)diff+=Math.PI*2;
+  ent.root.rotation.y+=diff*Math.min(1,dt*14);
+
+  // Cheap walk animation: oscillate limbs/tail by walkPhase.
+  ent.walkPhase+=ent.curSpeed*dt;
+  if(isHost){
+    const swing=Math.sin(ent.walkPhase*6)*0.4*Math.min(1,ent.curSpeed/HOST_MAX_SPEED);
+    ent.legL.rotation.x= swing;ent.legR.rotation.x=-swing;
+    ent.armL.rotation.x=-swing*0.7;ent.armR.rotation.x=swing*0.7;
+  }
 }
 
-/* ============================================================
-   Other systems — chaos, breeding, host wandering, cleaners
-   These are deliberately minimal in the POC. Each function is the
-   single place to grow the system later.
-   ============================================================ */
-
-function tickProps(){
-  // Knock over any prop the controlled body has barged into. Pure
-  // script-level "physics" — replace with Rapier when there are enough
-  // props to bother.
-  const ent = game.controlled;
-  if(!ent) return;
-  const entPos = ent.root.position;
+// ===== Chaos & rigidbody prop tipping =====
+function tickProps(dt){
+  // Only the controlled body knocks things over — keeps the scripted
+  // "physics" predictable. Replace with a real solver when we add
+  // host-thrown projectiles or cleaner-driven re-stacking.
+  const ent=game.controlled;
+  if(!ent)return;
+  const ex=ent.root.position.x,ez=ent.root.position.z;
+  const speed=ent.curSpeed;
   for(const p of game.props){
-    if(p.tipped) continue;
-    const dx = p.mesh.position.x - entPos.x;
-    const dz = p.mesh.position.z - entPos.z;
-    if(dx*dx + dz*dz < 0.55*0.55){
-      // Tip away from the entity.
-      const angle = Math.atan2(dz, dx);
-      p.mesh.rotation.z = -Math.cos(angle) * Math.PI * 0.4;
-      p.mesh.rotation.x =  Math.sin(angle) * Math.PI * 0.4;
-      p.mesh.position.y = p.originalY * 0.55;
-      p.tipped = true;
-      game.chaosTarget = Math.min(1, game.chaosTarget + CHAOS_PER_TIP * p.chaosWeight);
+    if(p.tipped)continue;
+    const dx=p.mesh.position.x-ex,dz=p.mesh.position.z-ez;
+    const d2=dx*dx+dz*dz;
+    if(d2<p.radius*p.radius && speed>0.6){
+      const a=Math.atan2(dz,dx);
+      p.mesh.rotation.z=-Math.cos(a)*Math.PI*0.42;
+      p.mesh.rotation.x= Math.sin(a)*Math.PI*0.42;
+      p.mesh.position.y=p.baseY*0.55;
+      // Slide a touch in the shove direction so the tip-over looks
+      // less like a teleport.
+      p.mesh.position.x+=Math.cos(a)*0.18;
+      p.mesh.position.z+=Math.sin(a)*0.18;
+      p.tipped=true;
+      game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*p.chaosWeight);
     }
   }
 }
 
-let breedTimer = 0;
-function tickBreeding(dt){
-  // Chaos drives rat-spawn rate. Above 30% chaos, spawn a rat every
-  // few seconds at the scene edge.
-  if(game.chaos < 0.3) return;
-  breedTimer -= dt;
-  if(breedTimer > 0) return;
-  breedTimer = Math.max(0.6, 4.0 - game.chaos * 3.5);
-  const a = Math.random() * Math.PI * 2;
-  const r = 12;
-  const rat = makeRat({isPlayer: false});
-  rat.root.position.set(Math.cos(a) * r, 0.18, Math.sin(a) * r);
-  rat.yaw = Math.atan2(-Math.cos(a), -Math.sin(a));
-  rat.root.rotation.y = rat.yaw;
-  game.rats.push(rat);
-}
-
-function tickHumanWander(dt){
+// ===== Human wandering AI =====
+function tickHumans(dt){
   for(const h of game.humans){
-    if(h.controllable) continue;   // currently being driven by the player
-    h.wanderTimer -= dt;
-    if(h.wanderTimer <= 0){
-      h.wanderTimer = 1.5 + Math.random() * 2.0;
-      h.yaw += (Math.random() - 0.5) * Math.PI;
+    if(h.controllable)continue;
+    h.wanderTimer-=dt;
+    if(h.wanderTimer<=0){
+      h.wanderTimer=1.4+Math.random()*2.4;
+      h.yaw+=(Math.random()-0.5)*Math.PI;
     }
-    h.root.position.x += Math.sin(h.yaw) * h.speed * dt;
-    h.root.position.z += Math.cos(h.yaw) * h.speed * dt;
-    // Keep them inside a soft bowl.
-    const r = Math.hypot(h.root.position.x, h.root.position.z);
-    if(r > 12){ h.yaw += Math.PI; }
-    h.root.rotation.y = h.yaw;
+    const spd=h.role==='cleaner'?1.6:1.1;
+    h.curSpeed=spd;
+    h.root.position.x+=Math.sin(h.yaw)*spd*dt;
+    h.root.position.z+=Math.cos(h.yaw)*spd*dt;
+    const r=Math.hypot(h.root.position.x,h.root.position.z);
+    if(r>FLOOR_RADIUS-1.2){h.yaw+=Math.PI;}
+    h.root.rotation.y=h.yaw;
+    h.walkPhase+=spd*dt;
+    const swing=Math.sin(h.walkPhase*5)*0.35;
+    h.legL.rotation.x=swing;h.legR.rotation.x=-swing;
+    h.armL.rotation.x=-swing*0.6;h.armR.rotation.x=swing*0.6;
   }
 }
 
-function tickNonPlayerRats(dt){
+// ===== Rat breeding — chaos drives spawn rate =====
+let breedTimer=0;
+function tickBreeding(dt){
+  if(game.chaos<BREED_MIN_CHAOS)return;
+  breedTimer-=dt;
+  if(breedTimer>0)return;
+  // Higher chaos → shorter interval, floor of 0.55 s.
+  breedTimer=Math.max(0.55,3.2-game.chaos*2.6);
+  const a=Math.random()*Math.PI*2;
+  const r=FLOOR_RADIUS-0.9;
+  const rat=buildRat({isPlayer:false});
+  rat.root.position.set(Math.cos(a)*r,RAT_FOOT_OFFSET,Math.sin(a)*r);
+  rat.yaw=Math.atan2(-Math.cos(a),-Math.sin(a));
+  rat.root.rotation.y=rat.yaw;
+  game.rats.push(rat);
+  if(game.rats.length>=WIN_RAT_COUNT)triggerRatsWin();
+}
+
+function tickFollowerRats(dt){
+  // Non-player rats drift toward the centre, forming a swelling swarm.
   for(const r of game.rats){
-    if(r === player) continue;
-    if(r === game.controlled) continue;
-    // Drift toward the centre — they form a swelling swarm.
-    const ang = Math.atan2(-r.root.position.z, -r.root.position.x);
-    r.root.position.x += Math.cos(ang) * r.speed * dt;
-    r.root.position.z += Math.sin(ang) * r.speed * dt;
-    r.root.rotation.y = Math.atan2(Math.cos(ang), Math.sin(ang));
+    if(r===player||r===game.controlled)continue;
+    const angToCentre=Math.atan2(-r.root.position.z,-r.root.position.x);
+    const spd=1.0+game.chaos*1.4;
+    r.root.position.x+=Math.cos(angToCentre)*spd*dt;
+    r.root.position.z+=Math.sin(angToCentre)*spd*dt;
+    r.root.rotation.y=Math.atan2(Math.cos(angToCentre),Math.sin(angToCentre));
+    r.walkPhase+=spd*dt;
   }
 }
 
-/* ---------- camera follow ---------- */
-const camTarget = new THREE.Vector3();
-const camOffset = new THREE.Vector3(0, 2.6, 4.0);
-function tickCamera(dt){
-  const ent = game.controlled;
-  if(!ent) return;
-  const focusY = (game.controlMode === 'host') ? 1.4 : 0.4;
-  camTarget.set(ent.root.position.x, ent.root.position.y + focusY, ent.root.position.z);
-  // Place the camera behind the entity along its yaw.
-  const back = new THREE.Vector3(Math.sin(ent.yaw + Math.PI), 0, Math.cos(ent.yaw + Math.PI));
-  const desired = camTarget.clone()
-    .addScaledVector(back, camOffset.z)
-    .add(new THREE.Vector3(0, camOffset.y, 0));
-  camera.position.lerp(desired, 1 - Math.exp(-dt * 6));
-  camera.lookAt(camTarget);
+// ===== HUD update =====
+const chaosFill=document.getElementById('chaos-fill');
+const ratFill=document.getElementById('rat-fill');
+const ratCountEl=document.getElementById('rat-count');
+function updateHUD(dt){
+  // Smooth the chaos meter so the bar slides rather than snapping.
+  game.chaosDisplay+=(game.chaos-game.chaosDisplay)*Math.min(1,dt*3);
+  game.chaos=Math.max(0,game.chaos-CHAOS_DECAY*dt);
+  chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
+  ratCountEl.textContent=String(game.rats.length);
+  ratFill.style.width=Math.min(100,(game.rats.length/WIN_RAT_COUNT)*100).toFixed(0)+'%';
+  if(hintTimer>0){hintTimer-=dt;if(hintTimer<=0)hintEl.classList.remove('show')}
 }
 
-/* ---------- HUD ---------- */
-const chaosFill = document.getElementById('chaos-fill');
-const ratFill   = document.getElementById('rat-fill');
-const ratCountEl = document.getElementById('rat-count');
-function tickHUD(dt){
-  // Smooth chaos toward the target.
-  game.chaos += (game.chaosTarget - game.chaos) * Math.min(1, dt * 2);
-  chaosFill.style.width = (game.chaos * 100).toFixed(1) + '%';
-  ratCountEl.textContent = String(game.rats.length);
-  ratFill.style.width = Math.min(100, (game.rats.length / WIN_RAT_COUNT) * 100).toFixed(0) + '%';
-  if(hintTimer > 0){
-    hintTimer -= dt;
-    if(hintTimer <= 0) hintEl.classList.remove('show');
-  }
-  if(game.phase === 'playing' && game.rats.length >= WIN_RAT_COUNT){
-    game.phase = 'won';
-    document.getElementById('victory').style.display = 'flex';
-  }
-}
-
-/* ============================================================
-   Game loop
-   ============================================================ */
-function tick(now){
-  const dt = Math.min(0.05, (now - game.lastTime) / 1000);
-  game.lastTime = now;
-
-  if(game.phase === 'playing'){
-    if(input.action){ handleActionPress(); input.action = false; }
-    tickMovement(dt);
-    tickProps();
-    tickBreeding(dt);
-    tickHumanWander(dt);
-    tickNonPlayerRats(dt);
-    tickCamera(dt);
-    tickHUD(dt);
-  }
-  renderer.render(scene, camera);
+// ===== Main loop =====
+let last=performance.now();
+function tick(){
   requestAnimationFrame(tick);
+  const now=performance.now();
+  const dt=Math.min(0.05,(now-last)/1000);
+  last=now;
+  const nowS=now/1000;
+  try{
+    if(gameState==='playing'){
+      gameTime+=dt;
+      if(inputFlags.action){handleActionPress();inputFlags.action=false}
+      tickControlled(dt);
+      tickProps(dt);
+      tickHumans(dt);
+      tickBreeding(dt);
+      tickFollowerRats(dt);
+      updateHUD(dt);
+    }
+    updateCam();
+    vhsPass.uniforms.time.value=nowS;
+    composer.render();
+  }catch(e){
+    console.error('[tick] update failed:',e);
+  }
 }
-console.log('[boot] scene ready');
-requestAnimationFrame(now => { game.lastTime = now; tick(now); });
+
+// ===== Init =====
+function init(){
+  setIntroProgress(40,'BOOT');
+  console.log('[boot] scene ready');
+  // Position the camera roughly behind the rat for the intro shot.
+  player.root.position.set(0,RAT_FOOT_OFFSET,0);
+  player.yaw=0;
+  setIntroProgress(55,'BOOT');
+  requestAnimationFrame(()=>{
+    last=performance.now();
+    tick();
+    setIntroProgress(60,'READY');
+    introProgressText.textContent='READY — TAP BEGIN';
+  });
+}
+init();
 </script>
 </body>
 </html>
