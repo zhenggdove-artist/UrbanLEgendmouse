@@ -429,6 +429,8 @@ const CHAOS_PER_TIP=0.040;
 const CHAOS_DECAY=0.012;
 const WIN_RAT_COUNT=30;
 const BREED_MIN_CHAOS=0.20;
+const SOUP_SPILL_RAT_MIN=2;
+const SOUP_SPILL_RAT_MAX=5;
 const NECK_HINT_RADIUS=2.50;
 const CLEANER_TIDY_RADIUS=0.72;
 const CLEANER_TIDY_TIME=1.45;
@@ -978,7 +980,8 @@ function registerProp(root,radius=0.45,chaosWeight=1){
     reservedBy:null,tidyProgress:0,
     basePosition:root.position.clone(),
     baseRotation:root.rotation.clone(),
-    heldBy:null,throwVel:null,throwSpin:0,throwOwner:null
+    heldBy:null,throwVel:null,throwSpin:0,throwOwner:null,tipTriggered:false,
+    kind:'prop',spillMesh:null,steamSprite:null,spawnRatsOnTip:0,tipOffset:0.22
   };
   game.props.push(p);
   if(_activeChunk){_activeChunk.props.push(p);_activeChunk.meshes.push(root)}
@@ -1023,10 +1026,13 @@ function buildSoupPot(x,z,scale=1){
   const root=new THREE.Group();root.position.set(x,0.42*scale,z);
   const steel=new THREE.MeshBasicMaterial({color:'#cfd2d5'});
   const dark=new THREE.MeshBasicMaterial({color:'#1a1a1a'});
+  const soupMat=new THREE.MeshBasicMaterial({color:'#f1bf2d'});
   const pot=new THREE.Mesh(new THREE.CylinderGeometry(0.30*scale,0.28*scale,0.85*scale,10),steel);
   root.add(pot);
   const inner=new THREE.Mesh(new THREE.CylinderGeometry(0.26*scale,0.24*scale,0.80*scale,10),dark);
   inner.position.y=0.02;root.add(inner);
+  const soup=new THREE.Mesh(new THREE.CylinderGeometry(0.24*scale,0.24*scale,0.06*scale,10),soupMat);
+  soup.position.y=0.30*scale;root.add(soup);
   const lid=new THREE.Mesh(new THREE.CylinderGeometry(0.31*scale,0.31*scale,0.04*scale,10),steel);
   lid.position.y=0.45*scale;root.add(lid);
   const knob=new THREE.Mesh(new THREE.SphereGeometry(0.045*scale,6,4),dark);
@@ -1037,7 +1043,22 @@ function buildSoupPot(x,z,scale=1){
     depthWrite:false,fog:false,color:0xffffff,opacity:0.45
   }));
   steam.scale.set(0.6,0.8,1);steam.position.y=0.85*scale;root.add(steam);
-  registerProp(root,0.40*scale,1.6);
+  const spill=new THREE.Mesh(
+    new THREE.CircleGeometry(0.55*scale,18),
+    new THREE.MeshBasicMaterial({color:'#f1cf49',transparent:true,opacity:0.88})
+  );
+  spill.rotation.x=-Math.PI/2;
+  spill.position.set(0,-0.38*scale,0);
+  spill.scale.set(0.01,0.01,0.01);
+  spill.visible=false;
+  root.add(spill);
+  const prop=registerProp(root,0.40*scale,1.9);
+  prop.kind='soup-pot';
+  prop.spillMesh=spill;
+  prop.steamSprite=steam;
+  prop.spawnRatsOnTip=Math.floor(rand(SOUP_SPILL_RAT_MIN,SOUP_SPILL_RAT_MAX+0.999));
+  prop.tipOffset=0.30*scale;
+  return prop;
 }
 
 function buildScooter(x,z,rotY=0){
@@ -1126,6 +1147,115 @@ function buildUtilityCabinet(x,z,sign=1){
   root.add(sticker);
   scene.add(root);
   if(_activeChunk)_activeChunk.meshes.push(root);
+}
+
+function buildMarketStall({x,z,facing=1,shape='rect',style='tarp',hasSoup=false}={}){
+  const width=shape==='round'?rand(1.3,1.9):(shape==='square'?rand(1.5,2.2):rand(2.1,3.8));
+  const depth=shape==='round'?rand(1.2,1.7):(shape==='square'?rand(1.4,2.0):rand(1.2,1.9));
+  const canopyH=rand(2.0,2.8);
+  const root=new THREE.Group();
+  root.position.set(x,0.64,z);
+  root.rotation.y=facing>0?0:Math.PI;
+  const tarpCol=pick(['#c66a3a','#3a7ac6','#c2c2b8','#b04a4a','#3a8a4a','#8a4ac6','#d29f2f']);
+  if(!STALL_TEX.tarp.has(tarpCol)) STALL_TEX.tarp.set(tarpCol,makeDirtyTarpTexture(tarpCol));
+  const tarpTex=STALL_TEX.tarp.get(tarpCol);
+  const frameMat=new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:style==='metal'?'#8f9aa2':'#5a5a5a'});
+  const counterMat=new THREE.MeshBasicMaterial({map:STALL_TEX.wood,color:style==='wood'?'#cfb08d':'#d7c2aa'});
+  const awningMat=new THREE.MeshBasicMaterial({map:tarpTex,color:'#ece1d6'});
+  const signMat=new THREE.MeshBasicMaterial({map:pick([TEX.signRed,TEX.signBlue,TEX.signYellow,TEX.signGreen,TEX.signPink])});
+  const frameY=canopyH*0.5-0.64;
+  if(shape==='round'){
+    const counter=new THREE.Mesh(new THREE.CylinderGeometry(width*0.46,width*0.50,0.92,12),counterMat);
+    root.add(counter);
+    const rim=new THREE.Mesh(new THREE.CylinderGeometry(width*0.52,width*0.52,0.08,12),new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#9d8c7d'}));
+    rim.position.y=0.48;root.add(rim);
+    const awning=new THREE.Mesh(new THREE.CylinderGeometry(width*0.62,width*0.76,0.22,12,1,true),awningMat);
+    awning.position.y=frameY+0.72;root.add(awning);
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI*0.5+Math.PI*0.25;
+      const post=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,canopyH,6),frameMat);
+      post.position.set(Math.cos(a)*width*0.34,frameY,Math.sin(a)*depth*0.34);
+      root.add(post);
+    }
+    const sign=new THREE.Mesh(new THREE.BoxGeometry(width*0.7,0.36,0.08),signMat);
+    sign.position.set(0,frameY+0.84,-depth*0.42);root.add(sign);
+  }else{
+    const counterGeo=shape==='square'
+      ? new THREE.BoxGeometry(width,0.96,width*0.88)
+      : new THREE.BoxGeometry(width,0.88,depth);
+    const counter=new THREE.Mesh(counterGeo,counterMat);
+    root.add(counter);
+    const topSkin=new THREE.Mesh(
+      new THREE.BoxGeometry(width*0.98,0.05,(shape==='square'?width*0.92:depth*1.02)),
+      new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#9d8c7d'})
+    );
+    topSkin.position.y=0.48;root.add(topSkin);
+    const awning=new THREE.Mesh(
+      new THREE.BoxGeometry(width*1.1,0.14,shape==='square'?width*1.1:depth*1.25),
+      awningMat
+    );
+    awning.position.y=frameY+0.72;
+    awning.rotation.z=rand(-0.08,0.08);
+    awning.rotation.x=rand(-0.05,0.05);
+    root.add(awning);
+    for(const [sx,sz] of [[-0.46,-0.46],[0.46,-0.46],[-0.46,0.46],[0.46,0.46]]){
+      const post=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,canopyH,6),frameMat);
+      post.position.set(sx*width,frameY,sz*(shape==='square'?width:depth)*0.55);
+      root.add(post);
+    }
+    const banner=new THREE.Mesh(new THREE.BoxGeometry(width*rand(0.55,0.9),0.32,0.08),signMat);
+    banner.position.set(rand(-0.18,0.18),frameY+0.82,-(shape==='square'?width:depth)*0.56);root.add(banner);
+  }
+  const goods=['#d23a3a','#3a8ad2','#d2a83a','#8ad23a','#a83ad2','#3ad28a','#f0e060','#ffffff'];
+  const itemCount=shape==='round'?3:Math.max(4,Math.floor(width*1.7));
+  for(let i=0;i<itemCount;i++){
+    const isBasket=Math.random()<0.35;
+    const merch=isBasket
+      ? new THREE.Mesh(new THREE.CylinderGeometry(rand(0.09,0.16),rand(0.10,0.14),rand(0.08,0.16),8),new THREE.MeshBasicMaterial({color:pick(goods)}))
+      : basicBox(rand(0.14,0.28),rand(0.10,0.24),rand(0.12,0.28),pick(goods));
+    merch.position.set(
+      rand(-width*0.34,width*0.34),
+      0.58+(merch.geometry.parameters.height||0.16)*0.5,
+      rand(-depth*0.24,depth*0.24)
+    );
+    root.add(merch);
+  }
+  if(Math.random()<0.5){
+    const stool=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.15,0.26,8),new THREE.MeshBasicMaterial({color:pick(['#d04545','#3577c4','#e69825','#5cae53'])}));
+    stool.position.set(rand(-width*0.25,width*0.25),-0.33,depth*0.72);
+    root.add(stool);
+  }
+  const prop=registerProp(root,Math.max(width,depth)*0.52,2.6+width*0.25);
+  prop.kind='stall';
+  prop.tipOffset=0.12;
+  if(hasSoup){
+    const soupPot=buildSoupPot(x+rand(-width*0.18,width*0.18),z+rand(-depth*0.12,depth*0.12),rand(0.9,1.15));
+    if(soupPot){
+      soupPot.root.position.y+=0.50;
+      soupPot.root.userData.baseY=soupPot.root.position.y;
+      soupPot.basePosition.copy(soupPot.root.position);
+    }
+  }
+  return prop;
+}
+
+function buildMarketCluster(xBase){
+  const laneZ=[-6.8,-5.2,-3.7,3.5,5.1,6.9];
+  const stallCount=8+Math.floor(Math.random()*4);
+  for(let i=0;i<stallCount;i++){
+    const x=xBase+rand(1.0,CHUNK_SIZE-1.0);
+    const z=pick(laneZ)+rand(-0.45,0.45);
+    const facing=z<0?-1:1;
+    const shape=pick(['round','rect','square','rect','square']);
+    const style=pick(['tarp','wood','metal']);
+    const hasSoup=Math.random()<0.38;
+    buildMarketStall({x,z,facing,shape,style,hasSoup});
+  }
+  const aisleProps=4+Math.floor(Math.random()*3);
+  for(let i=0;i<aisleProps;i++){
+    if(Math.random()<0.55) buildTable(xBase+rand(1.2,CHUNK_SIZE-1.2),rand(-4.2,4.2));
+    else buildStool(xBase+rand(1.2,CHUNK_SIZE-1.2),rand(-4.0,4.0),pick(['#d04545','#3577c4','#e69825','#5cae53','#a64ba6','#cf6b8c']));
+  }
 }
 
 function buildAwning(xStart,xEnd,zCentre=7.4){
@@ -1259,14 +1389,6 @@ function scatterBillboards(xBase,xEnd){
     const s=new THREE.Sprite(SPRITE_MAT.weed);
     s.scale.set(0.36,0.36,1);
     s.position.set(rand(xBase,xEnd),0.18,rand(2.0,7.5));
-    scene.add(s);chunk.meshes.push(s);
-  }
-  // Distant pedestrians far down the road — sprite stand-ins so the
-  // alley feels inhabited without skinned-mesh cost.
-  for(let i=0;i<6;i++){
-    const s=new THREE.Sprite(SPRITE_MAT.distantHuman);
-    s.scale.set(0.85,1.10,1);
-    s.position.set(rand(xBase,xEnd),0.85,rand(-7.5,-5));
     scene.add(s);chunk.meshes.push(s);
   }
 }
@@ -1464,18 +1586,8 @@ function generateChunk(idx){
     }
   }
 
-  // --- Two rows of stalls, one each side.
-  const stallsPerSide=3;
-  const stallWidth=CHUNK_SIZE/stallsPerSide;
-  for(let i=0;i<stallsPerSide;i++){
-    const xS=xBase+i*stallWidth+0.6;
-    const xE=xS+stallWidth-1.2;
-    buildStallRow(xS,xE, +6.5, +3.8, +1);   // right side
-    buildStallRow(xS,xE, -6.5, -3.8, -1);   // left side
-    // Drop a soup pot on the inner edge of each stall.
-    buildSoupPot(rand(xS+0.3,xE-0.3),+3.4,0.95);
-    buildSoupPot(rand(xS+0.3,xE-0.3),-3.4,0.95);
-  }
+  // --- Market stalls: irregular cluster layout with mixed sizes.
+  buildMarketCluster(xBase);
 
   // --- Hanging horizontal signs running along the buildings.
   const signPool=[TEX.signRed,TEX.signRed2,TEX.signBlue,TEX.signYellow,TEX.signGreen,
@@ -1556,11 +1668,8 @@ function generateChunk(idx){
 
   // --- Props scattered through the central walking area + edges.
   const stoolColours=['#d04545','#3577c4','#e69825','#5cae53','#a64ba6','#cf6b8c'];
-  for(let i=0;i<10;i++){
-    buildStool(xBase+rand(1,CHUNK_SIZE-1),rand(-3,3),pick(stoolColours));
-  }
-  for(let i=0;i<3;i++){
-    buildTable(xBase+rand(1,CHUNK_SIZE-1),rand(-2.5,2.5));
+  for(let i=0;i<8;i++){
+    buildStool(xBase+rand(1,CHUNK_SIZE-1),rand(-4.3,4.3),pick(stoolColours));
   }
   buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),rand(-3,3),pick(['#3a4540','#5c2c2c','#2a3a44']));
   buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),rand(-3,3),pick(['#3a4540','#5c2c2c','#2a3a44']));
@@ -1572,22 +1681,14 @@ function generateChunk(idx){
   // --- Sprite billboards — heavy crowd of distant pedestrians, plus
   // the usual rubbish / weed scatter. Night markets are PACKED.
   scatterBillboards(xBase,xBase+CHUNK_SIZE);
-  for(let i=0;i<22;i++){
-    const s=new THREE.Sprite(SPRITE_MAT.distantHuman);
-    s.scale.set(rand(0.7,1.0),rand(1.0,1.4),1);
-    s.position.set(xBase+rand(0.5,CHUNK_SIZE-0.5),s.scale.y/2,rand(-3,3));
-    scene.add(s);chunk.meshes.push(s);
-  }
 
   // --- Humans (real skinned actors) — kept low (2-3 per chunk) so the
   // total stays under ~8 across the whole 3-chunk window.
   const humanCount=2+(Math.random()<0.4?1:0);
-  const cleanerSlots=Math.min(humanCount,1+(Math.random()<0.30?1:0));
   for(let i=0;i<humanCount;i++){
     const x=xBase+rand(2,CHUNK_SIZE-2);
-    const z=rand(-2.6,2.6);
-    const role=i<cleanerSlots?'cleaner':'wanderer';
-    const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
+    const z=rand(-2.2,2.2);
+    const h=buildHuman({position:new THREE.Vector3(x,0,z),role:'wanderer'});
     if(h){chunk.humans.push(h);game.humans.push(h)}
   }
 
@@ -1763,7 +1864,7 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
-const HUMAN_WORLD_Y_OFFSET=-2;
+const HUMAN_WORLD_Y_OFFSET=-1;
 function buildHuman({position,role='wanderer'}={}){
   if(!characterSource||!HUMAN_CLIPS.run){
     // FBX placeholder — capsule body so we never silently skip a spawn.
@@ -1783,7 +1884,7 @@ function buildHuman({position,role='wanderer'}={}){
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
-    : new THREE.Color().setHSL(Math.random(),0.4,0.95);
+    : new THREE.Color(pick(['#f0d6d0','#d9d6cf','#e6c7b5','#d7d6e8','#c9d3d8']));
   const inst=buildSkinnedActor({targetHeight:1.52,tint,clips:HUMAN_CLIPS});
   const root=inst.outer;
   root.position.set(position.x,HUMAN_WORLD_Y_OFFSET,position.z);
@@ -2505,13 +2606,12 @@ function doHostAttack(){
     if(d>HOST_ATTACK_RADIUS)continue;
     const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
     if(dot<0.05)continue;
-    p.tipped=true;
+    triggerPropTip(p,Math.atan2(dz,dx),1.2);
     p.root.rotation.z=lerp(p.root.rotation.z,-fx*Math.PI*0.36,0.9);
     p.root.rotation.x=lerp(p.root.rotation.x, fz*Math.PI*0.36,0.9);
     p.throwVel=new THREE.Vector3(fx*5.8,2.0+Math.max(0,1.1-d),fz*5.8);
     p.throwOwner=host;
     p.throwSpin=(Math.random()<0.5?-1:1)*rand(3.5,6.8);
-    game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*1.2*p.chaosWeight);
     struck=true;
   }
   for(const h of game.humans){
@@ -2624,6 +2724,39 @@ function updatePlayer(dt){
 }
 
 // ===== Chaos / prop tipping =====
+function summonSpillRats(x,z,count=2){
+  for(let i=0;i<count;i++){
+    const rat=buildRat();
+    rat.root.position.set(x+rand(-0.8,0.8),RAT_FOOT_OFFSET,z+rand(-0.8,0.8));
+    rat.yaw=Math.random()*Math.PI*2;
+    game.rats.push(rat);
+    if(game.rats.length>=WIN_RAT_COUNT) triggerRatsWin();
+  }
+}
+function triggerPropTip(p,angle,chaosGain=1){
+  if(!p||p.tipTriggered)return;
+  p.tipTriggered=true;
+  p.tipped=true;
+  p.tidyProgress=0;
+  p.root.rotation.z=-Math.cos(angle)*Math.PI*0.40;
+  p.root.rotation.x=Math.sin(angle)*Math.PI*0.40;
+  p.root.position.y=Math.max(0.08,p.root.userData.baseY*0.45);
+  p.root.position.x+=Math.cos(angle)*(p.tipOffset||0.22);
+  p.root.position.z+=Math.sin(angle)*(p.tipOffset||0.22);
+  if(p.reservedBy && p.reservedBy.role==='cleaner') p.reservedBy.behaviour='seek';
+  if(p.steamSprite) p.steamSprite.visible=false;
+  if(p.spillMesh){
+    p.spillMesh.visible=true;
+    p.spillMesh.scale.set(1,1,1);
+    p.spillMesh.position.x=Math.cos(angle)*0.34;
+    p.spillMesh.position.z=Math.sin(angle)*0.34;
+  }
+  if(p.spawnRatsOnTip>0){
+    summonSpillRats(p.root.position.x,p.root.position.z,p.spawnRatsOnTip);
+    game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.8*p.spawnRatsOnTip);
+  }
+  game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*p.chaosWeight*chaosGain);
+}
 function tickProps(dt){
   const ent=game.controlled;if(!ent)return;
   const ex=ent.root.position.x,ez=ent.root.position.z;
@@ -2647,10 +2780,14 @@ function tickProps(dt){
       }
       const restY=Math.max(0.12,p.basePosition.y*0.45);
       if(p.root.position.y<=restY){
+        const landAngle=Math.atan2(p.throwVel.z,p.throwVel.x);
         p.root.position.y=restY;
         p.throwVel=null;
         p.throwOwner=null;
         p.tipped=true;
+        if(!p.tipTriggered){
+          triggerPropTip(p,landAngle,0.7);
+        }
       }
       continue;
     }
@@ -2658,15 +2795,7 @@ function tickProps(dt){
     const dx=p.root.position.x-ex,dz=p.root.position.z-ez;
     if(dx*dx+dz*dz<p.radius*p.radius && speed>0.5){
       const a=Math.atan2(dz,dx);
-      p.root.rotation.z=-Math.cos(a)*Math.PI*0.40;
-      p.root.rotation.x= Math.sin(a)*Math.PI*0.40;
-      p.root.position.y=Math.max(0.08,p.root.userData.baseY*0.45);
-      p.root.position.x+=Math.cos(a)*0.22;
-      p.root.position.z+=Math.sin(a)*0.22;
-      p.tipped=true;
-      p.tidyProgress=0;
-      if(p.reservedBy && p.reservedBy.role==='cleaner') p.reservedBy.behaviour='seek';
-      game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*p.chaosWeight*hostMul);
+      triggerPropTip(p,a,hostMul);
     }
   }
 }
@@ -2690,10 +2819,16 @@ function restorePropFromCleaner(prop){
   prop.root.rotation.copy(prop.baseRotation);
   prop.root.position.y=prop.basePosition.y;
   prop.tipped=false;
+  prop.tipTriggered=false;
   prop.heldBy=null;
   prop.throwVel=null;
   prop.throwOwner=null;
   prop.tidyProgress=0;
+  if(prop.spillMesh){
+    prop.spillMesh.visible=false;
+    prop.spillMesh.scale.set(0.01,0.01,0.01);
+  }
+  if(prop.steamSprite) prop.steamSprite.visible=true;
   if(prop.reservedBy) prop.reservedBy.targetProp=null;
   prop.reservedBy=null;
   game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
