@@ -296,6 +296,10 @@ const CHAOS_PER_TIP=0.040;
 const CHAOS_DECAY=0.012;
 const WIN_RAT_COUNT=30;
 const BREED_MIN_CHAOS=0.20;
+const NECK_HINT_RADIUS=2.50;
+const CLEANER_TIDY_RADIUS=0.72;
+const CLEANER_TIDY_TIME=1.45;
+const CLEANER_CHAOS_RESTORE=0.070;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-9.5, ALLEY_Z_MAX=9.5;
@@ -303,6 +307,7 @@ document.getElementById('rat-goal').textContent=WIN_RAT_COUNT;
 
 let gameState='intro';
 let gameTime=0;
+let fixedDtMode=false;
 const game={
   controlMode:'rat',
   controlled:null,
@@ -418,6 +423,38 @@ function makeAsphaltTexture(){
   for(let x=0;x<128;x+=12) cx.fillRect(x,110,8,2);
   return pixelate(new THREE.CanvasTexture(c));
 }
+function makeRoadReferenceTexture(){
+  const c=document.createElement('canvas');c.width=c.height=128;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#8a8a86';cx.fillRect(0,0,128,128);
+  for(let i=0;i<1600;i++){
+    const shade=118+Math.floor(Math.random()*40);
+    const alpha=0.18+Math.random()*0.28;
+    cx.fillStyle=`rgba(${shade},${shade},${shade-4},${alpha})`;
+    const x=Math.floor(Math.random()*128);
+    const y=Math.floor(Math.random()*128);
+    const s=Math.random()<0.82?1:2;
+    cx.fillRect(x,y,s,s);
+  }
+  for(let i=0;i<260;i++){
+    const shade=72+Math.floor(Math.random()*26);
+    cx.fillStyle=`rgba(${shade},${shade},${shade},${0.15+Math.random()*0.18})`;
+    cx.fillRect(Math.floor(Math.random()*128),Math.floor(Math.random()*128),1,1);
+  }
+  for(let i=0;i<22;i++){
+    const x=Math.floor(Math.random()*128);
+    const y=Math.floor(Math.random()*128);
+    const len=8+Math.floor(Math.random()*18);
+    cx.strokeStyle=`rgba(78,78,78,${0.18+Math.random()*0.14})`;
+    cx.lineWidth=1;
+    cx.beginPath();
+    cx.moveTo(x,y);
+    cx.lineTo(x+len,y+(Math.random()*6-3));
+    cx.stroke();
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+
 function makeZebraTexture(){
   const c=document.createElement('canvas');c.width=c.height=128;
   const cx=c.getContext('2d');
@@ -622,7 +659,7 @@ const TEX={},SPRITE_MAT={};
 // Filled in by loadGraffitiTextures() — random panels stuck on building walls.
 const GRAFFITI_TEX=[];
 function initSharedTextures(){
-  TEX.asphalt=makeAsphaltTexture();TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;TEX.asphalt.repeat.set(2,1);
+  TEX.asphalt=makeRoadReferenceTexture();TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;TEX.asphalt.repeat.set(3,2);
   TEX.zebra=makeZebraTexture();
   TEX.pavement=makePavementTexture();TEX.pavement.wrapS=TEX.pavement.wrapT=THREE.RepeatWrapping;TEX.pavement.repeat.set(6,3);
   TEX.stallFront=makeStallFrontTexture();
@@ -655,7 +692,25 @@ function initSharedTextures(){
 // Graffiti textures loaded from the user-supplied asset/photos folder.
 // Each image becomes a wall-mountable Texture with point sampling.
 function loadGraffitiTextures(){
-  const names=['5.jpg','6.jpg','7.jpg'];
+  const names=[
+    '螢幕擷取畫面 2026-05-13 222619.png',
+    '螢幕擷取畫面 2026-05-13 222636.png',
+    '螢幕擷取畫面 2026-05-13 222646.png',
+    '螢幕擷取畫面 2026-05-13 222705.png',
+    '螢幕擷取畫面 2026-05-13 222719.png',
+    '螢幕擷取畫面 2026-05-13 222725.png',
+    '螢幕擷取畫面 2026-05-13 222743.png',
+    '螢幕擷取畫面 2026-05-13 222748.png',
+    '螢幕擷取畫面 2026-05-13 222754.png',
+    '螢幕擷取畫面 2026-05-13 222806.png',
+    '螢幕擷取畫面 2026-05-13 225136.png',
+    '螢幕擷取畫面 2026-05-13 225143.png',
+    '螢幕擷取畫面 2026-05-13 225151.png',
+    '螢幕擷取畫面 2026-05-13 225227.png',
+    '螢幕擷取畫面 2026-05-13 225258.png',
+    '螢幕擷取畫面 2026-05-13 225344.png',
+    '螢幕擷取畫面 2026-05-13 225358.png'
+  ];
   const tl=new THREE.TextureLoader();
   const promises=names.map(n=>new Promise(res=>{
     tl.load('asset/photos/'+encodeURIComponent(n),
@@ -683,7 +738,12 @@ let _activeChunk=null;
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
   scene.add(root);
-  const p={root,radius,chaosWeight,tipped:false};
+  const p={
+    root,radius,chaosWeight,tipped:false,
+    reservedBy:null,tidyProgress:0,
+    basePosition:root.position.clone(),
+    baseRotation:root.rotation.clone()
+  };
   game.props.push(p);
   if(_activeChunk){_activeChunk.props.push(p);_activeChunk.meshes.push(root)}
   return p;
@@ -903,7 +963,10 @@ function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeM
 function disposeMesh(o){scene.remove(o);o.traverse(n=>{if(n.isMesh){n.geometry?.dispose();disposeMaterials(n.material)}})}
 function disposeChunk(chunk){
   for(const m of chunk.meshes) disposeMesh(m);
-  for(const p of chunk.props){const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)}
+  for(const p of chunk.props){
+    if(p.reservedBy) p.reservedBy.targetProp=null;
+    const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)
+  }
   for(const h of chunk.humans){
     if(h.parasitised) exitHost();
     if(h.root && h.root.parent) h.root.parent.remove(h.root);
@@ -1103,10 +1166,11 @@ function generateChunk(idx){
   // --- Humans (real skinned actors) — kept low (2-3 per chunk) so the
   // total stays under ~8 across the whole 3-chunk window.
   const humanCount=2+(Math.random()<0.4?1:0);
+  const cleanerSlots=Math.min(humanCount,1+(Math.random()<0.30?1:0));
   for(let i=0;i<humanCount;i++){
     const x=xBase+rand(2,CHUNK_SIZE-2);
     const z=rand(-2.6,2.6);
-    const role=(Math.random()<0.2)?'cleaner':'wanderer';
+    const role=i<cleanerSlots?'cleaner':'wanderer';
     const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
     if(h){chunk.humans.push(h);game.humans.push(h)}
   }
@@ -1258,7 +1322,8 @@ function buildHuman({position,role='wanderer'}={}){
     return {kind:'human',role,root,inst:null,shoulderRat:ph,
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
-      wanderTimer:rand(0.4,2.2),baseY:0,height:1.72};
+      wanderTimer:rand(0.4,2.2),baseY:0,height:1.72,
+      behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -1286,7 +1351,8 @@ function buildHuman({position,role='wanderer'}={}){
   return {kind:'human',role,root,inst,shoulderRat,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),baseY:inst.baseY,height:inst.height};
+    wanderTimer:rand(0.4,2.2),baseY:inst.baseY,height:inst.height,
+    behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -1452,7 +1518,7 @@ function nearestBiteableHuman(rat){
   // matter how close the rat got. Using xz makes the bite trigger fire
   // when the rat is within NECK_BITE_RADIUS metres of the host's feet.
   const ratPos=rat.root.position;
-  let best=null,bestD=NECK_BITE_RADIUS;
+  let best=null,bestD=1.9;
   for(const h of game.humans){
     if(h.parasitised)continue;
     const dx=h.root.position.x-ratPos.x;
@@ -1464,10 +1530,12 @@ function nearestBiteableHuman(rat){
 }
 function enterHost(rat,host){
   rat.root.visible=false;rat.controllable=false;
+  if(host.targetProp){host.targetProp.reservedBy=null;host.targetProp=null}
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=true;
   game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
   modeBadge.textContent='CONTROL · HOST';modeBadge.classList.add('mode-host');
   showHint('Inside the host. BITE to leave.');
+  console.log('[parasitism] host acquired:',host.role,host.root.uuid.slice(0,8));
 }
 function exitHost(){
   const host=game.parasitisedHost;if(!host)return;
@@ -1479,6 +1547,7 @@ function exitHost(){
   game.controlMode='rat';game.controlled=player;game.parasitisedHost=null;
   modeBadge.textContent='CONTROL · RAT';modeBadge.classList.remove('mode-host');
   showHint('Back in the rat.');
+  console.log('[parasitism] host released');
 }
 function handleActionPress(){
   if(game.controlMode==='rat'){
@@ -1503,16 +1572,25 @@ function updatePlayer(dt){
   if(keys.w||keys.up)ky-=1;if(keys.s||keys.down)ky+=1;
   if(keys.a||keys.left)kx-=1;if(keys.d||keys.right)kx+=1;
   let ix=kx+joyX,iy=ky+joyY;
-  const il=Math.hypot(ix,iy);if(il>1){ix/=il;iy/=il}
-  const hasInput=(il>0.05);
+  let il=Math.hypot(ix,iy);
+  const hasInput=(il>0.12);
+  if(hasInput){
+    if(il>1){ix/=il;iy/=il;il=1}
+  }else{
+    ix=0;iy=0;il=0;
+  }
   const mdx=-iy*fwdX+ix*rightX;
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
   const targetSpeed=isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
-  if(hasInput){ent.curSpeed=Math.min(targetSpeed,ent.curSpeed+accel*dt);ent.yaw=Math.atan2(mdx,mdz)}
-  else ent.curSpeed=0;
-  if(ent.curSpeed>0){
+  if(hasInput){
+    ent.curSpeed=Math.min(targetSpeed,ent.curSpeed+accel*dt);
+    ent.yaw=Math.atan2(mdx,mdz);
+  }else{
+    ent.curSpeed=Math.max(0,ent.curSpeed-accel*1.6*dt);
+  }
+  if(ent.curSpeed>0.001){
     ent.root.position.x+=mdx*ent.curSpeed*dt;
     ent.root.position.z+=mdz*ent.curSpeed*dt;
     softClampZ(ent.root.position);   // keep them out of building walls
@@ -1554,15 +1632,92 @@ function tickProps(dt){
       p.root.position.x+=Math.cos(a)*0.22;
       p.root.position.z+=Math.sin(a)*0.22;
       p.tipped=true;
+      p.tidyProgress=0;
+      if(p.reservedBy && p.reservedBy.role==='cleaner') p.reservedBy.behaviour='seek';
       game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*p.chaosWeight*hostMul);
     }
   }
 }
 
 // ===== Humans tick — wander + animate =====
+function findNearestMessForCleaner(cleaner){
+  let best=null,bestD=Infinity;
+  for(const p of game.props){
+    if(!p.tipped)continue;
+    if(p.reservedBy && p.reservedBy!==cleaner)continue;
+    const dx=p.root.position.x-cleaner.root.position.x;
+    const dz=p.root.position.z-cleaner.root.position.z;
+    const d2=dx*dx+dz*dz;
+    if(d2<bestD){bestD=d2;best=p}
+  }
+  if(best) best.reservedBy=cleaner;
+  return best;
+}
+function restorePropFromCleaner(prop){
+  prop.root.position.copy(prop.basePosition);
+  prop.root.rotation.copy(prop.baseRotation);
+  prop.root.position.y=prop.basePosition.y;
+  prop.tipped=false;
+  prop.tidyProgress=0;
+  if(prop.reservedBy) prop.reservedBy.targetProp=null;
+  prop.reservedBy=null;
+  game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
+}
+function tickCleaner(cleaner,dt){
+  if(cleaner.controllable||cleaner.parasitised)return;
+  if(cleaner.targetProp && !cleaner.targetProp.tipped){
+    if(cleaner.targetProp.reservedBy===cleaner) cleaner.targetProp.reservedBy=null;
+    cleaner.targetProp=null;
+  }
+  if(!cleaner.targetProp){
+    cleaner.targetProp=findNearestMessForCleaner(cleaner);
+    cleaner.behaviour=cleaner.targetProp?'seek':'wander';
+  }
+  if(!cleaner.targetProp){
+    cleaner.wanderTimer-=dt;
+    if(cleaner.wanderTimer<=0){cleaner.wanderTimer=1.0+Math.random()*1.8;cleaner.yaw+=(Math.random()-0.5)*Math.PI*0.9}
+    cleaner.curSpeed=1.05;
+    cleaner.root.position.x+=Math.sin(cleaner.yaw)*cleaner.curSpeed*dt;
+    cleaner.root.position.z+=Math.cos(cleaner.yaw)*cleaner.curSpeed*dt;
+    if(cleaner.root.position.z<ALLEY_Z_MIN+0.3||cleaner.root.position.z>ALLEY_Z_MAX-0.5){
+      cleaner.yaw+=Math.PI;softClampZ(cleaner.root.position);
+    }
+    return;
+  }
+  const prop=cleaner.targetProp;
+  const dx=prop.root.position.x-cleaner.root.position.x;
+  const dz=prop.root.position.z-cleaner.root.position.z;
+  const dist=Math.hypot(dx,dz);
+  cleaner.yaw=Math.atan2(dx,dz);
+  if(dist>CLEANER_TIDY_RADIUS){
+    cleaner.behaviour='seek';
+    cleaner.curSpeed=1.85;
+    cleaner.root.position.x+=Math.sin(cleaner.yaw)*cleaner.curSpeed*dt;
+    cleaner.root.position.z+=Math.cos(cleaner.yaw)*cleaner.curSpeed*dt;
+    softClampZ(cleaner.root.position);
+    cleaner.tidyTimer=CLEANER_TIDY_TIME;
+    return;
+  }
+  cleaner.behaviour='tidy';
+  cleaner.curSpeed=0.18;
+  cleaner.tidyTimer-=dt;
+  prop.tidyProgress=1-clamp(cleaner.tidyTimer/CLEANER_TIDY_TIME,0,1);
+  prop.root.rotation.x=lerp(prop.root.rotation.x,prop.baseRotation.x,Math.min(1,dt*4));
+  prop.root.rotation.z=lerp(prop.root.rotation.z,prop.baseRotation.z,Math.min(1,dt*4));
+  prop.root.position.x=lerp(prop.root.position.x,prop.basePosition.x,Math.min(1,dt*3.5));
+  prop.root.position.z=lerp(prop.root.position.z,prop.basePosition.z,Math.min(1,dt*3.5));
+  prop.root.position.y=lerp(prop.root.position.y,prop.basePosition.y,Math.min(1,dt*4));
+  if(cleaner.tidyTimer<=0){
+    restorePropFromCleaner(prop);
+    cleaner.behaviour='seek';
+    cleaner.tidyTimer=0;
+  }
+}
 function tickHumans(dt){
   for(const h of game.humans){
-    if(!h.controllable){
+    if(h.role==='cleaner'){
+      tickCleaner(h,dt);
+    }else if(!h.controllable){
       h.wanderTimer-=dt;
       if(h.wanderTimer<=0){h.wanderTimer=1.6+Math.random()*2.6;h.yaw+=(Math.random()-0.5)*Math.PI*0.8}
       const spd=h.role==='cleaner'?1.6:1.05;
@@ -1623,6 +1778,19 @@ function updateHUD(dt){
   chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
   ratCountEl.textContent=String(game.rats.length);
   ratFill.style.width=Math.min(100,(game.rats.length/WIN_RAT_COUNT)*100).toFixed(0)+'%';
+  if(game.controlMode==='rat'&&player){
+    const ratPos=player.root.position;
+    let nearest=Infinity;
+    for(const h of game.humans){
+      if(h.parasitised)continue;
+      const dx=h.root.position.x-ratPos.x;
+      const dz=h.root.position.z-ratPos.z;
+      nearest=Math.min(nearest,Math.hypot(dx,dz));
+    }
+    if(nearest<NECK_HINT_RADIUS){
+      showHint(nearest<NECK_BITE_RADIUS?'BITE NOW â€” parasitise the host.':'Close in on the neck.',0.14);
+    }
+  }
   if(hintTimer>0){hintTimer-=dt;if(hintTimer<=0)hintEl.classList.remove('show')}
 }
 
@@ -1658,35 +1826,74 @@ function triggerRatsWin(){
 }
 ratsWinReplay.addEventListener('click',()=>location.reload());
 
+function renderGameToText(){
+  const controlled=game.controlled;
+  const payload={
+    mode:gameState,
+    controlMode:game.controlMode,
+    camera:{yaw:+camYaw.toFixed(2),pitch:+camPitch.toFixed(2),dist:+camDist.toFixed(2)},
+    player:player?{
+      x:+player.root.position.x.toFixed(2),
+      y:+player.root.position.y.toFixed(2),
+      z:+player.root.position.z.toFixed(2),
+      isAir:!!player.isAir
+    }:null,
+    controlled:controlled?{
+      kind:controlled.kind,
+      role:controlled.role||null,
+      x:+controlled.root.position.x.toFixed(2),
+      y:+controlled.root.position.y.toFixed(2),
+      z:+controlled.root.position.z.toFixed(2)
+    }:null,
+    nearestBiteable:game.controlMode==='rat'&&player?!!nearestBiteableHuman(player):false,
+    chaos:+game.chaos.toFixed(3),
+    rats:game.rats.length,
+    tippedProps:game.props.filter(p=>p.tipped).length,
+    cleaners:{
+      total:game.humans.filter(h=>h.role==='cleaner').length,
+      seeking:game.humans.filter(h=>h.role==='cleaner'&&h.behaviour==='seek').length,
+      tidying:game.humans.filter(h=>h.role==='cleaner'&&h.behaviour==='tidy').length
+    },
+    note:'coords: x alley length, y up, z across alley'
+  };
+  return JSON.stringify(payload);
+}
+window.render_game_to_text=renderGameToText;
+
 // ===== Main loop =====
 let last=performance.now();
+function stepFrame(dt){
+  if(gameState==='playing'){
+    gameTime+=dt;
+    if(inputFlags.action){handleActionPress();inputFlags.action=false}
+    updatePlayer(dt);
+    tickProps(dt);
+    tickHumans(dt);
+    tickBreeding(dt);
+    tickFollowerRats(dt);
+    if(game.controlMode==='rat') tickActor(player,dt);
+    updateHUD(dt);
+    ensureChunksAroundX(player.root.position.x);
+  }else if(gameState==='intro'){
+    for(const h of game.humans){h.curSpeed=0.4;tickActor(h,dt)}
+    if(player){player.curSpeed=0.4;tickActor(player,dt)}
+  }
+  updateCam();
+}
+window.advanceTime=(ms=16)=>{
+  const steps=Math.max(1,Math.round(ms/(1000/60)));
+  fixedDtMode=true;
+  for(let i=0;i<steps;i++) stepFrame(1/60);
+  fixedDtMode=false;
+};
 function tick(){
   requestAnimationFrame(tick);
+  if(fixedDtMode)return;
   const now=performance.now();
   const dt=Math.min(0.05,(now-last)/1000);
   last=now;
   try{
-    if(gameState==='playing'){
-      gameTime+=dt;
-      if(inputFlags.action){handleActionPress();inputFlags.action=false}
-      updatePlayer(dt);
-      tickProps(dt);
-      tickHumans(dt);
-      tickBreeding(dt);
-      tickFollowerRats(dt);
-      // The controlled rat's own crawl cycle. Non-player rats already
-      // advanced inside tickFollowerRats; humans inside tickHumans.
-      if(game.controlMode==='rat') tickActor(player,dt);
-      // (Parasitised host already animated by tickHumans.)
-      updateHUD(dt);
-      ensureChunksAroundX(player.root.position.x);
-    }else if(gameState==='intro'){
-      // Tick mixers gently so the actors don't freeze behind the
-      // intro card. We feed a non-zero speed so the clip plays.
-      for(const h of game.humans){h.curSpeed=0.4;tickActor(h,dt)}
-      if(player){player.curSpeed=0.4;tickActor(player,dt)}
-    }
-    updateCam();
+    stepFrame(dt);
 
     // Two-pass render — scene → low-res target → screen quad.
     renderer.setRenderTarget(lowResRT);
