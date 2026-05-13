@@ -291,12 +291,14 @@ const JUMP_VEL=4.4;
 const GRAVITY=22;
 const GROUND_Y_OFFSET=0.01;
 const RAT_FOOT_OFFSET=0.0;
-const NECK_BITE_RADIUS=1.10;
+const NECK_BITE_RADIUS=1.50;    // horizontal — bite when the rat is at the host's feet
 const CHAOS_PER_TIP=0.040;
 const CHAOS_DECAY=0.012;
 const WIN_RAT_COUNT=30;
 const BREED_MIN_CHAOS=0.20;
-const PAVEMENT_Z_MIN=1.5, PAVEMENT_Z_MAX=9.6;
+// The walkable corridor — wide enough that the player can wander between
+// the two rows of stalls without being clamped. Buildings sit beyond.
+const ALLEY_Z_MIN=-9.5, ALLEY_Z_MAX=9.5;
 document.getElementById('rat-goal').textContent=WIN_RAT_COUNT;
 
 let gameState='intro';
@@ -325,25 +327,38 @@ function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
 }
 
-// Recursively pin every texture on a hierarchy to NearestFilter so the
-// FBX textures honour the PS1 brief. Also flips the material to
-// MeshLambertMaterial — cheaper than the Phong/Standard materials FBX
-// sometimes hands us — and disables fog by mistake on rigged skinned
-// meshes by leaving the default fog flag true.
+// Apply PS1 treatment to a cloned FBX character: replace each material
+// with a cheaper MeshLambertMaterial BUT copy every relevant property
+// from the source (map / colour / emissive / opacity) so we don't lose
+// the Mixamo skin. Textures get pinned to NearestFilter for the chunky
+// PS1 look. Skinning auto-detects when the material is on a SkinnedMesh
+// in r160+ so no flag is needed.
 function ps1ifyCharacterMaterials(root,tint){
   root.traverse(o=>{
     if(!o.isMesh)return;
     o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
     const mats=Array.isArray(o.material)?o.material:[o.material];
     const replaced=mats.map(src=>{
-      const m=new THREE.MeshLambertMaterial({skinning:true});
+      const m=new THREE.MeshLambertMaterial();
+      // Fallback to a Mixamo-yellow skin so a missing material never
+      // leaves a black or invisible character.
+      m.color.set('#d9c08a');
       if(src){
-        if(src.color) m.color.copy(src.color);
+        if(src.color)        m.color.copy(src.color);
         if(src.map){
           m.map=src.map;
           pixelate(m.map);
           m.map.colorSpace=THREE.SRGBColorSpace;
         }
+        if(src.emissive)     m.emissive.copy(src.emissive);
+        if(src.emissiveMap){
+          m.emissiveMap=src.emissiveMap;
+          pixelate(m.emissiveMap);
+        }
+        if(src.transparent!==undefined) m.transparent=src.transparent;
+        if(src.opacity!==undefined)     m.opacity=src.opacity;
+        if(src.alphaTest!==undefined)   m.alphaTest=src.alphaTest;
+        if(src.side!==undefined)        m.side=src.side;
       }
       if(tint && m.color) m.color.multiply(tint);
       return m;
@@ -557,7 +572,6 @@ function makeDistantHumanSprite(){
 function makeLampGlowSprite(){
   const c=document.createElement('canvas');c.width=c.height=32;
   const cx=c.getContext('2d');
-  // radial pixel glow
   for(let r=14;r>0;r--){
     const a=Math.max(0,1-r/14);
     cx.fillStyle=`rgba(255,210,140,${a*0.55})`;
@@ -565,9 +579,48 @@ function makeLampGlowSprite(){
   }
   return pixelate(new THREE.CanvasTexture(c));
 }
+function makeRatSilhouetteSprite(){
+  // Side-view rat with the player's face hinted in lighter pixels —
+  // 64×32 so the rat reads as long-and-low when rendered as a sprite.
+  const c=document.createElement('canvas');c.width=64;c.height=32;
+  const cx=c.getContext('2d');
+  // body
+  cx.fillStyle='#3e2f24';
+  cx.fillRect(10,18,38,8);
+  // hindquarters / front
+  cx.fillRect(8,20,4,4);cx.fillRect(48,20,4,4);
+  // head
+  cx.fillStyle='#caa078';cx.fillRect(46,12,12,10);
+  // ear
+  cx.fillStyle='#7a5b46';cx.fillRect(48,8,4,4);
+  // eye
+  cx.fillStyle='#1a1320';cx.fillRect(52,16,2,2);
+  // tail — thin pixel chain trailing behind
+  cx.fillStyle='#7a5b46';
+  cx.fillRect(7,22,1,1);cx.fillRect(5,21,1,1);
+  cx.fillRect(3,20,1,1);cx.fillRect(1,19,1,1);
+  // legs
+  cx.fillStyle='#3e2f24';
+  cx.fillRect(14,26,3,4);cx.fillRect(42,26,3,4);
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeStringBulbSprite(){
+  // Hot incandescent bulb — yellow-orange centre with a hot core.
+  const c=document.createElement('canvas');c.width=c.height=16;
+  const cx=c.getContext('2d');
+  for(let r=8;r>0;r--){
+    const a=Math.max(0,1-r/8);
+    cx.fillStyle=`rgba(255,220,120,${a*0.85})`;
+    cx.fillRect(8-r,8-r,r*2,r*2);
+  }
+  cx.fillStyle='rgba(255,255,255,0.9)';cx.fillRect(7,7,2,2);
+  return pixelate(new THREE.CanvasTexture(c));
+}
 
 // Cached textures and sprite materials.
 const TEX={},SPRITE_MAT={};
+// Filled in by loadGraffitiTextures() — random panels stuck on building walls.
+const GRAFFITI_TEX=[];
 function initSharedTextures(){
   TEX.asphalt=makeAsphaltTexture();TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;TEX.asphalt.repeat.set(2,1);
   TEX.zebra=makeZebraTexture();
@@ -576,17 +629,42 @@ function initSharedTextures(){
   TEX.stopSign=makeStopSignTexture();
   TEX.facade=[makeFacadeTexture(0),makeFacadeTexture(1),makeFacadeTexture(2),makeFacadeTexture(3)];
   for(const t of TEX.facade){t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping}
+  // Hanging sign palette — short, common Chinese stall words.
   TEX.signRed   =makeSignTexture('麵店','#c83a3a','#fff2b8');
   TEX.signRed2  =makeSignTexture('牛肉','#c83a3a','#fff2b8');
   TEX.signBlue  =makeSignTexture('小吃','#1d4a93','#ffffff');
   TEX.signYellow=makeSignTexture('便當','#e6a82e','#3a1a0a');
   TEX.signGreen =makeSignTexture('早餐','#3a8a4a','#ffffff');
-  // Billboards — share one SpriteMaterial per type so all sprites of
-  // the same kind go through a single draw call when possible.
-  SPRITE_MAT.rubbish     =new THREE.SpriteMaterial({map:makeRubbishSprite(),     transparent:true,alphaTest:0.5,fog:true});
-  SPRITE_MAT.weed        =new THREE.SpriteMaterial({map:makeWeedSprite(),        transparent:true,alphaTest:0.5,fog:true});
-  SPRITE_MAT.distantHuman=new THREE.SpriteMaterial({map:makeDistantHumanSprite(),transparent:true,alphaTest:0.5,fog:true});
-  SPRITE_MAT.lampGlow    =new THREE.SpriteMaterial({map:makeLampGlowSprite(),    transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
+  TEX.signRed3  =makeSignTexture('豆花','#d23a3a','#fff2b8');
+  TEX.signTeal  =makeSignTexture('青草','#2a8a76','#ffffff');
+  TEX.signPink  =makeSignTexture('紅豆','#d24d8a','#ffffff');
+  TEX.signWhite =makeSignTexture('燒烤','#fff7d2','#2a1320');
+  TEX.signPurple=makeSignTexture('彩券','#5a3a8a','#ffffff');
+  // Vertical lantern-style signs — narrower aspect.
+  TEX.signTall1 =makeSignTexture('營業','#c83a3a','#fff2b8');
+  TEX.signTall2 =makeSignTexture('開店','#1d4a93','#ffffff');
+  // Sprite billboards — one SpriteMaterial per type for draw-call sharing.
+  SPRITE_MAT.rubbish        =new THREE.SpriteMaterial({map:makeRubbishSprite(),     transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.weed           =new THREE.SpriteMaterial({map:makeWeedSprite(),        transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.distantHuman   =new THREE.SpriteMaterial({map:makeDistantHumanSprite(),transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.lampGlow       =new THREE.SpriteMaterial({map:makeLampGlowSprite(),    transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
+  SPRITE_MAT.ratSilhouette  =new THREE.SpriteMaterial({map:makeRatSilhouetteSprite(),transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.stringBulb     =new THREE.SpriteMaterial({map:makeStringBulbSprite(),  transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
+}
+
+// Graffiti textures loaded from the user-supplied asset/photos folder.
+// Each image becomes a wall-mountable Texture with point sampling.
+function loadGraffitiTextures(){
+  const names=['5.jpg','6.jpg','7.jpg'];
+  const tl=new THREE.TextureLoader();
+  const promises=names.map(n=>new Promise(res=>{
+    tl.load('asset/photos/'+encodeURIComponent(n),
+      tex=>{pixelate(tex);tex.colorSpace=THREE.SRGBColorSpace;GRAFFITI_TEX.push(tex);res(tex)},
+      undefined,
+      err=>{console.warn('[graffiti] failed',n,err);res(null)}
+    );
+  }));
+  return Promise.all(promises);
 }
 
 /* Convenience — build a basic-material box. Static scene geometry only.
@@ -833,84 +911,208 @@ function disposeChunk(chunk){
   }
 }
 
+// Taiwan night-market generator. The layout is mirror-symmetric across
+// the Z axis: walking corridor in the centre, two rows of stalls + tarp
+// canopies just off-centre, building facades behind. Z extends from
+// -11 (far building) through -3 (start of right-side stall row),
+// 0 (alley centre), +3 (start of left-side stall row), +11 (far
+// building). Heavy on hanging signs, string lights and sprite crowd.
+function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
+  // facing = +1 means the stall opens toward -Z (centre is at -); -1 the other way.
+  // We draw a tarp canopy + display table + a couple of soup pots / stools.
+  const len=xEnd-xStart;
+  // Tarp colour palette — common night-market plastic-sheeting colours.
+  const tarpCol=pick(['#c66a3a','#3a7ac6','#c2c2b8','#b04a4a','#3a8a4a','#8a4ac6']);
+  // Canopy — slightly tilted toward the centre.
+  const canopy=new THREE.Mesh(
+    new THREE.BoxGeometry(len*0.9,0.10,2.6),
+    new THREE.MeshBasicMaterial({color:tarpCol})
+  );
+  canopy.position.set((xStart+xEnd)/2,2.5,(zOuter+zInner)/2);
+  canopy.rotation.x=facing*0.12;
+  scene.add(canopy);if(_activeChunk)_activeChunk.meshes.push(canopy);
+  // Stripe along the front edge — different colour so the tarp reads.
+  const stripe=new THREE.Mesh(
+    new THREE.BoxGeometry(len*0.9,0.18,0.10),
+    new THREE.MeshBasicMaterial({color:'#1a1318'})
+  );
+  stripe.position.set((xStart+xEnd)/2,2.45,zInner+facing*0.05);
+  scene.add(stripe);if(_activeChunk)_activeChunk.meshes.push(stripe);
+  // Canopy support posts — thin chrome poles.
+  const postMat=new THREE.MeshBasicMaterial({color:'#5a5a5a'});
+  for(const xPost of [xStart+0.5,xEnd-0.5]){
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,2.5,6),postMat);
+    post.position.set(xPost,1.25,(zOuter+zInner)/2);
+    scene.add(post);if(_activeChunk)_activeChunk.meshes.push(post);
+  }
+  // Display table running the length of the stall.
+  const table=new THREE.Mesh(
+    new THREE.BoxGeometry(len*0.85,0.85,0.85),
+    new THREE.MeshBasicMaterial({color:'#bfa07a'})
+  );
+  table.position.set((xStart+xEnd)/2,0.45,zInner+facing*0.6);
+  scene.add(table);if(_activeChunk)_activeChunk.meshes.push(table);
+  // Goods piled on the table — chunky merch boxes in random colours.
+  const goodCols=['#d23a3a','#3a8ad2','#d2a83a','#8ad23a','#a83ad2','#3ad28a','#f0e060','#ffffff'];
+  const goodCount=Math.max(3,Math.floor(len*1.4));
+  for(let i=0;i<goodCount;i++){
+    const w=rand(0.18,0.30),h=rand(0.10,0.30),d=rand(0.18,0.30);
+    const box=basicBox(w,h,d,pick(goodCols));
+    box.position.set(rand(xStart+0.4,xEnd-0.4),0.85+h/2+rand(0,0.1),zInner+facing*rand(0.3,0.85));
+    scene.add(box);if(_activeChunk)_activeChunk.meshes.push(box);
+  }
+}
 function generateChunk(idx){
   const xBase=idx*CHUNK_SIZE;
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
 
-  // Road — single tiled plane per chunk.
-  {
-    const tex=TEX.asphalt.clone();tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(2,1);pixelate(tex);
-    const road=new THREE.Mesh(new THREE.PlaneGeometry(CHUNK_SIZE,9),new THREE.MeshBasicMaterial({map:tex}));
-    road.rotation.x=-Math.PI/2;road.position.set(xBase+CHUNK_SIZE/2,0,-2.5);
-    scene.add(road);chunk.meshes.push(road);
-  }
-  // Pedestrian crossing near the chunk start.
-  {
-    const z=new THREE.Mesh(new THREE.PlaneGeometry(7,5),new THREE.MeshBasicMaterial({map:TEX.zebra}));
-    z.rotation.x=-Math.PI/2;z.position.set(xBase+4,0.011,-2.5);
-    scene.add(z);chunk.meshes.push(z);
-  }
-  // Pavement
-  {
-    const tex=TEX.pavement.clone();tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(6,3);pixelate(tex);
-    const pave=new THREE.Mesh(new THREE.PlaneGeometry(CHUNK_SIZE,9),new THREE.MeshBasicMaterial({map:tex}));
-    pave.rotation.x=-Math.PI/2;pave.position.set(xBase+CHUNK_SIZE/2,0.06,5.5);
-    scene.add(pave);chunk.meshes.push(pave);
-  }
-  // Kerb + red-strip
-  {
-    const kerb=basicBox(CHUNK_SIZE,0.12,0.25,'#bcbcbc');
-    kerb.position.set(xBase+CHUNK_SIZE/2,0.06,1.05);scene.add(kerb);chunk.meshes.push(kerb);
-    const red=basicBox(CHUNK_SIZE,0.12,0.08,'#a02020');
-    red.position.set(xBase+CHUNK_SIZE/2,0.062,1.18);scene.add(red);chunk.meshes.push(red);
-  }
-  // Buildings (back wall + stall frontage + far building across the road).
-  const facadeTex=TEX.facade[((idx%4)+4)%4].clone();facadeTex.wrapS=THREE.RepeatWrapping;facadeTex.repeat.set(CHUNK_SIZE/13,1);pixelate(facadeTex);
-  const facade=new THREE.Mesh(new THREE.BoxGeometry(CHUNK_SIZE,8,1.8),new THREE.MeshBasicMaterial({map:facadeTex}));
-  facade.position.set(xBase+CHUNK_SIZE/2,4,10.5);scene.add(facade);chunk.meshes.push(facade);
-  const stallFront=new THREE.Mesh(new THREE.BoxGeometry(CHUNK_SIZE,2.4,0.2),new THREE.MeshBasicMaterial({map:TEX.stallFront}));
-  stallFront.position.set(xBase+CHUNK_SIZE/2,1.2,9.6);scene.add(stallFront);chunk.meshes.push(stallFront);
-  const farTex=TEX.facade[((idx+2)%4+4)%4].clone();farTex.wrapS=THREE.RepeatWrapping;farTex.repeat.set(CHUNK_SIZE/12,1);pixelate(farTex);
-  const farFacade=new THREE.Mesh(new THREE.BoxGeometry(CHUNK_SIZE,9,2),new THREE.MeshBasicMaterial({map:farTex,color:'#a89890'}));
-  farFacade.position.set(xBase+CHUNK_SIZE/2,4.5,-9);scene.add(farFacade);chunk.meshes.push(farFacade);
+  // --- Floor: a single asphalt strip running the whole alley width.
+  const floorTex=TEX.asphalt.clone();floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;
+  floorTex.repeat.set(2,4);pixelate(floorTex);
+  const floor=new THREE.Mesh(
+    new THREE.PlaneGeometry(CHUNK_SIZE,22),
+    new THREE.MeshBasicMaterial({map:floorTex,color:'#3a322e'})
+  );
+  floor.rotation.x=-Math.PI/2;
+  floor.position.set(xBase+CHUNK_SIZE/2,0,0);
+  scene.add(floor);chunk.meshes.push(floor);
 
-  // Awning, hanging signs, traffic light/stop pole.
-  buildAwning(xBase+2,xBase+CHUNK_SIZE-2,7.4);
-  const signTex=[TEX.signRed,TEX.signRed2,TEX.signBlue,TEX.signYellow,TEX.signGreen];
-  for(let i=0;i<3;i++) buildHangingSign(xBase+4+i*7,3.5,9.5,signTex[(idx*3+i)%signTex.length],2.2,1.1);
-  const vTex=signTex[(idx+1)%signTex.length];
-  const vert=new THREE.Mesh(new THREE.BoxGeometry(0.9,3.4,0.10),new THREE.MeshBasicMaterial({map:vTex}));
-  vert.position.set(xBase+CHUNK_SIZE-2,4.5,9.5);scene.add(vert);chunk.meshes.push(vert);
-  buildSignPole(xBase+1);
+  // --- Buildings on BOTH sides — opaque wall behind the stalls.
+  for(const sign of [-1,+1]){
+    const t=TEX.facade[((idx*2+(sign>0?1:0))%4+4)%4].clone();
+    t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping;
+    t.repeat.set(CHUNK_SIZE/13,1);pixelate(t);
+    const facade=new THREE.Mesh(
+      new THREE.BoxGeometry(CHUNK_SIZE,9,1.6),
+      new THREE.MeshBasicMaterial({map:t,color:'#b8a89c'})
+    );
+    facade.position.set(xBase+CHUNK_SIZE/2,4.5,sign*10.5);
+    scene.add(facade);chunk.meshes.push(facade);
+    // Ground-floor shop frontage — white tile.
+    const front=new THREE.Mesh(
+      new THREE.BoxGeometry(CHUNK_SIZE,2.4,0.18),
+      new THREE.MeshBasicMaterial({map:TEX.stallFront,color:'#f0e8d8'})
+    );
+    front.position.set(xBase+CHUNK_SIZE/2,1.2,sign*9.65);
+    scene.add(front);chunk.meshes.push(front);
+  }
 
-  // Props
-  for(let i=0;i<4;i++) buildSoupPot(xBase+rand(4,CHUNK_SIZE-4),5.6+rand(-0.2,0.2),0.95+Math.random()*0.10);
-  for(let i=0;i<4;i++) buildTable(xBase+rand(2,CHUNK_SIZE-2),6.5+rand(-0.2,0.2));
+  // --- Graffiti panels — random photos from asset/photos slapped onto
+  // the lower portion of each building wall.
+  if(GRAFFITI_TEX.length){
+    for(const sign of [-1,+1]){
+      const count=2+Math.floor(Math.random()*3);
+      for(let i=0;i<count;i++){
+        const tex=pick(GRAFFITI_TEX);
+        const img=tex.image;
+        const aspect=(img && img.width)?(img.height/img.width):0.75;
+        const w=rand(1.2,2.2),h=w*aspect;
+        const panel=new THREE.Mesh(
+          new THREE.PlaneGeometry(w,h),
+          new THREE.MeshBasicMaterial({map:tex})
+        );
+        panel.position.set(
+          xBase+rand(1.5,CHUNK_SIZE-1.5),
+          rand(0.6,2.4),
+          sign*9.55
+        );
+        panel.rotation.y=sign>0?Math.PI:0;   // face the alley centre
+        scene.add(panel);chunk.meshes.push(panel);
+      }
+    }
+  }
+
+  // --- Two rows of stalls, one each side.
+  const stallsPerSide=3;
+  const stallWidth=CHUNK_SIZE/stallsPerSide;
+  for(let i=0;i<stallsPerSide;i++){
+    const xS=xBase+i*stallWidth+0.6;
+    const xE=xS+stallWidth-1.2;
+    buildStallRow(xS,xE, +6.5, +3.8, +1);   // right side
+    buildStallRow(xS,xE, -6.5, -3.8, -1);   // left side
+    // Drop a soup pot on the inner edge of each stall.
+    buildSoupPot(rand(xS+0.3,xE-0.3),+3.4,0.95);
+    buildSoupPot(rand(xS+0.3,xE-0.3),-3.4,0.95);
+  }
+
+  // --- Hanging horizontal signs running along the buildings.
+  const signPool=[TEX.signRed,TEX.signRed2,TEX.signBlue,TEX.signYellow,TEX.signGreen,
+                  TEX.signRed3,TEX.signTeal,TEX.signPink,TEX.signWhite,TEX.signPurple];
+  for(const sign of [-1,+1]){
+    for(let i=0;i<4;i++){
+      const tex=pick(signPool);
+      buildHangingSign(xBase+2+i*5.5,rand(3.0,4.2),sign*9.55,tex,
+        rand(1.6,2.4),rand(0.9,1.3));
+    }
+    // Tall vertical lantern-style signs sticking out perpendicular.
+    const tex=pick([TEX.signTall1,TEX.signTall2,...signPool]);
+    const vert=new THREE.Mesh(
+      new THREE.BoxGeometry(0.10,2.6,0.6),
+      new THREE.MeshBasicMaterial({map:tex})
+    );
+    vert.position.set(xBase+rand(2,CHUNK_SIZE-2),4.0,sign*8.5);
+    scene.add(vert);chunk.meshes.push(vert);
+  }
+
+  // --- Overhead string-light bulbs — additive sprites strung along
+  // the alley axis. Each chunk adds ~14 bulbs.
+  for(let i=0;i<14;i++){
+    const bulb=new THREE.Sprite(SPRITE_MAT.stringBulb);
+    bulb.scale.set(0.35,0.35,1);
+    bulb.position.set(xBase+(i+0.5)*(CHUNK_SIZE/14),rand(4.0,4.6),rand(-2,2));
+    scene.add(bulb);chunk.meshes.push(bulb);
+  }
+  // Lamp posts at the chunk edges — chunky poles with a glow on top.
+  for(const sign of [-1,+1]){
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,4.5,6),
+      new THREE.MeshBasicMaterial({color:'#2a2a2a'}));
+    pole.position.set(xBase+1.5,2.25,sign*7.6);
+    scene.add(pole);chunk.meshes.push(pole);
+    const glow=new THREE.Sprite(SPRITE_MAT.lampGlow);
+    glow.scale.set(1.6,1.6,1);
+    glow.position.set(xBase+1.5,4.5,sign*7.6);
+    scene.add(glow);chunk.meshes.push(glow);
+  }
+
+  // --- Props scattered through the central walking area + edges.
   const stoolColours=['#d04545','#3577c4','#e69825','#5cae53','#a64ba6','#cf6b8c'];
-  for(let i=0;i<14;i++) buildStool(xBase+rand(2,CHUNK_SIZE-2),rand(5.6,7.6),pick(stoolColours));
-  buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),5.5,pick(['#3a4540','#5c2c2c','#2a3a44']));
-  buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),5.5,pick(['#3a4540','#5c2c2c','#2a3a44']));
-  buildScooter(xBase+rand(3,CHUNK_SIZE-3),rand(2.6,3.4),Math.random()*Math.PI*2);
-  if(Math.random()<0.6) buildScooter(xBase+rand(3,CHUNK_SIZE-3),rand(2.6,3.4),Math.random()*Math.PI*2);
-  if(Math.random()<0.6) buildCar(xBase+rand(4,CHUNK_SIZE-4),-3.2,Math.random()<0.5?0:Math.PI,
-    pick(['#2a2c30','#1c1c1c','#5a3030','#1a3a4a','#a8a8a8']));
+  for(let i=0;i<10;i++){
+    buildStool(xBase+rand(1,CHUNK_SIZE-1),rand(-3,3),pick(stoolColours));
+  }
+  for(let i=0;i<3;i++){
+    buildTable(xBase+rand(1,CHUNK_SIZE-1),rand(-2.5,2.5));
+  }
+  buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),rand(-3,3),pick(['#3a4540','#5c2c2c','#2a3a44']));
+  buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),rand(-3,3),pick(['#3a4540','#5c2c2c','#2a3a44']));
+  buildScooter(xBase+rand(2,CHUNK_SIZE-2),rand(-2.5,2.5),Math.random()*Math.PI*2);
+  if(Math.random()<0.5){
+    buildScooter(xBase+rand(2,CHUNK_SIZE-2),rand(-2.5,2.5),Math.random()*Math.PI*2);
+  }
 
-  // Sprite billboards — the PS1 trick that keeps the polycount in check.
+  // --- Sprite billboards — heavy crowd of distant pedestrians, plus
+  // the usual rubbish / weed scatter. Night markets are PACKED.
   scatterBillboards(xBase,xBase+CHUNK_SIZE);
+  for(let i=0;i<22;i++){
+    const s=new THREE.Sprite(SPRITE_MAT.distantHuman);
+    s.scale.set(rand(0.7,1.0),rand(1.0,1.4),1);
+    s.position.set(xBase+rand(0.5,CHUNK_SIZE-0.5),s.scale.y/2,rand(-3,3));
+    scene.add(s);chunk.meshes.push(s);
+  }
 
-  // Humans
-  const humanCount=2+(Math.random()<0.5?1:0);
+  // --- Humans (real skinned actors) — kept low (2-3 per chunk) so the
+  // total stays under ~8 across the whole 3-chunk window.
+  const humanCount=2+(Math.random()<0.4?1:0);
   for(let i=0;i<humanCount;i++){
     const x=xBase+rand(2,CHUNK_SIZE-2);
-    const z=rand(2.6,7.8);
-    const role=(Math.random()<0.25)?'cleaner':'wanderer';
+    const z=rand(-2.6,2.6);
+    const role=(Math.random()<0.2)?'cleaner':'wanderer';
     const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
     if(h){chunk.humans.push(h);game.humans.push(h)}
   }
 
   chunks.set(idx,chunk);_activeChunk=null;
-  console.log('[chunk] '+idx+' props='+chunk.props.length+' humans='+chunk.humans.length);
+  console.log('[chunk] '+idx+' props='+chunk.props.length+' humans='+chunk.humans.length+' meshes='+chunk.meshes.length);
 }
 
 function ensureChunksAroundX(x){
@@ -947,28 +1149,27 @@ function ensureChunksAroundX(x){
    ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
 function buildSkinnedActor({clip,targetHeight,tint=null}){
   const root=SkeletonUtils.clone(characterSource);
-  // Replace the FBX-supplied materials with PS1 Lambert; pixelate any
-  // textures the FBX brought along. Skinning is preserved.
   ps1ifyCharacterMaterials(root,tint);
-  // Measure pre-scale height, then scale uniformly to the target. The
-  // bind-pose bounding box is computed in world space after we attach
-  // an outer wrapper so the matrix world is up to date.
   const outer=new THREE.Group();
   outer.add(root);
-  root.updateMatrixWorld(true);
-  const bbox=new THREE.Box3().setFromObject(root);
-  const rawH=bbox.max.y-bbox.min.y;
+  // Measure the bind-pose world bbox, then scale uniformly to the target.
+  outer.updateMatrixWorld(true);
+  const bbox1=new THREE.Box3().setFromObject(outer);
+  const rawH=bbox1.max.y-bbox1.min.y;
   if(rawH>0.001){
-    const s=targetHeight/rawH;
-    root.scale.multiplyScalar(s);
-    root.updateMatrixWorld(true);
+    root.scale.multiplyScalar(targetHeight/rawH);
   }
-  // After scaling, drop the feet to the wrapper's local y=0.
-  const bbox2=new THREE.Box3().setFromObject(root);
-  root.position.y-=bbox2.min.y;
-  // Find the head bone — the face plate attaches here so it tracks
-  // the animation. Mixamo names it "mixamorigHead" (after FBXLoader
-  // normalises the colon out).
+  // Recompute the world bbox after scaling, then shift the OUTER wrapper
+  // (not the root) so the geometry's lowest world Y sits exactly at 0.
+  // Storing baseY on the result lets movement code restore the correct
+  // standing height after a jump or after the parasitism teleport.
+  outer.updateMatrixWorld(true);
+  const bbox2=new THREE.Box3().setFromObject(outer);
+  const baseY=-bbox2.min.y;
+  outer.position.y=baseY;
+  const finalH=bbox2.max.y-bbox2.min.y;
+  // Find the head bone — the face plate (player rat) or shoulder-rat
+  // indicator (parasitised host) attaches here.
   let headBone=null;
   root.traverse(o=>{
     if(o.isBone && !headBone){
@@ -976,15 +1177,10 @@ function buildSkinnedActor({clip,targetHeight,tint=null}){
       if(n.includes('head')) headBone=o;
     }
   });
-  // Build the mixer and start the clip.
   const mixer=new THREE.AnimationMixer(root);
   const action=clip?mixer.clipAction(clip):null;
-  if(action){
-    action.setEffectiveTimeScale(1);
-    action.play();
-  }
-  return {outer,root,mixer,action,headBone,
-    height:Math.max(0.001,(bbox2.max.y-bbox2.min.y)*(root.scale.x||1))};
+  if(action){action.setEffectiveTimeScale(1);action.play()}
+  return {outer,root,mixer,action,headBone,height:finalH,baseY};
 }
 
 /* ============================================================
@@ -994,29 +1190,44 @@ function buildSkinnedActor({clip,targetHeight,tint=null}){
    tracks the crawling head every frame.
    ============================================================ */
 function buildRat({isPlayer=false}={}){
+  // Non-player rats — and the player rat while the FBX hasn't loaded —
+  // use a cheap Sprite billboard. With 30 rats on screen during the
+  // breeding finale, full skinned clones were eating the frame budget.
+  // The sprite is wide-and-low for a rat silhouette and sits 12 cm
+  // above the ground.
+  const buildSpriteRat=()=>{
+    const root=new THREE.Group();
+    root.position.y=RAT_FOOT_OFFSET;
+    const s=new THREE.Sprite(SPRITE_MAT.ratSilhouette);
+    s.scale.set(0.50,0.32,1);
+    s.position.set(0,0.12,0);
+    root.add(s);
+    scene.add(root);
+    return {kind:'rat',root,isPlayer:false,inst:null,
+      vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
+      controllable:false,baseY:0,height:0.32};
+  };
+  if(!isPlayer) return buildSpriteRat();
   if(!characterSource||!crawlClip){
-    // FBX still loading — bail with a placeholder so we never silently
-    // skip a spawn. The mixer-less placeholder reads as a tiny brown
-    // block while the FBX finishes downloading.
+    // FBX still streaming — placeholder block so the player has
+    // something to move while the download finishes.
     const root=new THREE.Group();
     root.position.y=RAT_FOOT_OFFSET;
     const ph=new THREE.Mesh(new THREE.BoxGeometry(0.30,0.12,0.18),
       new THREE.MeshLambertMaterial({color:'#3e2f24'}));
     ph.position.y=0.08;root.add(ph);
     scene.add(root);
-    return {kind:'rat',root,isPlayer,inst:null,vel:new THREE.Vector3(),
-      curSpeed:0,yaw:0,vy:0,isAir:false,controllable:isPlayer,height:0.30};
+    return {kind:'rat',root,isPlayer:true,inst:null,
+      vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
+      controllable:true,baseY:0,height:0.30};
   }
-  const tint=isPlayer?null:new THREE.Color('#9d7f6a');
-  const inst=buildSkinnedActor({clip:crawlClip,targetHeight:0.34,tint});
+  const inst=buildSkinnedActor({clip:crawlClip,targetHeight:0.34,tint:null});
   const root=inst.outer;
-  root.position.y=RAT_FOOT_OFFSET;
   scene.add(root);
-  // Face plate — a small quad textured with the selfie. Position is in
-  // the head bone's local space (centimetres because the bone hasn't
-  // had its scale baked in). The empirical numbers below put the plate
-  // flush to the rig's face for the standard Mixamo head bone.
-  if(isPlayer && inst.headBone){
+  // Face plate parented to the head bone. Local coordinates are in
+  // centimetres (Mixamo bones aren't scaled — only the root is), so the
+  // numbers below put a small disc flush to the rig's face.
+  if(inst.headBone){
     const facePlate=new THREE.Mesh(
       new THREE.PlaneGeometry(15,15),
       new THREE.MeshLambertMaterial({map:faceTexture,transparent:true,
@@ -1024,17 +1235,11 @@ function buildRat({isPlayer=false}={}){
     );
     pixelate(faceTexture);
     facePlate.position.set(0,8,14);
-    facePlate.rotation.set(0,0,0);
     inst.headBone.add(facePlate);
   }
-  return {
-    kind:'rat',root,isPlayer,
-    inst,
-    vel:new THREE.Vector3(),
-    curSpeed:0,yaw:0,vy:0,isAir:false,
-    controllable:isPlayer,
-    height:inst.height
-  };
+  return {kind:'rat',root,isPlayer:true,inst,
+    vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
+    controllable:true,baseY:inst.baseY,height:inst.height};
 }
 
 /* ============================================================
@@ -1043,8 +1248,9 @@ function buildRat({isPlayer=false}={}){
    ============================================================ */
 function buildHuman({position,role='wanderer'}={}){
   if(!characterSource||!runClip){
+    // FBX placeholder — capsule body so we never silently skip a spawn.
     const root=new THREE.Group();
-    root.position.copy(position);
+    root.position.set(position.x,0,position.z);
     const ph=new THREE.Mesh(new THREE.CapsuleGeometry(0.30,1.10,4,8),
       new THREE.MeshLambertMaterial({color:role==='cleaner'?'#4a6b8c':'#6b7a52'}));
     ph.position.y=0.95;root.add(ph);
@@ -1052,24 +1258,24 @@ function buildHuman({position,role='wanderer'}={}){
     return {kind:'human',role,root,inst:null,shoulderRat:ph,
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
-      wanderTimer:rand(0.4,2.2),height:1.72};
+      wanderTimer:rand(0.4,2.2),baseY:0,height:1.72};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
-    : new THREE.Color().setHSL(Math.random(),0.4,0.85);
+    : new THREE.Color().setHSL(Math.random(),0.4,0.95);
   const inst=buildSkinnedActor({clip:runClip,targetHeight:1.72,tint});
   const root=inst.outer;
-  root.position.copy(position);
+  // buildSkinnedActor already set outer.position.y = baseY so the feet
+  // sit on world y=0. We override x and z but NEVER touch y here.
+  root.position.x=position.x;
+  root.position.z=position.z;
   scene.add(root);
-  // Shoulder-rat marker — a low-poly box parented under the head bone
-  // so it tracks the host's spine. Hidden until parasitised.
   const shoulderRat=new THREE.Mesh(
     new THREE.BoxGeometry(0.14,0.10,0.18),
     new THREE.MeshLambertMaterial({color:'#3e2f24'})
   );
   shoulderRat.visible=false;
   if(inst.headBone){
-    // In head-bone local centimetres.
     shoulderRat.position.set(15,-6,0);
     shoulderRat.scale.setScalar(1/(root.scale.x||1));
     inst.headBone.add(shoulderRat);
@@ -1077,15 +1283,10 @@ function buildHuman({position,role='wanderer'}={}){
     shoulderRat.position.set(0.22,1.40,0);
     root.add(shoulderRat);
   }
-  return {
-    kind:'human',role,root,
-    inst,
-    shoulderRat,
-    vel:new THREE.Vector3(),
-    curSpeed:0,yaw:Math.random()*Math.PI*2,vy:0,isAir:false,
-    controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),height:inst.height
-  };
+  return {kind:'human',role,root,inst,shoulderRat,
+    vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
+    vy:0,isAir:false,controllable:false,parasitised:false,
+    wanderTimer:rand(0.4,2.2),baseY:inst.baseY,height:inst.height};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -1244,14 +1445,19 @@ const modeBadge=document.getElementById('mode-badge');
 const hintEl=document.getElementById('hint');
 let hintTimer=0;
 function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
-const _tmpVec=new THREE.Vector3();
-function neckPositionOf(h,out=_tmpVec){out.set(0,1.55,0);return out.applyMatrix4(h.root.matrixWorld)}
 function nearestBiteableHuman(rat){
+  // Horizontal distance only — the rat is on the ground and the host's
+  // feet are too. A full 3D distance would always be >= the host's
+  // height (~1.55m to the neck), so the radius could never trigger no
+  // matter how close the rat got. Using xz makes the bite trigger fire
+  // when the rat is within NECK_BITE_RADIUS metres of the host's feet.
   const ratPos=rat.root.position;
   let best=null,bestD=NECK_BITE_RADIUS;
   for(const h of game.humans){
     if(h.parasitised)continue;
-    const d=neckPositionOf(h).distanceTo(ratPos);
+    const dx=h.root.position.x-ratPos.x;
+    const dz=h.root.position.z-ratPos.z;
+    const d=Math.hypot(dx,dz);
     if(d<bestD){bestD=d;best=h}
   }
   return best;
@@ -1266,7 +1472,7 @@ function enterHost(rat,host){
 function exitHost(){
   const host=game.parasitisedHost;if(!host)return;
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
-  player.root.position.set(host.root.position.x+fx*0.7,RAT_FOOT_OFFSET,host.root.position.z+fz*0.7);
+  player.root.position.set(host.root.position.x+fx*0.7,(player.baseY||0),host.root.position.z+fz*0.7);
   player.yaw=host.yaw;player.root.rotation.y=host.yaw;
   player.root.visible=true;player.controllable=true;
   host.controllable=false;host.parasitised=false;host.shoulderRat.visible=false;host.wanderTimer=rand(0.5,2);
@@ -1283,9 +1489,11 @@ function handleActionPress(){
 }
 
 // ===== Movement — same formula as 都市傳說2 =====
-function clampZ(p){
-  if(p.z<PAVEMENT_Z_MIN)p.z=PAVEMENT_Z_MIN;
-  else if(p.z>PAVEMENT_Z_MAX)p.z=PAVEMENT_Z_MAX;
+// No pavement Z clamping — characters roam the whole alley freely.
+// A very loose corridor bound stops them sailing into the buildings.
+function softClampZ(p){
+  if(p.z<ALLEY_Z_MIN)p.z=ALLEY_Z_MIN;
+  else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function updatePlayer(dt){
   const ent=game.controlled;if(!ent||!ent.controllable)return;
@@ -1307,17 +1515,20 @@ function updatePlayer(dt){
   if(ent.curSpeed>0){
     ent.root.position.x+=mdx*ent.curSpeed*dt;
     ent.root.position.z+=mdz*ent.curSpeed*dt;
-    clampZ(ent.root.position);
+    softClampZ(ent.root.position);   // keep them out of building walls
   }
-  const floorY=0;
+  // Vertical — restore the entity's standing Y (its baseY) when not in
+  // the air. baseY is whatever buildSkinnedActor measured so the feet
+  // touch world y=0; for fallback / sprite actors it's just 0.
+  const baseY=ent.baseY||0;
   if(!isHost){
     if(inputFlags.jump){if(!ent.isAir){ent.vy=JUMP_VEL;ent.isAir=true}inputFlags.jump=false}
     if(ent.isAir){
       ent.vy-=GRAVITY*dt;ent.root.position.y+=ent.vy*dt;
-      if(ent.root.position.y<=floorY+GROUND_Y_OFFSET){ent.root.position.y=floorY+GROUND_Y_OFFSET;ent.vy=0;ent.isAir=false}
-    }else ent.root.position.y=floorY+GROUND_Y_OFFSET;
+      if(ent.root.position.y<=baseY+GROUND_Y_OFFSET){ent.root.position.y=baseY+GROUND_Y_OFFSET;ent.vy=0;ent.isAir=false}
+    }else ent.root.position.y=baseY+GROUND_Y_OFFSET;
   }else{
-    inputFlags.jump=false;ent.root.position.y=0;
+    inputFlags.jump=false;ent.root.position.y=baseY;
   }
   const curY=ent.root.rotation.y;
   let diff=ent.yaw-curY;
@@ -1358,8 +1569,8 @@ function tickHumans(dt){
       h.curSpeed=spd;
       h.root.position.x+=Math.sin(h.yaw)*spd*dt;
       h.root.position.z+=Math.cos(h.yaw)*spd*dt;
-      if(h.root.position.z<PAVEMENT_Z_MIN+0.3||h.root.position.z>PAVEMENT_Z_MAX-0.5){
-        h.yaw+=Math.PI;clampZ(h.root.position);
+      if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
+        h.yaw+=Math.PI;softClampZ(h.root.position);
       }
       const curY=h.root.rotation.y;
       let diff=h.yaw-curY;
@@ -1379,7 +1590,7 @@ function tickBreeding(dt){
   if(breedTimer>0)return;
   breedTimer=Math.max(0.55,3.2-game.chaos*2.6);
   const x=player.root.position.x+rand(-14,14);
-  const z=rand(PAVEMENT_Z_MIN+0.5,PAVEMENT_Z_MAX-0.5);
+  const z=rand(ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
   const rat=buildRat({isPlayer:false});
   rat.root.position.set(x,RAT_FOOT_OFFSET,z);
   rat.yaw=Math.atan2(player.root.position.x-x,player.root.position.z-z);
@@ -1489,6 +1700,11 @@ function tick(){
 async function init(){
   setIntroProgress(2,'BOOT');
   initSharedTextures();
+  setIntroProgress(6,'TEXTURES');
+
+  // Graffiti load is fire-and-forget — chunks generated before it
+  // resolves will simply skip the graffiti decals.
+  loadGraffitiTextures().then(()=>console.log('[graffiti] loaded:',GRAFFITI_TEX.length));
   setIntroProgress(8,'TEXTURES');
 
   // Start the render loop immediately so the intro card sits over a
