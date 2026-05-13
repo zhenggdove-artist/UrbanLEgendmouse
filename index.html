@@ -8,7 +8,7 @@
 <style>
   @font-face{
     font-family:"HydrogenWhiskey";
-    src:url("../../都市傳說2/都市傳說2/urban-legend-framework/FONTS/Hydrogen Whiskey.otf") format("opentype");
+    src:url("./ui/fonts/Hydrogen Whiskey.otf") format("opentype");
     font-weight:normal;font-style:normal;font-display:swap;
   }
   :root{
@@ -36,30 +36,43 @@
   #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none}
   #viewport-frame .viewport-edge{position:fixed;background-position:center;background-repeat:no-repeat;pointer-events:none}
   #viewport-frame-top{left:50%;top:8.4%;transform:translate(-50%,-50%);width:100%;height:34%;
-    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_top_edge.png");background-size:100% 100%}
+    background-image:url("./ui/img/viewport_frame_top_edge.png");background-size:100% 100%}
   #viewport-frame-bottom{left:50%;top:91.6%;transform:translate(-50%,-50%);width:100%;height:40%;
-    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_bottom_edge.png");background-size:100% 100%}
+    background-image:url("./ui/img/viewport_frame_bottom_edge.png");background-size:100% 100%}
   #viewport-frame-left{left:11%;top:50%;transform:translate(-50%,-50%);width:22%;height:100%;
-    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_left_edge.png");background-size:100% 100%}
+    background-image:url("./ui/img/viewport_frame_left_edge.png");background-size:100% 100%}
   #viewport-frame-right{left:89%;top:50%;transform:translate(-50%,-50%);width:22%;height:100%;
-    background-image:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/viewport_frame_right_edge.png");background-size:100% 100%}
+    background-image:url("./ui/img/viewport_frame_right_edge.png");background-size:100% 100%}
 
-  #hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;
-    align-items:flex-start;gap:12px;pointer-events:none;z-index:12}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:12}
   .hud-box{background:linear-gradient(180deg,#fff7d3 0%,#fff1c2 100%);border:1px solid rgba(255,255,255,0.6);
     border-radius:18px;padding:6px 14px;font:700 13px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.10em;
-    color:#7a746d;box-shadow:0 10px 20px rgba(0,0,0,0.28);text-transform:uppercase}
+    color:#7a746d;box-shadow:0 10px 20px rgba(0,0,0,0.28);text-transform:uppercase;
+    position:fixed;transform:translate(-50%,-50%);text-align:center;min-width:128px}
+  .hud-box::before{content:'';position:absolute;left:50%;top:50%;
+    width:calc(100% + 28px);height:calc(100% + 24px);transform:translate(-50%,-50%);
+    background:url("./ui/img/hud_small_frame_overlay.png") center/100% 100% no-repeat;
+    pointer-events:none;z-index:0}
+  .hud-box > *{position:relative;z-index:1}
   .hud-box.mode-host{color:var(--host);border-color:rgba(124,248,192,0.45)}
-  .hud-box.meter{min-width:140px}
+  .hud-box.meter{min-width:160px}
   .hud-box .bar{position:relative;height:5px;margin-top:5px;background:#000;border-radius:2px;overflow:hidden}
   .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos)}
   .hud-box.rats .fill{background:var(--accent-soft)}
+  #mode-badge{left:11%;top:9.8%}
+  #chaos-box{left:82%;top:9.8%}
+  #rats-box{left:82%;top:17.2%}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(8,5,14,0.92);z-index:30}
   .intro-card{width:min(420px,calc(100vw - 32px));background:linear-gradient(180deg,#fff7d3 0%,#fff1c2 100%);
     border:1px solid rgba(255,255,255,0.58);border-radius:22px;padding:20px;text-align:center;
-    box-shadow:0 24px 60px rgba(0,0,0,0.6);font-family:"Courier New",monospace}
+    box-shadow:0 24px 60px rgba(0,0,0,0.6);font-family:"Courier New",monospace;position:relative}
+  .intro-card::before,.selfie-card::before{content:'';position:absolute;left:50%;top:50%;
+    width:calc(100% + 44px);height:calc(100% + 40px);transform:translate(-50%,-50%);
+    background:url("./ui/img/skill_panel_frame_overlay.png") center/100% 100% no-repeat;
+    pointer-events:none;z-index:0}
+  .intro-card > *,.selfie-card > *{position:relative;z-index:1}
   .intro-card h1{margin:0 0 6px;font-size:20px;letter-spacing:0.18em;color:#9b936d;font-family:"HydrogenWhiskey","Trebuchet MS",sans-serif}
   .intro-card .tag{font-size:10px;letter-spacing:0.20em;color:#7d7161;margin-bottom:14px;text-transform:uppercase}
   .intro-copy{font-size:12px;line-height:1.6;color:#5b4a3e;text-align:left;
@@ -79,7 +92,7 @@
   #selfie-modal.show{display:flex}
   .selfie-card{width:min(360px,calc(100vw - 32px));background:var(--panel);
     border:1px solid var(--panel-edge);border-radius:8px;padding:18px;text-align:center;
-    font-family:"Courier New",monospace}
+    font-family:"Courier New",monospace;position:relative}
   .selfie-card h2{margin:0 0 4px;font-size:16px;letter-spacing:0.10em;color:var(--accent-soft);text-transform:uppercase}
   .selfie-card p{font-size:11px;color:var(--ink-soft);margin:0 0 14px;line-height:1.6}
   .selfie-preview{width:240px;height:240px;margin:0 auto 12px;border-radius:0;
@@ -111,7 +124,7 @@
     box-shadow:inset 0 0 0 2px rgba(255,255,255,0.45),0 8px 18px rgba(0,0,0,0.35);overflow:visible;isolation:isolate}
   .action-btn::before{content:'';position:absolute;left:50%;top:50%;
     width:192%;height:192%;transform:translate(calc(-50% + 4px),calc(-50% + 4px));
-    background:url("../../都市傳說2/都市傳說2/urban-legend-framework/img/action_frame_overlay.png") center/contain no-repeat;
+    background:url("./ui/img/action_frame_overlay.png") center/contain no-repeat;
     pointer-events:none;z-index:2;filter:drop-shadow(0 0 8px rgba(244,238,92,0.18))}
   .action-btn:active{transform:translateY(2px)}
   #jump-btn{right:6%;bottom:39%;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#a8d8ff 55%,#5a8fcf 100%);color:#fff}
@@ -139,11 +152,53 @@
     background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
     letter-spacing:0.16em;cursor:pointer}
 
+  .ui-layout-editor{position:fixed;inset:0;z-index:1200;pointer-events:none}
+  .ui-layout-editor::before{content:'';position:absolute;inset:0;background:rgba(12,8,20,0.16)}
+  .ui-layout-toolbar,.ui-layout-panel,.ui-layout-toast,.ui-layout-box{pointer-events:auto}
+  .ui-layout-toolbar{position:fixed;top:16px;right:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+    max-width:min(92vw,680px);padding:10px 12px;border-radius:16px;border:1px solid rgba(255,245,208,0.45);
+    background:rgba(17,11,28,0.92);box-shadow:0 18px 38px rgba(0,0,0,0.38)}
+  .ui-layout-toolbar button{appearance:none;border:none;border-radius:999px;padding:8px 12px;cursor:pointer;
+    font:700 11px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.12em;text-transform:uppercase;
+    background:#fff1c2;color:#24122d}
+  .ui-layout-toolbar button.is-active{background:#ff8fb8;color:#3b1224}
+  .ui-layout-toolbar .ui-layout-pill{font:700 11px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;color:#fff7d3;
+    letter-spacing:0.14em;padding-right:4px}
+  .ui-layout-panel{position:fixed;right:16px;top:78px;width:min(300px,86vw);max-height:min(70vh,720px);overflow:auto;
+    border-radius:20px;border:1px solid rgba(255,245,208,0.45);background:rgba(17,11,28,0.94);padding:14px;
+    box-shadow:0 20px 42px rgba(0,0,0,0.42);color:#fff7d3}
+  .ui-layout-panel h3{margin:0 0 10px;font:700 14px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.16em}
+  .ui-layout-panel p{margin:0 0 10px;font:12px/1.4 "Courier New",monospace;color:#d6c6a3}
+  .ui-layout-list{display:flex;flex-direction:column;gap:8px}
+  .ui-layout-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:12px;
+    background:rgba(255,247,211,0.08);border:1px solid transparent;cursor:pointer}
+  .ui-layout-row.is-selected{border-color:#ffe970;background:rgba(255,233,112,0.16)}
+  .ui-layout-row span{font:12px/1.2 "Courier New",monospace}
+  .ui-layout-row code{font-size:10px;color:#ffcfda}
+  .ui-layout-box{position:fixed;border:2px solid #ffe970;box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset,0 0 16px rgba(255,233,112,0.24);
+    background:rgba(255,233,112,0.08)}
+  .ui-layout-box.is-selected{border-color:#ff8fb8;background:rgba(255,143,184,0.12)}
+  .ui-layout-box-label{position:absolute;left:0;top:-24px;padding:4px 8px;border-radius:999px;background:rgba(17,11,28,0.94);
+    color:#fff7d3;font:700 10px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.12em;white-space:nowrap}
+  .ui-layout-handle{position:absolute;width:12px;height:12px;border-radius:50%;background:#fff7d3;border:2px solid #24122d}
+  .ui-layout-handle[data-corner="nw"]{left:-8px;top:-8px;cursor:nwse-resize}
+  .ui-layout-handle[data-corner="ne"]{right:-8px;top:-8px;cursor:nesw-resize}
+  .ui-layout-handle[data-corner="sw"]{left:-8px;bottom:-8px;cursor:nesw-resize}
+  .ui-layout-handle[data-corner="se"]{right:-8px;bottom:-8px;cursor:nwse-resize}
+  .ui-layout-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);padding:10px 14px;border-radius:999px;
+    background:rgba(17,11,28,0.94);border:1px solid rgba(255,245,208,0.45);color:#fff7d3;
+    font:12px/1 "Courier New",monospace;letter-spacing:0.08em;box-shadow:0 14px 26px rgba(0,0,0,0.35)}
+
   @media (max-width:640px){
     .hud-box{font-size:10px;padding:5px 8px}
-    .hud-box.meter{min-width:108px}
+    .hud-box.meter{min-width:124px}
+    #mode-badge{left:18%;top:7.2%}
+    #chaos-box{left:72%;top:7.2%}
+    #rats-box{left:72%;top:14%}
     .intro-card h1{font-size:16px}
     .intro-copy{font-size:11px}
+    .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
+    .ui-layout-panel{top:112px;left:10px;right:10px;width:auto}
   }
 </style>
 </head>
@@ -158,11 +213,9 @@
 
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
-  <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
-    <div class="hud-box meter">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
-    <div class="hud-box meter rats">RATS <span id="rat-count">1</span> / <span id="rat-goal">30</span>
-      <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
-  </div>
+  <div class="hud-box meter" id="chaos-box">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
+  <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span> / <span id="rat-goal">30</span>
+    <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
 </div>
 <div id="hint"></div>
 
@@ -357,6 +410,7 @@ function onResize(){
   // so the framing stays stable when the user rotates their phone.
   camera.aspect=LOW_W/LOW_H;
   camera.updateProjectionMatrix();
+  if(window.__uiLayoutConfig) applyUILayoutConfig();
 }
 window.addEventListener('resize',onResize);
 onResize();
@@ -1709,11 +1763,12 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
+const HUMAN_WORLD_Y_OFFSET=-2;
 function buildHuman({position,role='wanderer'}={}){
   if(!characterSource||!HUMAN_CLIPS.run){
     // FBX placeholder — capsule body so we never silently skip a spawn.
     const root=new THREE.Group();
-    root.position.set(position.x,0,position.z);
+    root.position.set(position.x,HUMAN_WORLD_Y_OFFSET,position.z);
     const ph=new THREE.Mesh(new THREE.CapsuleGeometry(0.30,1.10,4,8),
       new THREE.MeshLambertMaterial({color:role==='cleaner'?'#4a6b8c':'#6b7a52'}));
     ph.position.y=0.95;root.add(ph);
@@ -1721,7 +1776,7 @@ function buildHuman({position,role='wanderer'}={}){
     return {kind:'human',role,root,inst:null,shoulderRat:ph,
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
-      wanderTimer:rand(0.4,2.2),baseY:0,height:1.72,
+      wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
       behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
       actionName:null,actionTimer:0,downTimer:0,animState:'idle'};
@@ -1731,7 +1786,7 @@ function buildHuman({position,role='wanderer'}={}){
     : new THREE.Color().setHSL(Math.random(),0.4,0.95);
   const inst=buildSkinnedActor({targetHeight:1.52,tint,clips:HUMAN_CLIPS});
   const root=inst.outer;
-  root.position.set(position.x,0,position.z);
+  root.position.set(position.x,HUMAN_WORLD_Y_OFFSET,position.z);
   scene.add(root);
   const shoulderRat=new THREE.Mesh(
     new THREE.BoxGeometry(0.14,0.10,0.18),
@@ -1749,7 +1804,7 @@ function buildHuman({position,role='wanderer'}={}){
   return {kind:'human',role,root,inst,shoulderRat,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),baseY:0,height:inst.height,
+    wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
     actionName:null,actionTimer:0,downTimer:0,animState:'idle'};
@@ -1800,6 +1855,305 @@ function tickRatBillboard(rat,dt){
 }
 
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
+// ===== UI layout admin (Shift+C) =====
+const UI_LAYOUT_STORAGE_KEY='urbanLegendMouseUILayoutV1';
+const UI_LAYOUT_DEFAULTS={
+  desktop:{
+    'viewport-frame-top':{x:50,y:8.4,w:100,h:34},
+    'viewport-frame-bottom':{x:50,y:91.6,w:100,h:40},
+    'viewport-frame-left':{x:11,y:50,w:22,h:100},
+    'viewport-frame-right':{x:89,y:50,w:22,h:100},
+    'mode-badge':{x:11,y:9.8,w:10.5,h:5.5},
+    'chaos-box':{x:82,y:9.8,w:13.2,h:6.6},
+    'rats-box':{x:82,y:17.2,w:13.2,h:6.6},
+    'hint':{x:50,y:8,w:28,h:4.8},
+    'joystick-zone':{x:12,y:84,w:9.8,h:17.5},
+    'jump-btn':{x:90.5,y:61,w:5.6,h:10},
+    'bite-btn':{x:90.5,y:76,w:5.6,h:10},
+    'pickup-btn':{x:90.5,y:91,w:5.6,h:10}
+  },
+  mobile:{
+    'viewport-frame-top':{x:50,y:8.4,w:100,h:34},
+    'viewport-frame-bottom':{x:50,y:91.6,w:100,h:40},
+    'viewport-frame-left':{x:11,y:50,w:22,h:100},
+    'viewport-frame-right':{x:89,y:50,w:22,h:100},
+    'mode-badge':{x:18,y:7.2,w:22,h:5.6},
+    'chaos-box':{x:72,y:7.2,w:24,h:6.4},
+    'rats-box':{x:72,y:14,w:24,h:6.4},
+    'hint':{x:50,y:10.2,w:60,h:5.4},
+    'joystick-zone':{x:19,y:84,w:24,h:16},
+    'jump-btn':{x:84,y:61,w:13,h:9},
+    'bite-btn':{x:84,y:76,w:13,h:9},
+    'pickup-btn':{x:84,y:91,w:13,h:9}
+  }
+};
+const UI_LAYOUT_TARGET_DEFS=[
+  {id:'viewport-frame-top',label:'Frame Top'},
+  {id:'viewport-frame-bottom',label:'Frame Bottom'},
+  {id:'viewport-frame-left',label:'Frame Left'},
+  {id:'viewport-frame-right',label:'Frame Right'},
+  {id:'mode-badge',label:'Mode Badge'},
+  {id:'chaos-box',label:'Chaos Box'},
+  {id:'rats-box',label:'Rats Box'},
+  {id:'hint',label:'Hint'},
+  {id:'joystick-zone',label:'Joystick'},
+  {id:'jump-btn',label:'Jump Button'},
+  {id:'bite-btn',label:'Bite Button'},
+  {id:'pickup-btn',label:'Pickup Button'}
+];
+const uiLayoutState={active:false,mode:null,config:null,selectedId:null,editor:null,overlays:new Map(),drag:null,toastTimer:null};
+const layoutMobileQuery=window.matchMedia('(max-width:640px)');
+function cloneUILayoutConfig(v){ return JSON.parse(JSON.stringify(v)); }
+function loadUILayoutConfig(){
+  try{
+    const raw=localStorage.getItem(UI_LAYOUT_STORAGE_KEY);
+    if(!raw) return cloneUILayoutConfig(UI_LAYOUT_DEFAULTS);
+    const parsed=JSON.parse(raw);
+    return {
+      desktop:{...cloneUILayoutConfig(UI_LAYOUT_DEFAULTS.desktop),...(parsed.desktop||{})},
+      mobile:{...cloneUILayoutConfig(UI_LAYOUT_DEFAULTS.mobile),...(parsed.mobile||{})}
+    };
+  }catch(_){
+    return cloneUILayoutConfig(UI_LAYOUT_DEFAULTS);
+  }
+}
+function saveUILayoutConfig(){
+  localStorage.setItem(UI_LAYOUT_STORAGE_KEY,JSON.stringify(uiLayoutState.config));
+  window.__uiLayoutConfig=uiLayoutState.config;
+}
+function getUILayoutMode(){ return uiLayoutState.mode || (layoutMobileQuery.matches?'mobile':'desktop'); }
+function getUILayoutStore(){ return uiLayoutState.config[getUILayoutMode()]; }
+function getUILayoutDef(id){ return UI_LAYOUT_TARGET_DEFS.find(def=>def.id===id)||null; }
+function ensureUILayoutMetrics(def){
+  const store=getUILayoutStore();
+  if(!store[def.id]) store[def.id]={...UI_LAYOUT_DEFAULTS[getUILayoutMode()][def.id]};
+  return store[def.id];
+}
+function applyUILayoutMetrics(def,metrics){
+  const el=document.getElementById(def.id);
+  if(!el) return;
+  el.style.left=`${metrics.x}%`;
+  el.style.top=`${metrics.y}%`;
+  el.style.width=`${metrics.w}%`;
+  el.style.height=`${metrics.h}%`;
+  el.style.right='auto';
+  el.style.bottom='auto';
+  el.style.transform='translate(-50%,-50%)';
+}
+function applyUILayoutConfig(){
+  if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
+  for(const def of UI_LAYOUT_TARGET_DEFS) applyUILayoutMetrics(def,ensureUILayoutMetrics(def));
+  if(uiLayoutState.active) refreshUILayoutEditor();
+}
+function showUILayoutToast(message){
+  if(!uiLayoutState.active||!uiLayoutState.editor) return;
+  let toast=uiLayoutState.editor.querySelector('.ui-layout-toast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.className='ui-layout-toast';
+    uiLayoutState.editor.appendChild(toast);
+  }
+  toast.textContent=message;
+  toast.hidden=false;
+  window.clearTimeout(uiLayoutState.toastTimer);
+  uiLayoutState.toastTimer=window.setTimeout(()=>{ if(toast) toast.hidden=true; },900);
+}
+function refreshUILayoutRows(){
+  const list=uiLayoutState.editor?.querySelector('.ui-layout-list');
+  if(!list) return;
+  for(const row of list.querySelectorAll('.ui-layout-row')){
+    row.classList.toggle('is-selected',row.dataset.targetId===uiLayoutState.selectedId);
+  }
+}
+function refreshUILayoutEditor(){
+  if(!uiLayoutState.active||!uiLayoutState.editor) return;
+  for(const def of UI_LAYOUT_TARGET_DEFS){
+    const el=document.getElementById(def.id);
+    const box=uiLayoutState.overlays.get(def.id);
+    if(!el||!box) continue;
+    const r=el.getBoundingClientRect();
+    box.style.left=`${r.left}px`;
+    box.style.top=`${r.top}px`;
+    box.style.width=`${Math.max(r.width,18)}px`;
+    box.style.height=`${Math.max(r.height,18)}px`;
+    box.style.display=(r.width<=0||r.height<=0)?'none':'block';
+    box.classList.toggle('is-selected',def.id===uiLayoutState.selectedId);
+  }
+  refreshUILayoutRows();
+}
+function exportUILayoutConfig(){
+  const block=`const UI_LAYOUT_DEFAULTS=${JSON.stringify(uiLayoutState.config,null,2)};`;
+  navigator.clipboard?.writeText(block).then(
+    ()=>showUILayoutToast('Layout config copied'),
+    ()=>window.prompt('Copy layout config',block)
+  );
+}
+function setUILayoutMode(mode){
+  uiLayoutState.mode=mode;
+  applyUILayoutConfig();
+  uiLayoutState.editor?.querySelectorAll('[data-layout-mode]')?.forEach(btn=>{
+    btn.classList.toggle('is-active',btn.dataset.layoutMode===mode);
+  });
+  showUILayoutToast(`Editing ${mode}`);
+}
+function selectUILayoutTarget(id){
+  uiLayoutState.selectedId=id;
+  refreshUILayoutEditor();
+}
+function updateUILayoutMetricsFromRect(def,left,top,width,height){
+  const vw=Math.max(window.innerWidth,1);
+  const vh=Math.max(window.innerHeight,1);
+  const metrics=ensureUILayoutMetrics(def);
+  metrics.x=+(((left+width*0.5)/vw)*100).toFixed(3);
+  metrics.y=+(((top+height*0.5)/vh)*100).toFixed(3);
+  metrics.w=+((width/vw)*100).toFixed(3);
+  metrics.h=+((height/vh)*100).toFixed(3);
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+}
+function handleUILayoutPointerMove(e){
+  const drag=uiLayoutState.drag;
+  if(!drag||drag.pointerId!==e.pointerId) return;
+  const def=getUILayoutDef(drag.id);
+  if(!def) return;
+  let left=drag.left;
+  let top=drag.top;
+  let width=drag.width;
+  let height=drag.height;
+  const dx=e.clientX-drag.startX;
+  const dy=e.clientY-drag.startY;
+  if(drag.mode==='move'){
+    left+=dx;
+    top+=dy;
+  }else{
+    if(drag.corner.includes('e')) width=Math.max(18,drag.width+dx);
+    if(drag.corner.includes('s')) height=Math.max(18,drag.height+dy);
+    if(drag.corner.includes('w')){
+      left=drag.left+dx;
+      width=Math.max(18,drag.width-dx);
+    }
+    if(drag.corner.includes('n')){
+      top=drag.top+dy;
+      height=Math.max(18,drag.height-dy);
+    }
+  }
+  left=clamp(left,0,window.innerWidth-width);
+  top=clamp(top,0,window.innerHeight-height);
+  updateUILayoutMetricsFromRect(def,left,top,width,height);
+  refreshUILayoutEditor();
+}
+function handleUILayoutPointerUp(e){
+  if(uiLayoutState.drag && uiLayoutState.drag.pointerId===e.pointerId) uiLayoutState.drag=null;
+}
+function buildUILayoutEditor(){
+  const root=document.createElement('div');
+  root.className='ui-layout-editor';
+  root.innerHTML=`<div class="ui-layout-toolbar">
+      <span class="ui-layout-pill">Shift+C Layout Admin</span>
+      <button type="button" data-layout-mode="desktop">Desktop</button>
+      <button type="button" data-layout-mode="mobile">Mobile</button>
+      <button type="button" data-layout-action="reset">Reset</button>
+      <button type="button" data-layout-action="export">Export</button>
+      <button type="button" data-layout-action="close">Close</button>
+    </div>
+    <div class="ui-layout-panel">
+      <h3>Layout Objects</h3>
+      <p>Click an item to select it. Drag the box to move it, drag corners to resize it.</p>
+      <div class="ui-layout-list"></div>
+    </div>`;
+  const list=root.querySelector('.ui-layout-list');
+  for(const def of UI_LAYOUT_TARGET_DEFS){
+    const row=document.createElement('button');
+    row.type='button';
+    row.className='ui-layout-row';
+    row.dataset.targetId=def.id;
+    row.innerHTML=`<span>${def.label}</span><code>#${def.id}</code>`;
+    row.addEventListener('click',()=>selectUILayoutTarget(def.id));
+    list.appendChild(row);
+    const box=document.createElement('div');
+    box.className='ui-layout-box';
+    box.dataset.targetId=def.id;
+    box.innerHTML=`<div class="ui-layout-box-label">${def.label}</div><div class="ui-layout-handle" data-corner="nw"></div><div class="ui-layout-handle" data-corner="ne"></div><div class="ui-layout-handle" data-corner="sw"></div><div class="ui-layout-handle" data-corner="se"></div>`;
+    box.addEventListener('pointerdown',e=>{
+      const rect=box.getBoundingClientRect();
+      const handle=e.target.closest('.ui-layout-handle');
+      uiLayoutState.drag={
+        id:def.id,
+        mode:handle?'resize':'move',
+        corner:handle?.dataset.corner||null,
+        startX:e.clientX,
+        startY:e.clientY,
+        left:rect.left,
+        top:rect.top,
+        width:rect.width,
+        height:rect.height,
+        pointerId:e.pointerId
+      };
+      selectUILayoutTarget(def.id);
+      box.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    uiLayoutState.overlays.set(def.id,box);
+    root.appendChild(box);
+  }
+  root.querySelector('[data-layout-action="reset"]').addEventListener('click',()=>{
+    uiLayoutState.config[getUILayoutMode()]=cloneUILayoutConfig(UI_LAYOUT_DEFAULTS[getUILayoutMode()]);
+    applyUILayoutConfig();
+    saveUILayoutConfig();
+    showUILayoutToast('Reset current layout bucket');
+  });
+  root.querySelector('[data-layout-action="export"]').addEventListener('click',exportUILayoutConfig);
+  root.querySelector('[data-layout-action="close"]').addEventListener('click',disableUILayoutEditor);
+  root.querySelectorAll('[data-layout-mode]').forEach(btn=>{
+    btn.addEventListener('click',()=>setUILayoutMode(btn.dataset.layoutMode));
+  });
+  window.addEventListener('pointermove',handleUILayoutPointerMove);
+  window.addEventListener('pointerup',handleUILayoutPointerUp);
+  return root;
+}
+function nudgeUILayoutSelection(dx,dy){
+  const def=getUILayoutDef(uiLayoutState.selectedId);
+  if(!def) return false;
+  const el=document.getElementById(def.id);
+  if(!el) return false;
+  const r=el.getBoundingClientRect();
+  updateUILayoutMetricsFromRect(def,r.left+dx,r.top+dy,r.width,r.height);
+  refreshUILayoutEditor();
+  return true;
+}
+function enableUILayoutEditor(){
+  if(uiLayoutState.active) return;
+  uiLayoutState.active=true;
+  if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
+  if(!uiLayoutState.mode) uiLayoutState.mode=getUILayoutMode();
+  document.body.classList.add('ui-layout-admin');
+  uiLayoutState.editor=buildUILayoutEditor();
+  document.body.appendChild(uiLayoutState.editor);
+  setUILayoutMode(uiLayoutState.mode);
+  selectUILayoutTarget(uiLayoutState.selectedId||UI_LAYOUT_TARGET_DEFS[0].id);
+  refreshUILayoutEditor();
+  showUILayoutToast('Layout admin enabled');
+}
+function disableUILayoutEditor(){
+  if(!uiLayoutState.active) return;
+  uiLayoutState.active=false;
+  document.body.classList.remove('ui-layout-admin');
+  window.removeEventListener('pointermove',handleUILayoutPointerMove);
+  window.removeEventListener('pointerup',handleUILayoutPointerUp);
+  uiLayoutState.editor?.remove();
+  uiLayoutState.editor=null;
+  uiLayoutState.overlays.clear();
+  uiLayoutState.drag=null;
+}
+function toggleUILayoutEditor(){
+  if(uiLayoutState.active) disableUILayoutEditor();
+  else enableUILayoutEditor();
+}
+uiLayoutState.config=loadUILayoutConfig();
+window.__uiLayoutConfig=uiLayoutState.config;
+applyUILayoutConfig();
+
 let joyX=0,joyY=0;
 const keys={w:false,a:false,s:false,d:false,up:false,down:false,left:false,right:false};
 const inputFlags={jump:false,action:false};
@@ -1846,6 +2200,23 @@ pickupBtn.addEventListener('pointerup',releasePickup);
 pickupBtn.addEventListener('pointercancel',releasePickup);
 pickupBtn.addEventListener('pointerleave',releasePickup);
 window.addEventListener('keydown',e=>{
+  if(e.shiftKey&&e.code==='KeyC'){
+    e.preventDefault();
+    toggleUILayoutEditor();
+    return;
+  }
+  if(uiLayoutState.active){
+    if(e.code==='Escape'){
+      e.preventDefault();
+      disableUILayoutEditor();
+      return;
+    }
+    const step=e.shiftKey?10:2;
+    if(e.code==='ArrowUp'&&nudgeUILayoutSelection(0,-step)){ e.preventDefault(); return; }
+    if(e.code==='ArrowDown'&&nudgeUILayoutSelection(0,step)){ e.preventDefault(); return; }
+    if(e.code==='ArrowLeft'&&nudgeUILayoutSelection(-step,0)){ e.preventDefault(); return; }
+    if(e.code==='ArrowRight'&&nudgeUILayoutSelection(step,0)){ e.preventDefault(); return; }
+  }
   if(e.code==='KeyW')keys.w=true;if(e.code==='KeyA')keys.a=true;
   if(e.code==='KeyS')keys.s=true;if(e.code==='KeyD')keys.d=true;
   if(e.code==='ArrowUp')keys.up=true;if(e.code==='ArrowDown')keys.down=true;
@@ -1859,6 +2230,10 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyQ'&&game.controlMode==='host') exitHost();
 });
 window.addEventListener('keyup',e=>{
+  if(uiLayoutState.active && e.code.startsWith('Arrow')){
+    e.preventDefault();
+    return;
+  }
   if(e.code==='KeyW')keys.w=false;if(e.code==='KeyA')keys.a=false;
   if(e.code==='KeyS')keys.s=false;if(e.code==='KeyD')keys.d=false;
   if(e.code==='ArrowUp')keys.up=false;if(e.code==='ArrowDown')keys.down=false;
