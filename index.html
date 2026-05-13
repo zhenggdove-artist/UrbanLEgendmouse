@@ -257,7 +257,7 @@ screenScene.add(screenQuad);
 // ===== Scene & Camera =====
 const scene=new THREE.Scene();
 // Linear distance fog hides chunk pop-in. MeshBasicMaterial respects it.
-scene.fog=new THREE.Fog('#2a1838',10,64);
+scene.fog=new THREE.Fog('#2a1838',14,96);
 scene.background=new THREE.Color('#2a1838');
 
 /* Lights — only used by the MeshLambertMaterials on the rat & humans.
@@ -330,7 +330,7 @@ const imageLoader=new THREE.TextureLoader();
 let crawlFBX=null,runFBX=null;
 let characterSource=null;
 const HUMAN_CLIPS={idle:null,run:null,jump:null,kick:null,punch:null,punchcombo:null,clean:null};
-const HUMAN_SKIN={base:null,normal:null,roughness:null};
+const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null};
 
 function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
@@ -339,24 +339,22 @@ function loadGLTFAsync(path,onProgress){
   return new Promise((res,rej)=>gltfLoader.load(path,res,onProgress,rej));
 }
 function loadTextureAsync(path){
-  return new Promise((res,rej)=>imageLoader.load(path,tex=>res(pixelate(tex)),undefined,rej));
+  return new Promise((res,rej)=>imageLoader.load(path,tex=>{
+    tex.flipY=false;
+    res(pixelate(tex));
+  },undefined,rej));
 }
 
-// Apply PS1 treatment to a cloned FBX character: replace each material
-// with a cheaper MeshLambertMaterial BUT copy every relevant property
-// from the source (map / colour / emissive / opacity) so we don't lose
-// the Mixamo skin. Textures get pinned to NearestFilter for the chunky
-// PS1 look. Skinning auto-detects when the material is on a SkinnedMesh
-// in r160+ so no flag is needed.
+// Apply PS1 treatment to a cloned skinned actor. We still keep dynamic
+// characters lit, but the material stack follows the reference project:
+// imported skin textures override the placeholder source material.
 function ps1ifyCharacterMaterials(root,tint){
   root.traverse(o=>{
     if(!o.isMesh)return;
     o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
     const mats=Array.isArray(o.material)?o.material:[o.material];
     const replaced=mats.map(src=>{
-      const m=new THREE.MeshLambertMaterial();
-      // Fallback to a Mixamo-yellow skin so a missing material never
-      // leaves a black or invisible character.
+      const m=new THREE.MeshStandardMaterial();
       m.color.set('#d9c08a');
       if(src){
         if(src.color)        m.color.copy(src.color);
@@ -374,11 +372,18 @@ function ps1ifyCharacterMaterials(root,tint){
         if(src.opacity!==undefined)     m.opacity=src.opacity;
         if(src.alphaTest!==undefined)   m.alphaTest=src.alphaTest;
         if(src.side!==undefined)        m.side=src.side;
+        if(src.roughness!==undefined)   m.roughness=src.roughness;
+        if(src.metalness!==undefined)   m.metalness=src.metalness;
       }
       if(HUMAN_SKIN.base){
         m.map=HUMAN_SKIN.base;
         m.map.colorSpace=THREE.SRGBColorSpace;
       }
+      if(HUMAN_SKIN.normal) m.normalMap=HUMAN_SKIN.normal;
+      if(HUMAN_SKIN.roughness) m.roughnessMap=HUMAN_SKIN.roughness;
+      if(HUMAN_SKIN.metal) m.metalnessMap=HUMAN_SKIN.metal;
+      m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
+      m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
       if(tint && m.color) m.color.multiply(tint);
       return m;
     });
@@ -1063,7 +1068,7 @@ function scatterBillboards(xBase,xEnd){
 }
 
 // ===== Chunk system — infinite alley along the X axis =====
-const CHUNK_SIZE=24, CHUNK_WINDOW=3;
+const CHUNK_SIZE=24, CHUNK_WINDOW=4;
 const chunks=new Map();
 let lastChunkIdx=null;
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
@@ -1188,19 +1193,27 @@ function generateChunk(idx){
   // the lower portion of each building wall.
   if(GRAFFITI_TEX.length){
     for(const sign of [-1,+1]){
-      const count=8+Math.floor(Math.random()*6);
+      const count=10+Math.floor(Math.random()*6);
       for(let i=0;i<count;i++){
         const tex=pick(GRAFFITI_TEX);
         const img=tex.image;
         const aspect=(img && img.width)?(img.height/img.width):0.75;
-        const w=rand(1.4,3.6),h=Math.min(3.4,w*aspect);
+        let w=rand(2.1,5.4);
+        const muralRoll=Math.random();
+        if(muralRoll<0.18){
+          w=rand(10.0,18.0);
+        }else if(muralRoll<0.52){
+          w=rand(5.0,10.0);
+        }
+        const h=Math.min(7.8,Math.max(1.8,w*aspect));
         const panel=new THREE.Mesh(
           new THREE.PlaneGeometry(w,h),
-          new THREE.MeshBasicMaterial({map:tex})
+          new THREE.MeshBasicMaterial({map:tex,transparent:true})
         );
+        const edgePad=Math.min(w*0.35,2.4);
         panel.position.set(
-          xBase+rand(0.8,CHUNK_SIZE-0.8),
-          rand(0.8,4.0),
+          xBase+rand(edgePad,CHUNK_SIZE-edgePad),
+          rand(1.2,5.3),
           sign*9.55
         );
         panel.rotation.y=sign>0?Math.PI:0;   // face the alley centre
@@ -1339,22 +1352,18 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
   ps1ifyCharacterMaterials(root,tint);
   const outer=new THREE.Group();
   outer.add(root);
-  // Measure the bind-pose world bbox, then scale uniformly to the target.
-  outer.updateMatrixWorld(true);
-  const bbox1=new THREE.Box3().setFromObject(outer);
+  root.updateMatrixWorld(true);
+  const bbox1=new THREE.Box3().setFromObject(root);
   const rawH=bbox1.max.y-bbox1.min.y;
   if(rawH>0.001){
-    root.scale.multiplyScalar(targetHeight/rawH);
+    root.scale.setScalar(targetHeight/rawH);
   }
-  // Recompute the world bbox after scaling, then shift the OUTER wrapper
-  // (not the root) so the geometry's lowest world Y sits exactly at 0.
-  // Storing baseY on the result lets movement code restore the correct
-  // standing height after a jump or after the parasitism teleport.
-  outer.updateMatrixWorld(true);
-  const bbox2=new THREE.Box3().setFromObject(outer);
-  const baseY=-bbox2.min.y;
-  outer.position.y=baseY;
-  const finalH=bbox2.max.y-bbox2.min.y;
+  root.updateMatrixWorld(true);
+  const bbox2=new THREE.Box3().setFromObject(root);
+  root.position.y-=bbox2.min.y;
+  root.updateMatrixWorld(true);
+  const bbox3=new THREE.Box3().setFromObject(root);
+  const finalH=bbox3.max.y-bbox3.min.y;
   // Find the head bone — the face plate (player rat) or shoulder-rat
   // indicator (parasitised host) attaches here.
   let headBone=null;
@@ -1378,7 +1387,7 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
   }
   const action=clip?mixer.clipAction(clip):null;
   if(action){action.setEffectiveTimeScale(1);action.play()}
-  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY};
+  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY:0};
 }
 
 /* ============================================================
@@ -1489,12 +1498,7 @@ function buildHuman({position,role='wanderer'}={}){
     : new THREE.Color().setHSL(Math.random(),0.4,0.95);
   const inst=buildSkinnedActor({targetHeight:1.72,tint,clips:HUMAN_CLIPS});
   const root=inst.outer;
-  root.position.x=position.x;
-  root.position.z=position.z;
-  root.updateMatrixWorld(true);
-  const humanBox=new THREE.Box3().setFromObject(root);
-  const groundLift=-humanBox.min.y;
-  root.position.y+=groundLift;
+  root.position.set(position.x,0,position.z);
   scene.add(root);
   const shoulderRat=new THREE.Mesh(
     new THREE.BoxGeometry(0.14,0.10,0.18),
@@ -1512,7 +1516,7 @@ function buildHuman({position,role='wanderer'}={}){
   return {kind:'human',role,root,inst,shoulderRat,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),baseY:root.position.y,height:inst.height,
+    wanderTimer:rand(0.4,2.2),baseY:0,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0};
 }
 
@@ -2129,7 +2133,7 @@ async function init(){
     const [
       playerMainGLB,
       idleGLB,runGLB,jumpGLB,kickGLB,punchGLB,punchComboGLB,cleanGLB,
-      baseColourTex
+      baseColourTex,normalTex,roughTex,metalTex
     ]=await Promise.all([
       loadGLTFAsync('mainplayermodel/player_main.glb',onRunProgress),
       loadGLTFAsync('mainplayermodel/player_idle.glb'),
@@ -2139,9 +2143,15 @@ async function init(){
       loadGLTFAsync('mainplayermodel/player_punch.glb'),
       loadGLTFAsync('mainplayermodel/player_punchcombo.glb'),
       loadGLTFAsync('mainplayermodel/player_clean.glb'),
-      loadTextureAsync('mainplayermodel/tripo_model_basecolor.JPEG')
+      loadTextureAsync('mainplayermodel/tripo_model_basecolor.JPEG'),
+      loadTextureAsync('mainplayermodel/tripo_model_normal.JPEG'),
+      loadTextureAsync('mainplayermodel/tripo_model_roughness.JPEG'),
+      loadTextureAsync('mainplayermodel/tripo_model_metallic.JPEG')
     ]);
     HUMAN_SKIN.base=baseColourTex;
+    HUMAN_SKIN.normal=normalTex;
+    HUMAN_SKIN.roughness=roughTex;
+    HUMAN_SKIN.metal=metalTex;
     characterSource=playerMainGLB.scene;
     HUMAN_CLIPS.idle=playerMainGLB.animations[0]||idleGLB.animations[0]||null;
     HUMAN_CLIPS.run=runGLB.animations[0]||null;
@@ -2154,7 +2164,7 @@ async function init(){
     // come off the same Mixamo skeleton, so the clone retargets cleanly.
     console.log('[gltf] human clips loaded:',Object.keys(HUMAN_CLIPS).filter(k=>HUMAN_CLIPS[k]));
   }catch(e){
-    console.error('[fbx] load failed — characters will use placeholder boxes',e);
+    console.error('[gltf] load failed — humans will use placeholder capsules',e);
   }
   setIntroProgress(82,'WORLD');
 
