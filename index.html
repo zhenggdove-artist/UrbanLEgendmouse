@@ -1727,6 +1727,9 @@ function tickRatBillboard(rat,dt){
 let joyX=0,joyY=0;
 const keys={w:false,a:false,s:false,d:false,up:false,down:false,left:false,right:false};
 const inputFlags={jump:false,action:false};
+const jumpBtn=document.getElementById('jump-btn');
+const biteBtn=document.getElementById('bite-btn');
+const pickupBtn=document.getElementById('pickup-btn');
 {
   const zone=document.getElementById('joystick-zone');
   const stick=document.getElementById('joystick-stick');
@@ -1881,9 +1884,6 @@ btnSkip.addEventListener('click',()=>closeSelfieAnd(null));
 // ===== Parasitism =====
 const modeBadge=document.getElementById('mode-badge');
 const hintEl=document.getElementById('hint');
-const jumpBtn=document.getElementById('jump-btn');
-const biteBtn=document.getElementById('bite-btn');
-const pickupBtn=document.getElementById('pickup-btn');
 let hintTimer=0;
 function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
 function updateActionButtons(){
