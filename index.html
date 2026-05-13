@@ -95,8 +95,9 @@
     cursor:pointer;touch-action:none;
     box-shadow:0 6px 16px rgba(0,0,0,0.5)}
   .action-btn:active{transform:translateY(2px)}
-  #jump-btn{right:6%;bottom:24%;background:#7cf8c0;color:#0a1f15}
-  #bite-btn{right:6%;bottom:9%;background:#ff5a8a;color:#1a0917}
+  #jump-btn{right:6%;bottom:39%;background:#7cf8c0;color:#0a1f15}
+  #bite-btn{right:6%;bottom:24%;background:#ff5a8a;color:#1a0917}
+  #pickup-btn{right:6%;bottom:9%;background:#ffd166;color:#201300;display:none}
   #hint{position:fixed;top:64px;left:50%;transform:translateX(-50%);
     background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);border-radius:4px;
     padding:6px 12px;font:11px/1 "Courier New",monospace;letter-spacing:0.10em;
@@ -179,6 +180,7 @@
   <div id="joystick-zone"><div id="joystick-base"></div><div id="joystick-stick"></div></div>
   <button id="jump-btn" class="action-btn" aria-label="Jump">JUMP</button>
   <button id="bite-btn" class="action-btn" aria-label="Bite">BITE</button>
+  <button id="pickup-btn" class="action-btn" aria-label="Pick up">PICK UP</button>
 </div>
 
 <div id="rats-win">
@@ -301,6 +303,9 @@ const NECK_HINT_RADIUS=2.50;
 const CLEANER_TIDY_RADIUS=0.72;
 const CLEANER_TIDY_TIME=1.45;
 const CLEANER_CHAOS_RESTORE=0.070;
+const HOST_ATTACK_RADIUS=1.55;
+const HOST_PICKUP_RADIUS=1.65;
+const HOST_THROW_CHARGE_MAX=1.35;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-9.5, ALLEY_Z_MAX=9.5;
@@ -830,6 +835,11 @@ function basicBox(w,h,d,texOrCol,opts={}){
 // ===== Prop builders — every static prop uses MeshBasicMaterial =====
 // Active-chunk tracker for cleanup.
 let _activeChunk=null;
+function addChunkObject(root){
+  scene.add(root);
+  if(_activeChunk)_activeChunk.meshes.push(root);
+  return root;
+}
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
   scene.add(root);
@@ -837,7 +847,8 @@ function registerProp(root,radius=0.45,chaosWeight=1){
     root,radius,chaosWeight,tipped:false,
     reservedBy:null,tidyProgress:0,
     basePosition:root.position.clone(),
-    baseRotation:root.rotation.clone()
+    baseRotation:root.rotation.clone(),
+    heldBy:null,throwVel:null,throwSpin:0,throwOwner:null
   };
   game.props.push(p);
   if(_activeChunk){_activeChunk.props.push(p);_activeChunk.meshes.push(root)}
@@ -1040,6 +1051,69 @@ function buildHangingSign(x,y,z,tex,w=2.2,h=1.1){
   if(_activeChunk)_activeChunk.meshes.push(sign);
 }
 
+function buildCableSegment(a,b,colour='#181616',thickness=0.030){
+  const delta=b.clone().sub(a);
+  const len=delta.length();
+  if(len<0.02)return null;
+  const mesh=new THREE.Mesh(
+    new THREE.CylinderGeometry(thickness,thickness,len,5),
+    new THREE.MeshBasicMaterial({color:colour})
+  );
+  mesh.position.copy(a).add(b).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.clone().normalize());
+  return addChunkObject(mesh);
+}
+function buildCableCurve(points,colour='#181616',thickness=0.030){
+  for(let i=0;i<points.length-1;i++) buildCableSegment(points[i],points[i+1],colour,thickness);
+}
+function buildPowerPole(x,z,side,height=6.6){
+  const root=new THREE.Group();
+  root.position.set(x,0,z);
+  const pole=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.10,0.13,height,6),
+    new THREE.MeshBasicMaterial({color:'#52473f'})
+  );
+  pole.position.y=height*0.5;root.add(pole);
+  const armY=height-1.05;
+  const arm=new THREE.Mesh(
+    new THREE.BoxGeometry(1.55,0.09,0.13),
+    new THREE.MeshBasicMaterial({color:'#6a5d53'})
+  );
+  arm.position.set(0,armY,0);root.add(arm);
+  for(const ax of [-0.56,0,0.56]){
+    const ins=new THREE.Mesh(
+      new THREE.CylinderGeometry(0.05,0.05,0.18,6),
+      new THREE.MeshBasicMaterial({color:'#bcb4a6'})
+    );
+    ins.rotation.z=Math.PI*0.5;
+    ins.position.set(ax,armY-0.03,side*0.10);
+    root.add(ins);
+  }
+  const transformer=new THREE.Mesh(
+    new THREE.BoxGeometry(0.42,0.56,0.30),
+    new THREE.MeshBasicMaterial({color:'#87847d'})
+  );
+  transformer.position.set(side*0.34,height-1.85,0);root.add(transformer);
+  const loop=new THREE.Mesh(
+    new THREE.TorusGeometry(0.18,0.018,5,10),
+    new THREE.MeshBasicMaterial({color:'#262222'})
+  );
+  loop.rotation.y=Math.PI*0.5;
+  loop.position.set(side*0.22,height-2.25,0.04);root.add(loop);
+  addChunkObject(root);
+  return {
+    high:[
+      new THREE.Vector3(x-0.56,armY, z+side*0.05),
+      new THREE.Vector3(x,armY+0.04, z-side*0.02),
+      new THREE.Vector3(x+0.56,armY, z-side*0.05)
+    ],
+    low:[
+      new THREE.Vector3(x-side*0.28,height-1.95,z+0.03),
+      new THREE.Vector3(x+side*0.12,height-2.25,z-0.04)
+    ]
+  };
+}
+
 // ===== Sprite billboards — distant clutter (the user-requested POC #3) =====
 function scatterBillboards(xBase,xEnd){
   const chunk=_activeChunk;
@@ -1169,57 +1243,94 @@ function generateChunk(idx){
   floor.position.set(xBase+CHUNK_SIZE/2,0,0);
   scene.add(floor);chunk.meshes.push(floor);
 
-  // --- Buildings on BOTH sides — opaque wall behind the stalls.
+  // --- Buildings on BOTH sides — staggered widths, heights, colours and
+  // front/back offsets so the alley never reads as a repeated wall strip.
+  const buildingFaces=[];
+  const facadeTints=['#f0ece2','#ddd4ca','#d6d9df','#cfc6bb','#e4d6cb','#cfcfd7'];
   for(const sign of [-1,+1]){
-    const t=TEX.facade[((idx*2+(sign>0?1:0))%4+4)%4].clone();
-    t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping;
-    t.repeat.set(CHUNK_SIZE/8,1);pixelate(t);
-    const facade=new THREE.Mesh(
-      new THREE.BoxGeometry(CHUNK_SIZE,9,1.6),
-      new THREE.MeshBasicMaterial({map:t,color:'#b8a89c'})
-    );
-    facade.position.set(xBase+CHUNK_SIZE/2,4.5,sign*10.5);
-    scene.add(facade);chunk.meshes.push(facade);
-    // Ground-floor shop frontage — white tile.
-    const front=new THREE.Mesh(
-      new THREE.BoxGeometry(CHUNK_SIZE,2.4,0.18),
-      new THREE.MeshBasicMaterial({map:t,color:'#f0e8d8'})
-    );
-    front.position.set(xBase+CHUNK_SIZE/2,1.2,sign*9.65);
-    scene.add(front);chunk.meshes.push(front);
+    let cursor=xBase;
+    let partIdx=0;
+    while(cursor<xBase+CHUNK_SIZE-0.35){
+      let width=rand(3.8,8.8);
+      const remain=xBase+CHUNK_SIZE-cursor;
+      if(remain<4.6) width=remain;
+      else width=Math.min(width,remain);
+      const height=rand(6.8,13.8);
+      const depth=rand(1.3,2.8);
+      const frontZ=sign*(9.0+rand(0.2,1.7));
+      const tex=TEX.facade[((idx*5+partIdx+(sign>0?2:0))%4+4)%4].clone();
+      tex.wrapS=THREE.RepeatWrapping;tex.wrapT=THREE.RepeatWrapping;
+      tex.repeat.set(Math.max(1.5,width/2.6),Math.max(2.2,height/2.4));pixelate(tex);
+      const tint=pick(facadeTints);
+      const centreX=cursor+width*0.5;
+      const body=new THREE.Mesh(
+        new THREE.BoxGeometry(width,height,depth),
+        new THREE.MeshBasicMaterial({map:tex,color:tint})
+      );
+      body.position.set(centreX,height*0.5,frontZ+sign*depth*0.5);
+      addChunkObject(body);
+      const frontDepth=rand(0.16,0.30);
+      const front=new THREE.Mesh(
+        new THREE.BoxGeometry(width*rand(0.92,0.99),rand(2.3,2.9),frontDepth),
+        new THREE.MeshBasicMaterial({map:tex,color:pick(['#f0e8d8','#d9cbbb','#c6d2df','#d4bfb7'])})
+      );
+      front.position.set(centreX,front.geometry.parameters.height*0.5,frontZ+sign*frontDepth*0.5);
+      addChunkObject(front);
+      if(Math.random()<0.55){
+        const ledge=new THREE.Mesh(
+          new THREE.BoxGeometry(width*rand(0.35,0.85),0.10,rand(0.55,1.10)),
+          new THREE.MeshBasicMaterial({color:pick(['#5b4d45','#6a5c55','#494e5f'])})
+        );
+        ledge.position.set(centreX+rand(-width*0.18,width*0.18),rand(2.7,4.8),frontZ-sign*0.30);
+        addChunkObject(ledge);
+      }
+      buildingFaces.push({sign,xMin:cursor,xMax:cursor+width,frontZ,height});
+      cursor+=width;
+      partIdx++;
+    }
   }
 
-  // --- Graffiti panels — random photos from asset/photos slapped onto
-  // the lower portion of each building wall.
+  // --- Graffiti panels — random photos from asset/photos layered over
+  // tiled façades, including true mural-scale pieces.
   if(GRAFFITI_TEX.length){
-    for(const sign of [-1,+1]){
-      const count=10+Math.floor(Math.random()*6);
+    for(const face of buildingFaces){
+      const span=face.xMax-face.xMin;
+      const count=Math.max(2,Math.round(span*0.55)+(Math.random()<0.7?1:0));
       for(let i=0;i<count;i++){
         const tex=pick(GRAFFITI_TEX);
         const img=tex.image;
         const aspect=(img && img.width)?(img.height/img.width):0.75;
         let w=rand(2.1,5.4);
         const muralRoll=Math.random();
-        if(muralRoll<0.18){
-          w=rand(10.0,18.0);
-        }else if(muralRoll<0.52){
-          w=rand(5.0,10.0);
+        if(muralRoll<0.14 && span>6.5){
+          w=Math.min(rand(10.0,18.0),span-0.45);
+        }else if(muralRoll<0.50){
+          w=Math.min(rand(5.0,10.0),span-0.30);
+        }else{
+          w=Math.min(w,span-0.20);
         }
-        const h=Math.min(7.8,Math.max(1.8,w*aspect));
+        if(w<1.8)continue;
+        const h=Math.min(face.height-1.2,Math.min(7.8,Math.max(1.8,w*aspect)));
         const panel=new THREE.Mesh(
           new THREE.PlaneGeometry(w,h),
           new THREE.MeshBasicMaterial({map:tex,transparent:true})
         );
-        const edgePad=Math.min(w*0.35,2.4);
+        const edgePad=Math.min(Math.max(0.2,w*0.22),2.6);
         panel.position.set(
-          xBase+rand(edgePad,CHUNK_SIZE-edgePad),
-          rand(1.2,5.3),
-          sign*9.55
+          rand(face.xMin+edgePad,face.xMax-edgePad),
+          rand(1.1,Math.max(1.4,Math.min(face.height-0.8,5.8))),
+          face.frontZ-face.sign*0.03
         );
-        panel.rotation.y=sign>0?Math.PI:0;   // face the alley centre
-        scene.add(panel);chunk.meshes.push(panel);
+        panel.rotation.y=face.sign>0?Math.PI:0;
+        addChunkObject(panel);
       }
-      for(let i=0;i<3;i++) buildUtilityCabinet(xBase+rand(1.2,CHUNK_SIZE-1.2),sign*8.95,sign>0?-1:1);
+      if(Math.random()<0.78){
+        buildUtilityCabinet(
+          rand(face.xMin+0.55,face.xMax-0.55),
+          face.frontZ-face.sign*0.62,
+          face.sign>0?-1:1
+        );
+      }
     }
   }
 
@@ -1239,20 +1350,26 @@ function generateChunk(idx){
   // --- Hanging horizontal signs running along the buildings.
   const signPool=[TEX.signRed,TEX.signRed2,TEX.signBlue,TEX.signYellow,TEX.signGreen,
                   TEX.signRed3,TEX.signTeal,TEX.signPink,TEX.signWhite,TEX.signPurple];
-  for(const sign of [-1,+1]){
-    for(let i=0;i<4;i++){
-      const tex=pick(signPool);
-      buildHangingSign(xBase+2+i*5.5,rand(3.0,4.2),sign*9.55,tex,
-        rand(1.6,2.4),rand(0.9,1.3));
+  for(const face of buildingFaces){
+    if(Math.random()<0.82){
+      buildHangingSign(
+        rand(face.xMin+0.7,face.xMax-0.7),
+        rand(3.0,Math.min(5.6,face.height-1.4)),
+        face.frontZ-face.sign*0.06,
+        pick(signPool),
+        rand(1.6,Math.min(3.4,(face.xMax-face.xMin)*0.55)),
+        rand(0.9,1.4)
+      );
     }
-    // Tall vertical lantern-style signs sticking out perpendicular.
-    const tex=pick([TEX.signTall1,TEX.signTall2,...signPool]);
-    const vert=new THREE.Mesh(
-      new THREE.BoxGeometry(0.10,2.6,0.6),
-      new THREE.MeshBasicMaterial({map:tex})
-    );
-    vert.position.set(xBase+rand(2,CHUNK_SIZE-2),4.0,sign*8.5);
-    scene.add(vert);chunk.meshes.push(vert);
+    if(Math.random()<0.38){
+      const tex=pick([TEX.signTall1,TEX.signTall2,...signPool]);
+      const vert=new THREE.Mesh(
+        new THREE.BoxGeometry(0.10,rand(1.8,3.4),0.6),
+        new THREE.MeshBasicMaterial({map:tex})
+      );
+      vert.position.set(rand(face.xMin+0.5,face.xMax-0.5),rand(3.0,Math.min(5.5,face.height-1.0)),face.frontZ-face.sign*0.9);
+      addChunkObject(vert);
+    }
   }
 
   // --- Overhead string-light bulbs — additive sprites strung along
@@ -1263,16 +1380,48 @@ function generateChunk(idx){
     bulb.position.set(xBase+(i+0.5)*(CHUNK_SIZE/14),rand(4.0,4.6),rand(-2,2));
     scene.add(bulb);chunk.meshes.push(bulb);
   }
-  // Lamp posts at the chunk edges — chunky poles with a glow on top.
+  // Dense utility poles and tangled cable runs.
   for(const sign of [-1,+1]){
-    const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,4.5,6),
-      new THREE.MeshBasicMaterial({color:'#2a2a2a'}));
-    pole.position.set(xBase+1.5,2.25,sign*7.6);
-    scene.add(pole);chunk.meshes.push(pole);
-    const glow=new THREE.Sprite(SPRITE_MAT.lampGlow);
-    glow.scale.set(1.6,1.6,1);
-    glow.position.set(xBase+1.5,4.5,sign*7.6);
-    scene.add(glow);chunk.meshes.push(glow);
+    const poles=[];
+    const poleCount=5;
+    for(let i=0;i<poleCount;i++){
+      const px=xBase+1.1+i*((CHUNK_SIZE-2.2)/(poleCount-1))+rand(-0.28,0.28);
+      const pz=sign*rand(6.9,8.2);
+      const ph=rand(5.9,7.6);
+      poles.push(buildPowerPole(px,pz,sign,ph));
+      const glow=new THREE.Sprite(SPRITE_MAT.lampGlow.clone());
+      glow.scale.set(1.15,1.15,1);
+      glow.position.set(px,ph-0.8,pz-sign*0.16);
+      addChunkObject(glow);
+    }
+    for(let i=0;i<poles.length-1;i++){
+      const a=poles[i],b=poles[i+1];
+      for(let k=0;k<3;k++){
+        const sag=rand(0.35,0.85);
+        buildCableCurve([
+          a.high[k],
+          a.high[k].clone().lerp(b.high[k],0.5).add(new THREE.Vector3(0,-sag,0)),
+          b.high[k]
+        ],'#141110',0.026+Math.random()*0.012);
+      }
+      for(let k=0;k<2;k++){
+        buildCableCurve([
+          a.low[k],
+          a.low[k].clone().lerp(b.low[k],0.5).add(new THREE.Vector3(0,-rand(0.18,0.45),0)),
+          b.low[k]
+        ],'#23201d',0.020+Math.random()*0.010);
+      }
+      buildCableCurve([
+        a.high[0],
+        a.high[0].clone().add(new THREE.Vector3(rand(0.2,0.5),-rand(0.6,1.0),sign*rand(0.2,0.7))),
+        a.low[1]
+      ],'#151212',0.018);
+      buildCableCurve([
+        b.high[2],
+        b.high[2].clone().add(new THREE.Vector3(-rand(0.2,0.5),-rand(0.6,1.0),-sign*rand(0.2,0.7))),
+        b.low[0]
+      ],'#151212',0.018);
+    }
   }
 
   // --- Props scattered through the central walking area + edges.
@@ -1380,7 +1529,13 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
       if(!srcClip)continue;
       const act=mixer.clipAction(srcClip);
       act.enabled=true;
-      act.clampWhenFinished=false;
+      if(name==='idle'||name==='run'||name==='clean'){
+        act.setLoop(THREE.LoopRepeat,Infinity);
+        act.clampWhenFinished=false;
+      }else{
+        act.setLoop(THREE.LoopOnce,1);
+        act.clampWhenFinished=true;
+      }
       actions[name]=act;
     }
     if(actions.idle){actions.idle.play();actions.idle.weight=1}
@@ -1491,7 +1646,9 @@ function buildHuman({position,role='wanderer'}={}){
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
       wanderTimer:rand(0.4,2.2),baseY:0,height:1.72,
-      behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0};
+      behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
+      heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
+      actionName:null,actionTimer:0,downTimer:0,animState:'idle'};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -1517,7 +1674,9 @@ function buildHuman({position,role='wanderer'}={}){
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
     wanderTimer:rand(0.4,2.2),baseY:0,height:inst.height,
-    behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0};
+    behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
+    heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
+    actionName:null,actionTimer:0,downTimer:0,animState:'idle'};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -1528,7 +1687,8 @@ function tickActor(ent,dt){
   if(ent.inst.actions && Object.keys(ent.inst.actions).length){
     let next='idle';
     if(ent.kind==='human'){
-      if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
+      if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
+      else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
       else if(ent.curSpeed>0.35 && ent.inst.actions.run) next='run';
     }
@@ -1589,21 +1749,42 @@ const inputFlags={jump:false,action:false};
   const end=e=>{if(e.pointerId!==ptrId)return;ptrId=null;joyX=0;joyY=0;stick.style.transform='translate(0,0)'};
   zone.addEventListener('pointerup',end);zone.addEventListener('pointercancel',end);
 }
-document.getElementById('jump-btn').addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
-document.getElementById('bite-btn').addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.action=true});
+jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
+biteBtn.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  if(game.controlMode==='host') doHostAttack();
+  else inputFlags.action=true;
+});
+pickupBtn.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  if(game.controlMode==='host') doHostPickupPress();
+});
+const releasePickup=e=>{
+  e.preventDefault?.();
+  if(game.controlMode==='host') doHostPickupRelease();
+};
+pickupBtn.addEventListener('pointerup',releasePickup);
+pickupBtn.addEventListener('pointercancel',releasePickup);
+pickupBtn.addEventListener('pointerleave',releasePickup);
 window.addEventListener('keydown',e=>{
   if(e.code==='KeyW')keys.w=true;if(e.code==='KeyA')keys.a=true;
   if(e.code==='KeyS')keys.s=true;if(e.code==='KeyD')keys.d=true;
   if(e.code==='ArrowUp')keys.up=true;if(e.code==='ArrowDown')keys.down=true;
   if(e.code==='ArrowLeft')keys.left=true;if(e.code==='ArrowRight')keys.right=true;
   if(e.code==='Space')inputFlags.jump=true;
-  if(e.code==='KeyE'||e.code==='KeyF')inputFlags.action=true;
+  if(e.code==='KeyE'){
+    if(game.controlMode==='host') doHostAttack();
+    else inputFlags.action=true;
+  }
+  if(e.code==='KeyF'&&game.controlMode==='host') doHostPickupPress();
+  if(e.code==='KeyQ'&&game.controlMode==='host') exitHost();
 });
 window.addEventListener('keyup',e=>{
   if(e.code==='KeyW')keys.w=false;if(e.code==='KeyA')keys.a=false;
   if(e.code==='KeyS')keys.s=false;if(e.code==='KeyD')keys.d=false;
   if(e.code==='ArrowUp')keys.up=false;if(e.code==='ArrowDown')keys.down=false;
   if(e.code==='ArrowLeft')keys.left=false;if(e.code==='ArrowRight')keys.right=false;
+  if(e.code==='KeyF'&&game.controlMode==='host') doHostPickupRelease();
 });
 
 // ===== Camera — rat-eye, low orbit (formula identical to 都市傳說2) =====
@@ -1700,8 +1881,30 @@ btnSkip.addEventListener('click',()=>closeSelfieAnd(null));
 // ===== Parasitism =====
 const modeBadge=document.getElementById('mode-badge');
 const hintEl=document.getElementById('hint');
+const jumpBtn=document.getElementById('jump-btn');
+const biteBtn=document.getElementById('bite-btn');
+const pickupBtn=document.getElementById('pickup-btn');
 let hintTimer=0;
 function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
+function updateActionButtons(){
+  const isHost=game.controlMode==='host';
+  jumpBtn.textContent='JUMP';
+  biteBtn.textContent=isHost?'ATTACK':'BITE';
+  biteBtn.setAttribute('aria-label',isHost?'Attack':'Bite');
+  if(isHost){
+    const host=game.parasitisedHost;
+    pickupBtn.style.display='block';
+    if(host?.heldProp && host.throwCharging){
+      const pct=Math.round(clamp(host.throwCharge/HOST_THROW_CHARGE_MAX,0,1)*100);
+      pickupBtn.textContent='THROW '+pct+'%';
+    }else{
+      pickupBtn.textContent=(host?.heldProp)?'THROW':'PICK UP';
+    }
+  }else{
+    pickupBtn.style.display='none';
+    pickupBtn.textContent='PICK UP';
+  }
+}
 function nearestBiteableHuman(rat){
   // Horizontal distance only — the rat is on the ground and the host's
   // feet are too. A full 3D distance would always be >= the host's
@@ -1725,18 +1928,21 @@ function enterHost(rat,host){
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=true;
   game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
   modeBadge.textContent='CONTROL · HOST';modeBadge.classList.add('mode-host');
-  showHint('Inside the host. BITE to leave.');
+  updateActionButtons();
+  showHint('Inside the host. Tap the control badge to leave the body.');
   console.log('[parasitism] host acquired:',host.role,host.root.uuid.slice(0,8));
 }
 function exitHost(){
   const host=game.parasitisedHost;if(!host)return;
+  if(host.heldProp) throwHeldProp(host,0.35);
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
   player.root.position.set(host.root.position.x+fx*0.7,(player.baseY||0),host.root.position.z+fz*0.7);
   player.yaw=host.yaw;player.root.rotation.y=host.yaw;
   player.root.visible=true;player.controllable=true;
-  host.controllable=false;host.parasitised=false;host.shoulderRat.visible=false;host.wanderTimer=rand(0.5,2);
+  host.controllable=false;host.parasitised=false;host.shoulderRat.visible=false;host.wanderTimer=rand(0.5,2);host.throwCharging=false;host.throwCharge=0;host.actionTimer=0;host.actionName=null;
   game.controlMode='rat';game.controlled=player;game.parasitisedHost=null;
   modeBadge.textContent='CONTROL · RAT';modeBadge.classList.remove('mode-host');
+  updateActionButtons();
   showHint('Back in the rat.');
   console.log('[parasitism] host released');
 }
@@ -1747,6 +1953,161 @@ function handleActionPress(){
     else showHint('Get closer to a human’s neck.');
   }else exitHost();
 }
+
+modeBadge.style.cursor='pointer';
+modeBadge.addEventListener('pointerdown',e=>{
+  if(game.controlMode!=='host')return;
+  e.preventDefault();
+  exitHost();
+});
+function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
+  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+  let best=null,bestD=maxDist;
+  for(const p of game.props){
+    if(p.heldBy||p.throwVel)continue;
+    const dx=p.root.position.x-host.root.position.x;
+    const dz=p.root.position.z-host.root.position.z;
+    const d=Math.hypot(dx,dz);
+    if(d>bestD)continue;
+    const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
+    if(dot<0.05)continue;
+    best=p;bestD=d;
+  }
+  return best;
+}
+function knockHumanDown(target,sourceYaw=0){
+  if(!target||target.parasitised||target.controllable)return;
+  if(target.targetProp && target.targetProp.reservedBy===target) target.targetProp.reservedBy=null;
+  target.targetProp=null;
+  target.behaviour='wander';
+  target.curSpeed=0;
+  target.downTimer=1.3;
+  target.root.position.y=target.baseY||0;
+  target.root.rotation.x=0;
+  target.root.rotation.z=(Math.random()<0.5?-1:1)*1.08;
+  target.root.position.x+=Math.sin(sourceYaw)*0.24;
+  target.root.position.z+=Math.cos(sourceYaw)*0.24;
+}
+function liftProp(host,prop){
+  if(!host||!prop)return false;
+  if(prop.reservedBy && prop.reservedBy!==host) prop.reservedBy.targetProp=null;
+  prop.reservedBy=null;
+  prop.heldBy=host;
+  prop.throwVel=null;
+  prop.throwOwner=null;
+  host.heldProp=prop;
+  host.throwCharge=0;
+  host.throwCharging=false;
+  prop.root.rotation.set(0,host.yaw,0);
+  updateActionButtons();
+  return true;
+}
+function throwHeldProp(host,chargeRatio=0){
+  const prop=host?.heldProp;
+  if(!prop)return false;
+  const power=lerp(4.8,11.2,clamp(chargeRatio,0,1));
+  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+  prop.heldBy=null;
+  prop.throwOwner=host;
+  prop.throwVel=new THREE.Vector3(fx*power,3.4+power*0.18,fz*power);
+  prop.throwSpin=(Math.random()<0.5?-1:1)*rand(4.5,8.0);
+  prop.tipped=true;
+  host.heldProp=null;
+  host.throwCharge=0;
+  host.throwCharging=false;
+  game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.35*prop.chaosWeight);
+  updateActionButtons();
+  return true;
+}
+function doHostPickupPress(){
+  const host=game.parasitisedHost;
+  if(!host)return;
+  if(host.heldProp){
+    host.throwCharging=true;
+    host.throwCharge=0;
+    updateActionButtons();
+    return;
+  }
+  const prop=findNearestLooseProp(host);
+  if(!prop){showHint('Nothing nearby to pick up.',0.8);return;}
+  if(liftProp(host,prop)) showHint('Picked up. Tap or hold throw to launch it.',1.1);
+}
+function doHostPickupRelease(){
+  const host=game.parasitisedHost;
+  if(!host||!host.throwCharging)return;
+  const ratio=clamp(host.throwCharge/HOST_THROW_CHARGE_MAX,0,1);
+  throwHeldProp(host,ratio);
+}
+function doHostAttack(){
+  const host=game.parasitisedHost;
+  if(!host||host.attackCooldown>0||host.downTimer>0)return;
+  host.attackCooldown=0.42;
+  host.actionName='kick';
+  host.actionTimer=0.34;
+  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+  let struck=false;
+  for(const p of game.props){
+    if(p.heldBy||p.throwVel)continue;
+    const dx=p.root.position.x-host.root.position.x;
+    const dz=p.root.position.z-host.root.position.z;
+    const d=Math.hypot(dx,dz);
+    if(d>HOST_ATTACK_RADIUS)continue;
+    const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
+    if(dot<0.05)continue;
+    p.tipped=true;
+    p.root.rotation.z=lerp(p.root.rotation.z,-fx*Math.PI*0.36,0.9);
+    p.root.rotation.x=lerp(p.root.rotation.x, fz*Math.PI*0.36,0.9);
+    p.throwVel=new THREE.Vector3(fx*5.8,2.0+Math.max(0,1.1-d),fz*5.8);
+    p.throwOwner=host;
+    p.throwSpin=(Math.random()<0.5?-1:1)*rand(3.5,6.8);
+    game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*1.2*p.chaosWeight);
+    struck=true;
+  }
+  for(const h of game.humans){
+    if(h===host||h.downTimer>0)continue;
+    const dx=h.root.position.x-host.root.position.x;
+    const dz=h.root.position.z-host.root.position.z;
+    const d=Math.hypot(dx,dz);
+    if(d>1.35)continue;
+    const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
+    if(dot<0.1)continue;
+    knockHumanDown(h,host.yaw);
+    struck=true;
+  }
+  if(struck) showHint('Kick landed.',0.28);
+}
+function tickControllableHostState(dt){
+  const host=game.parasitisedHost;
+  if(!host)return;
+  if(host.attackCooldown>0) host.attackCooldown=Math.max(0,host.attackCooldown-dt);
+  if(host.actionTimer>0){
+    host.actionTimer=Math.max(0,host.actionTimer-dt);
+    if(host.actionTimer<=0) host.actionName=null;
+  }
+  if(host.throwCharging){
+    host.throwCharge=Math.min(HOST_THROW_CHARGE_MAX,host.throwCharge+dt);
+    updateActionButtons();
+  }
+  if(host.heldProp){
+    const p=host.heldProp;
+    const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+    const tx=host.root.position.x+fx*0.72;
+    const ty=(host.baseY||0)+1.22;
+    const tz=host.root.position.z+fz*0.72;
+    p.root.position.x=lerp(p.root.position.x,tx,Math.min(1,dt*14));
+    p.root.position.y=lerp(p.root.position.y,ty,Math.min(1,dt*12));
+    p.root.position.z=lerp(p.root.position.z,tz,Math.min(1,dt*14));
+    p.root.rotation.x=lerp(p.root.rotation.x,0.16,Math.min(1,dt*10));
+    p.root.rotation.y+=dt*1.8;
+    p.root.rotation.z=lerp(p.root.rotation.z,0.08,Math.min(1,dt*10));
+  }
+}
+handleActionPress=()=>{
+  if(game.controlMode!=='rat')return;
+  const host=nearestBiteableHuman(player);
+  if(host) enterHost(player,host);
+  else showHint('Get closer to a human neck.');
+};
 
 // ===== Movement — same formula as 都市傳說2 =====
 // No pavement Z clamping — characters roam the whole alley freely.
@@ -1790,14 +2151,19 @@ function updatePlayer(dt){
   // the air. baseY is whatever buildSkinnedActor measured so the feet
   // touch world y=0; for fallback / sprite actors it's just 0.
   const baseY=ent.baseY||0;
-  if(!isHost){
-    if(inputFlags.jump){if(!ent.isAir){ent.vy=JUMP_VEL;ent.isAir=true}inputFlags.jump=false}
-    if(ent.isAir){
-      ent.vy-=GRAVITY*dt;ent.root.position.y+=ent.vy*dt;
-      if(ent.root.position.y<=baseY+GROUND_Y_OFFSET){ent.root.position.y=baseY+GROUND_Y_OFFSET;ent.vy=0;ent.isAir=false}
-    }else ent.root.position.y=baseY+GROUND_Y_OFFSET;
+  if(inputFlags.jump){
+    if(!ent.isAir){
+      ent.vy=isHost?JUMP_VEL*0.92:JUMP_VEL;
+      ent.isAir=true;
+    }
+    inputFlags.jump=false;
+  }
+  if(ent.isAir){
+    ent.vy-=GRAVITY*dt;ent.root.position.y+=ent.vy*dt;
+    const groundY=baseY+GROUND_Y_OFFSET;
+    if(ent.root.position.y<=groundY){ent.root.position.y=groundY;ent.vy=0;ent.isAir=false}
   }else{
-    inputFlags.jump=false;ent.root.position.y=baseY;
+    ent.root.position.y=baseY+GROUND_Y_OFFSET;
   }
   const curY=ent.root.rotation.y;
   let diff=ent.yaw-curY;
@@ -1813,6 +2179,30 @@ function tickProps(dt){
   const speed=ent.curSpeed;
   const hostMul=(game.controlMode==='host')?1.4:1.0;
   for(const p of game.props){
+    if(p.heldBy)continue;
+    if(p.throwVel){
+      p.root.position.addScaledVector(p.throwVel,dt);
+      p.throwVel.y-=GRAVITY*0.92*dt;
+      p.root.rotation.x+=p.throwSpin*dt;
+      p.root.rotation.z+=p.throwSpin*0.65*dt;
+      for(const h of game.humans){
+        if(h===p.throwOwner||h===game.parasitisedHost||h.downTimer>0)continue;
+        const dx=h.root.position.x-p.root.position.x;
+        const dz=h.root.position.z-p.root.position.z;
+        if(dx*dx+dz*dz<0.85*0.85 && p.root.position.y>(h.baseY||0)+0.35){
+          knockHumanDown(h,Math.atan2(p.throwVel.x,p.throwVel.z));
+          p.throwVel.multiplyScalar(0.45);
+        }
+      }
+      const restY=Math.max(0.12,p.basePosition.y*0.45);
+      if(p.root.position.y<=restY){
+        p.root.position.y=restY;
+        p.throwVel=null;
+        p.throwOwner=null;
+        p.tipped=true;
+      }
+      continue;
+    }
     if(p.tipped)continue;
     const dx=p.root.position.x-ex,dz=p.root.position.z-ez;
     if(dx*dx+dz*dz<p.radius*p.radius && speed>0.5){
@@ -1849,6 +2239,9 @@ function restorePropFromCleaner(prop){
   prop.root.rotation.copy(prop.baseRotation);
   prop.root.position.y=prop.basePosition.y;
   prop.tipped=false;
+  prop.heldBy=null;
+  prop.throwVel=null;
+  prop.throwOwner=null;
   prop.tidyProgress=0;
   if(prop.reservedBy) prop.reservedBy.targetProp=null;
   prop.reservedBy=null;
@@ -1856,6 +2249,7 @@ function restorePropFromCleaner(prop){
 }
 function tickCleaner(cleaner,dt){
   if(cleaner.controllable||cleaner.parasitised)return;
+  if(cleaner.downTimer>0)return;
   if(cleaner.targetProp && !cleaner.targetProp.tipped){
     if(cleaner.targetProp.reservedBy===cleaner) cleaner.targetProp.reservedBy=null;
     cleaner.targetProp=null;
@@ -1906,6 +2300,14 @@ function tickCleaner(cleaner,dt){
 }
 function tickHumans(dt){
   for(const h of game.humans){
+    if(h.downTimer>0){
+      h.downTimer=Math.max(0,h.downTimer-dt);
+      h.curSpeed=0;
+      h.root.position.y=(h.baseY||0)+GROUND_Y_OFFSET;
+      if(h.downTimer<=0) h.root.rotation.z=0;
+      tickActor(h,dt);
+      continue;
+    }
     if(h.role==='cleaner'){
       tickCleaner(h,dt);
     }else if(!h.controllable){
@@ -2008,6 +2410,7 @@ startBtn.addEventListener('click',()=>{
 function startGame(){
   gameState='playing';gameTime=0;
   game.chaos=0;game.chaosDisplay=0;
+  updateActionButtons();
   setIntroProgress(100,'READY');
   console.log('[boot] startGame');
 }
@@ -2035,7 +2438,9 @@ function renderGameToText(){
       role:controlled.role||null,
       x:+controlled.root.position.x.toFixed(2),
       y:+controlled.root.position.y.toFixed(2),
-      z:+controlled.root.position.z.toFixed(2)
+      z:+controlled.root.position.z.toFixed(2),
+      heldProp:!!controlled.heldProp,
+      throwCharge:controlled.throwCharge?+controlled.throwCharge.toFixed(2):0
     }:null,
     nearestBiteable:game.controlMode==='rat'&&player?!!nearestBiteableHuman(player):false,
     chaos:+game.chaos.toFixed(3),
@@ -2059,6 +2464,7 @@ function stepFrame(dt){
     gameTime+=dt;
     if(inputFlags.action){handleActionPress();inputFlags.action=false}
     updatePlayer(dt);
+    if(game.controlMode==='host') tickControllableHostState(dt);
     tickProps(dt);
     tickHumans(dt);
     tickBreeding(dt);
