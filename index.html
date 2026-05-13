@@ -191,6 +191,7 @@
 <script type="module">
 import * as THREE from 'three';
 import {FBXLoader} from 'three/addons/loaders/FBXLoader.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 /* ============================================================
@@ -324,12 +325,21 @@ let player=null;
 // other one's animation clip; SkeletonUtils.clone gives each character
 // an independent skeleton so per-instance mixers don't interfere.
 const fbxLoader=new FBXLoader();
+const gltfLoader=new GLTFLoader();
+const imageLoader=new THREE.TextureLoader();
 let crawlFBX=null,runFBX=null;
-let crawlClip=null,runClip=null;
-let characterSource=null;  // the FBX scene we clone for every character
+let characterSource=null;
+const HUMAN_CLIPS={idle:null,run:null,jump:null,kick:null,punch:null,punchcombo:null,clean:null};
+const HUMAN_SKIN={base:null,normal:null,roughness:null};
 
 function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
+}
+function loadGLTFAsync(path,onProgress){
+  return new Promise((res,rej)=>gltfLoader.load(path,res,onProgress,rej));
+}
+function loadTextureAsync(path){
+  return new Promise((res,rej)=>imageLoader.load(path,tex=>res(pixelate(tex)),undefined,rej));
 }
 
 // Apply PS1 treatment to a cloned FBX character: replace each material
@@ -364,6 +374,10 @@ function ps1ifyCharacterMaterials(root,tint){
         if(src.opacity!==undefined)     m.opacity=src.opacity;
         if(src.alphaTest!==undefined)   m.alphaTest=src.alphaTest;
         if(src.side!==undefined)        m.side=src.side;
+      }
+      if(HUMAN_SKIN.base){
+        m.map=HUMAN_SKIN.base;
+        m.map.colorSpace=THREE.SRGBColorSpace;
       }
       if(tint && m.color) m.color.multiply(tint);
       return m;
@@ -658,6 +672,7 @@ function makeStringBulbSprite(){
 const TEX={},SPRITE_MAT={};
 // Filled in by loadGraffitiTextures() — random panels stuck on building walls.
 const GRAFFITI_TEX=[];
+let ratPortraitTexture=null;
 function initSharedTextures(){
   TEX.asphalt=makeRoadReferenceTexture();TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;TEX.asphalt.repeat.set(3,2);
   TEX.zebra=makeZebraTexture();
@@ -720,6 +735,30 @@ function loadGraffitiTextures(){
     );
   }));
   return Promise.all(promises);
+}
+function loadFloorTexture(){
+  return new Promise(res=>{
+    imageLoader.load('asset/photos/floor/'+encodeURIComponent('螢幕擷取畫面 2026-05-13 231357.png'),
+      tex=>{
+        tex.colorSpace=THREE.SRGBColorSpace;
+        TEX.asphalt=pixelate(tex);
+        TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;
+        TEX.asphalt.repeat.set(5,5);
+        res(tex);
+      },
+      undefined,
+      ()=>res(null)
+    );
+  });
+}
+function loadRatPortraitTexture(){
+  return new Promise(res=>{
+    imageLoader.load('asset/photos/rat_reference.png',
+      tex=>{ratPortraitTexture=pixelate(tex);ratPortraitTexture.colorSpace=THREE.SRGBColorSpace;res(tex)},
+      undefined,
+      ()=>res(null)
+    );
+  });
 }
 
 /* Convenience — build a basic-material box. Static scene geometry only.
@@ -873,6 +912,23 @@ function buildBin(x,z,colour='#2a3a44'){
   const bag=new THREE.Mesh(new THREE.SphereGeometry(0.18,8,6),new THREE.MeshBasicMaterial({color:'#1a1a1a'}));
   bag.position.y=0.46;bag.scale.y=0.55;root.add(bag);
   registerProp(root,0.32,0.9);
+}
+function buildUtilityCabinet(x,z,sign=1){
+  const root=new THREE.Group();root.position.set(x,0.9,z);
+  const box=new THREE.Mesh(new THREE.BoxGeometry(1.0,1.8,0.42),new THREE.MeshBasicMaterial({color:'#8d8f8d'}));
+  root.add(box);
+  const door=new THREE.Mesh(new THREE.PlaneGeometry(0.84,1.52),new THREE.MeshBasicMaterial({
+    map:GRAFFITI_TEX.length?pick(GRAFFITI_TEX):TEX.stallFront,transparent:true
+  }));
+  door.position.set(0,0,sign*0.215);door.rotation.y=sign>0?Math.PI:0;
+  root.add(door);
+  const sticker=new THREE.Mesh(new THREE.PlaneGeometry(0.28,0.42),new THREE.MeshBasicMaterial({
+    map:GRAFFITI_TEX.length?pick(GRAFFITI_TEX):TEX.signYellow,transparent:true
+  }));
+  sticker.position.set(0.22,-0.42,sign*0.216);sticker.rotation.y=door.rotation.y;
+  root.add(sticker);
+  scene.add(root);
+  if(_activeChunk)_activeChunk.meshes.push(root);
 }
 
 function buildAwning(xStart,xEnd,zCentre=7.4){
@@ -1065,24 +1121,25 @@ function generateChunk(idx){
   // the lower portion of each building wall.
   if(GRAFFITI_TEX.length){
     for(const sign of [-1,+1]){
-      const count=2+Math.floor(Math.random()*3);
+      const count=8+Math.floor(Math.random()*6);
       for(let i=0;i<count;i++){
         const tex=pick(GRAFFITI_TEX);
         const img=tex.image;
         const aspect=(img && img.width)?(img.height/img.width):0.75;
-        const w=rand(1.2,2.2),h=w*aspect;
+        const w=rand(1.4,3.6),h=Math.min(3.4,w*aspect);
         const panel=new THREE.Mesh(
           new THREE.PlaneGeometry(w,h),
           new THREE.MeshBasicMaterial({map:tex})
         );
         panel.position.set(
-          xBase+rand(1.5,CHUNK_SIZE-1.5),
-          rand(0.6,2.4),
+          xBase+rand(0.8,CHUNK_SIZE-0.8),
+          rand(0.8,4.0),
           sign*9.55
         );
         panel.rotation.y=sign>0?Math.PI:0;   // face the alley centre
         scene.add(panel);chunk.meshes.push(panel);
       }
+      for(let i=0;i<3;i++) buildUtilityCabinet(xBase+rand(1.2,CHUNK_SIZE-1.2),sign*8.95,sign>0?-1:1);
     }
   }
 
@@ -1211,7 +1268,7 @@ function ensureChunksAroundX(x){
    final height matches. Mixamo bones use centimetres internally, so
    targeting metres here means small rats (0.30 m) end up at scale
    ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
-function buildSkinnedActor({clip,targetHeight,tint=null}){
+function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
   const root=SkeletonUtils.clone(characterSource);
   ps1ifyCharacterMaterials(root,tint);
   const outer=new THREE.Group();
@@ -1242,9 +1299,20 @@ function buildSkinnedActor({clip,targetHeight,tint=null}){
     }
   });
   const mixer=new THREE.AnimationMixer(root);
+  const actions={};
+  if(clips){
+    for(const [name,srcClip] of Object.entries(clips)){
+      if(!srcClip)continue;
+      const act=mixer.clipAction(srcClip);
+      act.enabled=true;
+      act.clampWhenFinished=false;
+      actions[name]=act;
+    }
+    if(actions.idle){actions.idle.play();actions.idle.weight=1}
+  }
   const action=clip?mixer.clipAction(clip):null;
   if(action){action.setEffectiveTimeScale(1);action.play()}
-  return {outer,root,mixer,action,headBone,height:finalH,baseY};
+  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY};
 }
 
 /* ============================================================
@@ -1254,6 +1322,31 @@ function buildSkinnedActor({clip,targetHeight,tint=null}){
    tracks the crawling head every frame.
    ============================================================ */
 function buildRat({isPlayer=false}={}){
+  const ratRoot=new THREE.Group();
+  ratRoot.position.y=RAT_FOOT_OFFSET;
+  const body=new THREE.Sprite(ratPortraitTexture
+    ? new THREE.SpriteMaterial({map:ratPortraitTexture,transparent:true,alphaTest:0.08,fog:true})
+    : SPRITE_MAT.ratSilhouette.clone());
+  body.scale.set(0.72,0.44,1);
+  body.position.set(0,0.18,0);
+  const head=new THREE.Sprite(new THREE.SpriteMaterial({
+    map:faceTexture,transparent:true,alphaTest:0.02,depthWrite:false,fog:false
+  }));
+  head.scale.set(0.19,0.19,1);
+  head.position.set(-0.14,0.19,0.01);
+  const legs=[];
+  for(const [lx,lz] of [[-0.18,0.01],[-0.04,-0.01],[0.12,0.01],[0.28,-0.01]]){
+    const leg=new THREE.Sprite(SPRITE_MAT.rubbish.clone());
+    leg.material.color.set('#5a403c');
+    leg.scale.set(0.07,0.14,1);
+    leg.position.set(lx,0.06,lz);
+    legs.push(leg);ratRoot.add(leg);
+  }
+  ratRoot.add(body);ratRoot.add(head);
+  scene.add(ratRoot);
+  return {kind:'rat',root:ratRoot,isPlayer,inst:null,body,head,legs,phase:Math.random()*Math.PI*2,
+    vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
+    controllable:!!isPlayer,baseY:0,height:0.32};
   // Non-player rats — and the player rat while the FBX hasn't loaded —
   // use a cheap Sprite billboard. With 30 rats on screen during the
   // breeding finale, full skinned clones were eating the frame budget.
@@ -1311,7 +1404,7 @@ function buildRat({isPlayer=false}={}){
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
 function buildHuman({position,role='wanderer'}={}){
-  if(!characterSource||!runClip){
+  if(!characterSource||!HUMAN_CLIPS.run){
     // FBX placeholder — capsule body so we never silently skip a spawn.
     const root=new THREE.Group();
     root.position.set(position.x,0,position.z);
@@ -1328,12 +1421,14 @@ function buildHuman({position,role='wanderer'}={}){
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
     : new THREE.Color().setHSL(Math.random(),0.4,0.95);
-  const inst=buildSkinnedActor({clip:runClip,targetHeight:1.72,tint});
+  const inst=buildSkinnedActor({targetHeight:1.72,tint,clips:HUMAN_CLIPS});
   const root=inst.outer;
-  // buildSkinnedActor already set outer.position.y = baseY so the feet
-  // sit on world y=0. We override x and z but NEVER touch y here.
   root.position.x=position.x;
   root.position.z=position.z;
+  root.updateMatrixWorld(true);
+  const humanBox=new THREE.Box3().setFromObject(root);
+  const groundLift=-humanBox.min.y;
+  root.position.y+=groundLift;
   scene.add(root);
   const shoulderRat=new THREE.Mesh(
     new THREE.BoxGeometry(0.14,0.10,0.18),
@@ -1351,7 +1446,7 @@ function buildHuman({position,role='wanderer'}={}){
   return {kind:'human',role,root,inst,shoulderRat,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),baseY:inst.baseY,height:inst.height,
+    wanderTimer:rand(0.4,2.2),baseY:root.position.y,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0};
 }
 
@@ -1360,6 +1455,21 @@ function buildHuman({position,role='wanderer'}={}){
    so the run cycle doesn't look out of place on an idle wanderer. */
 function tickActor(ent,dt){
   if(!ent.inst||!ent.inst.mixer)return;
+  if(ent.inst.actions && Object.keys(ent.inst.actions).length){
+    let next='idle';
+    if(ent.kind==='human'){
+      if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
+      else if(ent.isAir && ent.inst.actions.jump) next='jump';
+      else if(ent.curSpeed>0.35 && ent.inst.actions.run) next='run';
+    }
+    if(ent.animState!==next){
+      for(const [name,act] of Object.entries(ent.inst.actions)){
+        if(name===next){act.reset().fadeIn(0.12).play();}
+        else act.fadeOut(0.12);
+      }
+      ent.animState=next;
+    }
+  }
   let scale;
   if(ent.kind==='rat'){
     // Crawl cycle ramps from 0.4× at idle to 1.6× at full pelt.
@@ -1370,6 +1480,17 @@ function tickActor(ent,dt){
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
   ent.inst.mixer.update(dt);
+}
+function tickRatBillboard(rat,dt){
+  if(!rat.legs)return;
+  rat.phase+=dt*Math.max(3,rat.curSpeed*8);
+  const swing=Math.sin(rat.phase)*0.035;
+  rat.body.position.y=0.18+Math.abs(Math.sin(rat.phase))*0.015;
+  rat.head.position.y=0.19+Math.sin(rat.phase+0.6)*0.01;
+  rat.legs[0].position.y=0.06+Math.max(0, swing);
+  rat.legs[1].position.y=0.06+Math.max(0,-swing);
+  rat.legs[2].position.y=0.06+Math.max(0,-swing);
+  rat.legs[3].position.y=0.06+Math.max(0, swing);
 }
 
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
@@ -1765,6 +1886,7 @@ function tickFollowerRats(dt){
     r.root.rotation.y=a;
     r.curSpeed=spd;
     tickActor(r,dt);
+    tickRatBillboard(r,dt);
   }
 }
 
@@ -1871,7 +1993,7 @@ function stepFrame(dt){
     tickHumans(dt);
     tickBreeding(dt);
     tickFollowerRats(dt);
-    if(game.controlMode==='rat') tickActor(player,dt);
+    if(game.controlMode==='rat'){tickActor(player,dt);tickRatBillboard(player,dt)}
     updateHUD(dt);
     ensureChunksAroundX(player.root.position.x);
   }else if(gameState==='intro'){
@@ -1911,7 +2033,11 @@ async function init(){
 
   // Graffiti load is fire-and-forget — chunks generated before it
   // resolves will simply skip the graffiti decals.
-  loadGraffitiTextures().then(()=>console.log('[graffiti] loaded:',GRAFFITI_TEX.length));
+  await Promise.all([
+    loadGraffitiTextures().then(()=>console.log('[graffiti] loaded:',GRAFFITI_TEX.length)),
+    loadFloorTexture(),
+    loadRatPortraitTexture()
+  ]);
   setIntroProgress(8,'TEXTURES');
 
   // Start the render loop immediately so the intro card sits over a
@@ -1934,17 +2060,33 @@ async function init(){
   const onRunProgress  =e=>{if(e.lengthComputable){runLoaded=e.loaded;runTotal=e.total||runTotal;refreshDownloadProgress()}};
 
   try{
-    [crawlFBX,runFBX]=await Promise.all([
-      loadFBXAsync('asset/Running Crawl.fbx',onCrawlProgress),
-      loadFBXAsync('asset/Fast Run.fbx',     onRunProgress),
+    const [
+      playerMainGLB,
+      idleGLB,runGLB,jumpGLB,kickGLB,punchGLB,punchComboGLB,cleanGLB,
+      baseColourTex
+    ]=await Promise.all([
+      loadGLTFAsync('mainplayermodel/player_main.glb',onRunProgress),
+      loadGLTFAsync('mainplayermodel/player_idle.glb'),
+      loadGLTFAsync('mainplayermodel/player_run.glb'),
+      loadGLTFAsync('mainplayermodel/player_jump.glb'),
+      loadGLTFAsync('mainplayermodel/player_kick.glb'),
+      loadGLTFAsync('mainplayermodel/player_punch.glb'),
+      loadGLTFAsync('mainplayermodel/player_punchcombo.glb'),
+      loadGLTFAsync('mainplayermodel/player_clean.glb'),
+      loadTextureAsync('mainplayermodel/tripo_model_basecolor.JPEG')
     ]);
-    crawlClip=crawlFBX.animations[0]||null;
-    runClip  =runFBX  .animations[0]||null;
+    HUMAN_SKIN.base=baseColourTex;
+    characterSource=playerMainGLB.scene;
+    HUMAN_CLIPS.idle=playerMainGLB.animations[0]||idleGLB.animations[0]||null;
+    HUMAN_CLIPS.run=runGLB.animations[0]||null;
+    HUMAN_CLIPS.jump=jumpGLB.animations[0]||null;
+    HUMAN_CLIPS.kick=kickGLB.animations[0]||null;
+    HUMAN_CLIPS.punch=punchGLB.animations[0]||null;
+    HUMAN_CLIPS.punchcombo=punchComboGLB.animations[0]||null;
+    HUMAN_CLIPS.clean=cleanGLB.animations[0]||null;
     // We use the Fast Run scene as the shared mesh source — both clips
     // come off the same Mixamo skeleton, so the clone retargets cleanly.
-    characterSource=runFBX;
-    console.log('[fbx] crawl anims:',crawlFBX.animations.map(c=>c.name));
-    console.log('[fbx] run anims:',  runFBX.animations.map(c=>c.name));
+    console.log('[gltf] human clips loaded:',Object.keys(HUMAN_CLIPS).filter(k=>HUMAN_CLIPS[k]));
   }catch(e){
     console.error('[fbx] load failed — characters will use placeholder boxes',e);
   }
