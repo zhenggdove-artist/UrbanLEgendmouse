@@ -3,83 +3,80 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Urban Legend Mouse</title>
-<meta name="description" content="Black-humour 3D action: parasitise a Taipei back-alley as a human-headed rat."/>
-<link rel="preload" as="fetch" href="character.glb" crossorigin>
-<link rel="preload" as="fetch" href="mainplayermodel/player_main.glb" crossorigin>
+<title>Urban Legend Mouse — PS1</title>
+<meta name="description" content="Retro PS1-style 3D action: parasitise the alley as a human-headed rat."/>
 <style>
   :root{
-    --bg:#0a0712;
-    --ink:#f6efe4;
-    --ink-soft:#bfb6a8;
-    --panel:#171425;
-    --panel-edge:#2a2440;
-    --accent:#ff5a8a;
-    --accent-soft:#ffa1bf;
-    --chaos:#ffd166;
-    --host:#7cf8c0;
-    --thorn-glow:0 0 0 1.5px rgba(255,90,138,0.55),
-                 0 0 14px rgba(255,90,138,0.35),
-                 0 8px 18px rgba(0,0,0,0.55);
+    --ink:#f6efe4;--ink-soft:#bfb6a8;
+    --panel:#171425;--panel-edge:#2a2440;
+    --accent:#ff5a8a;--accent-soft:#ffa1bf;
+    --chaos:#ffd166;--host:#7cf8c0;
   }
   html,body{width:100%;height:100%;height:100dvh;margin:0;padding:0;overflow:hidden;background:#000;
     font-family:"Trebuchet MS",sans-serif;color:var(--ink);
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
-    touch-action:manipulation;-ms-touch-action:manipulation;overscroll-behavior:none}
-  body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
-    padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px);
+    touch-action:manipulation;overscroll-behavior:none;
+    /* Crisp pixel scaling on the canvas. PS1 visuals depend on the
+       browser NOT applying bilinear filtering when it upscales our
+       low-resolution back-buffer to the viewport. */
+    image-rendering:pixelated;
+    image-rendering:-moz-crisp-edges;
+    image-rendering:crisp-edges}
+  body{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
     box-sizing:border-box;position:relative}
   body *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
-  #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+  #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
+    image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
 
   #hud{position:fixed;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;
     align-items:flex-start;gap:12px;pointer-events:none;z-index:12}
   .hud-box{background:rgba(20,16,32,0.78);border:1px solid var(--panel-edge);
-    border-radius:10px;padding:7px 12px;font-size:12px;letter-spacing:0.08em;color:var(--ink);
-    box-shadow:0 6px 18px rgba(0,0,0,0.4)}
-  .hud-box.mode-host{color:var(--host);border-color:rgba(124,248,192,0.45);
-    box-shadow:0 6px 18px rgba(0,0,0,0.4),0 0 16px rgba(124,248,192,0.25)}
-  .hud-box.meter{min-width:150px}
-  .hud-box .bar{position:relative;height:6px;margin-top:5px;background:#000;border-radius:4px;overflow:hidden}
-  .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos);transition:width .2s ease}
+    border-radius:6px;padding:6px 11px;font:600 11px/1.1 "Courier New",monospace;letter-spacing:0.12em;
+    color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,0.4);text-transform:uppercase}
+  .hud-box.mode-host{color:var(--host);border-color:rgba(124,248,192,0.45)}
+  .hud-box.meter{min-width:140px}
+  .hud-box .bar{position:relative;height:5px;margin-top:5px;background:#000;border-radius:2px;overflow:hidden}
+  .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos)}
   .hud-box.rats .fill{background:var(--accent-soft)}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
-    background:rgba(8,5,14,0.88);z-index:30}
+    background:rgba(8,5,14,0.92);z-index:30}
   .intro-card{width:min(420px,calc(100vw - 32px));background:var(--panel);
-    border:1px solid var(--panel-edge);border-radius:18px;padding:22px 22px 18px;text-align:center;
-    box-shadow:0 24px 60px rgba(0,0,0,0.6)}
-  .intro-card h1{margin:0 0 4px;font-size:22px;letter-spacing:0.14em;color:var(--accent-soft)}
-  .intro-card .tag{font-size:11px;letter-spacing:0.18em;color:var(--ink-soft);margin-bottom:14px;
-    text-transform:uppercase}
-  .intro-copy{font-size:13px;line-height:1.55;color:var(--ink-soft);text-align:left;
-    background:rgba(8,5,14,0.4);border-radius:10px;padding:11px 14px;margin-bottom:14px}
+    border:1px solid var(--panel-edge);border-radius:8px;padding:20px;text-align:center;
+    box-shadow:0 24px 60px rgba(0,0,0,0.6);font-family:"Courier New",monospace}
+  .intro-card h1{margin:0 0 6px;font-size:20px;letter-spacing:0.18em;color:var(--accent-soft)}
+  .intro-card .tag{font-size:10px;letter-spacing:0.20em;color:var(--ink-soft);margin-bottom:14px;text-transform:uppercase}
+  .intro-copy{font-size:12px;line-height:1.6;color:var(--ink-soft);text-align:left;
+    background:#0e0a1a;border:1px solid #1f1a30;padding:10px 12px;margin-bottom:14px}
   .intro-copy p{margin:0 0 8px} .intro-copy p:last-child{margin-bottom:0}
-  #start-btn{appearance:none;border:none;border-radius:12px;background:var(--accent);
-    color:#1a0917;font:700 15px/1 inherit;letter-spacing:0.12em;padding:13px 22px;cursor:pointer;
-    box-shadow:var(--thorn-glow);width:100%}
+  #start-btn{appearance:none;border:none;border-radius:4px;background:var(--accent);
+    color:#1a0917;font:700 13px/1 "Courier New",monospace;letter-spacing:0.20em;
+    padding:12px 22px;cursor:pointer;width:100%;text-transform:uppercase}
   #start-btn:disabled{filter:grayscale(0.4);opacity:0.7;cursor:wait}
   #intro-progress{margin-top:12px}
-  #intro-progress-text{font:11px monospace;letter-spacing:0.16em;color:var(--ink-soft)}
-  #intro-progress-track{height:4px;margin-top:5px;background:#000;border-radius:3px;overflow:hidden}
-  #intro-progress-fill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+  #intro-progress-text{font:10px/1 "Courier New",monospace;letter-spacing:0.18em;color:var(--ink-soft)}
+  #intro-progress-track{height:3px;margin-top:5px;background:#000;overflow:hidden;border-radius:2px}
+  #intro-progress-fill{height:100%;width:0;background:var(--accent);transition:width .15s linear}
 
   #selfie-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
     background:rgba(8,5,14,0.92);z-index:40}
   #selfie-modal.show{display:flex}
   .selfie-card{width:min(360px,calc(100vw - 32px));background:var(--panel);
-    border:1px solid var(--panel-edge);border-radius:18px;padding:18px;text-align:center;
-    box-shadow:0 16px 48px rgba(0,0,0,0.6)}
-  .selfie-card h2{margin:0 0 4px;font-size:18px;letter-spacing:0.06em;color:var(--accent-soft)}
-  .selfie-card p{font-size:12px;color:var(--ink-soft);margin:0 0 14px;line-height:1.5}
-  .selfie-preview{width:240px;height:240px;margin:0 auto 12px;border-radius:50%;
-    background:#000;overflow:hidden;position:relative;border:2px solid var(--panel-edge)}
+    border:1px solid var(--panel-edge);border-radius:8px;padding:18px;text-align:center;
+    font-family:"Courier New",monospace}
+  .selfie-card h2{margin:0 0 4px;font-size:16px;letter-spacing:0.10em;color:var(--accent-soft);text-transform:uppercase}
+  .selfie-card p{font-size:11px;color:var(--ink-soft);margin:0 0 14px;line-height:1.6}
+  .selfie-preview{width:240px;height:240px;margin:0 auto 12px;border-radius:0;
+    background:#000;overflow:hidden;position:relative;border:2px solid var(--panel-edge);
+    image-rendering:pixelated}
   .selfie-preview video,.selfie-preview canvas,.selfie-preview img{
-    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);
+    image-rendering:pixelated}
   .selfie-actions{display:flex;flex-direction:column;gap:8px}
-  .selfie-actions button{appearance:none;border:none;border-radius:10px;
-    padding:11px 14px;font:600 13px/1 inherit;letter-spacing:0.06em;cursor:pointer}
+  .selfie-actions button{appearance:none;border:none;border-radius:4px;
+    padding:11px 14px;font:600 12px/1 "Courier New",monospace;letter-spacing:0.10em;cursor:pointer;
+    text-transform:uppercase}
   .btn-primary{background:var(--accent);color:#1a0917}
   .btn-secondary{background:#27213a;color:var(--ink)}
   .btn-ghost{background:transparent;color:var(--ink-soft);border:1px solid var(--panel-edge) !important}
@@ -93,17 +90,18 @@
     margin-left:-21px;margin-top:-21px;border-radius:50%;
     background:rgba(255,255,255,0.86);box-shadow:0 4px 12px rgba(0,0,0,0.5);
     transition:transform .04s linear}
-  .action-btn{position:fixed;width:76px;height:76px;border-radius:50%;border:none;
-    color:#1a0917;font:700 13px/1 inherit;letter-spacing:0.08em;
-    box-shadow:var(--thorn-glow);cursor:pointer;touch-action:none}
+  .action-btn{position:fixed;width:74px;height:74px;border-radius:50%;border:none;
+    color:#1a0917;font:700 12px/1 "Courier New",monospace;letter-spacing:0.10em;
+    cursor:pointer;touch-action:none;
+    box-shadow:0 6px 16px rgba(0,0,0,0.5)}
   .action-btn:active{transform:translateY(2px)}
-  #jump-btn{right:6%;bottom:24%;background:rgba(124,248,192,0.95);color:#0a1f15}
-  #bite-btn{right:6%;bottom:9%;background:rgba(255,90,138,0.95)}
+  #jump-btn{right:6%;bottom:24%;background:#7cf8c0;color:#0a1f15}
+  #bite-btn{right:6%;bottom:9%;background:#ff5a8a;color:#1a0917}
   #hint{position:fixed;top:64px;left:50%;transform:translateX(-50%);
-    background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);
-    border-radius:8px;padding:6px 12px;font-size:12px;color:var(--ink-soft);
-    pointer-events:none;z-index:14;opacity:0;transition:opacity .2s ease;
-    white-space:nowrap;max-width:80vw;text-align:center}
+    background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);border-radius:4px;
+    padding:6px 12px;font:11px/1 "Courier New",monospace;letter-spacing:0.10em;
+    color:var(--ink-soft);pointer-events:none;z-index:14;opacity:0;transition:opacity .15s linear;
+    white-space:nowrap;max-width:80vw;text-align:center;text-transform:uppercase}
   #hint.show{opacity:1}
 
   body.intro-active #hud,
@@ -113,18 +111,19 @@
 
   #rats-win{position:fixed;inset:0;display:none;flex-direction:column;
     align-items:center;justify-content:center;background:rgba(8,5,14,0.94);z-index:50;
-    text-align:center;padding:20px}
+    text-align:center;padding:20px;font-family:"Courier New",monospace}
   #rats-win.show{display:flex}
-  #rats-win .rw-text{font-size:38px;letter-spacing:0.18em;color:var(--accent-soft);
-    text-shadow:0 0 24px rgba(255,90,138,0.6);margin-bottom:6px}
-  #rats-win .rw-sub{font-size:13px;color:var(--ink-soft);letter-spacing:0.08em;margin-bottom:18px}
-  #rats-win .rw-btn{appearance:none;border:none;border-radius:10px;padding:11px 24px;
-    background:var(--accent);color:#1a0917;font:700 13px/1 inherit;letter-spacing:0.1em;cursor:pointer}
+  #rats-win .rw-text{font-size:30px;letter-spacing:0.24em;color:var(--accent-soft);margin-bottom:6px}
+  #rats-win .rw-sub{font-size:11px;color:var(--ink-soft);letter-spacing:0.12em;margin-bottom:18px}
+  #rats-win .rw-btn{appearance:none;border:none;border-radius:4px;padding:11px 22px;
+    background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
+    letter-spacing:0.16em;cursor:pointer}
 
   @media (max-width:640px){
-    .hud-box{font-size:11px;padding:6px 9px} .hud-box.meter{min-width:120px}
-    .intro-card{padding:18px 16px 14px} .intro-card h1{font-size:18px}
-    .intro-copy{font-size:12px;padding:9px 12px}
+    .hud-box{font-size:10px;padding:5px 8px}
+    .hud-box.meter{min-width:108px}
+    .intro-card h1{font-size:16px}
+    .intro-copy{font-size:11px}
   }
 </style>
 </head>
@@ -144,13 +143,13 @@
 <div id="intro">
   <div class="intro-card">
     <h1>URBAN LEGEND MOUSE</h1>
-    <div class="tag">— black-humour 3D action —</div>
+    <div class="tag">— PS1-STYLE PROTOTYPE —</div>
     <div class="intro-copy">
       <p>You are a rat with a human head. <em>Your</em> human head.</p>
-      <p>The alley stretches in every direction. Charge into the stools, kick the soup pots, knock over the scooter. The more <strong>chaos</strong>, the more rats arrive.</p>
-      <p>Climb onto a human, bite their neck, and <strong>take over their body</strong> for larger destruction. Fill the rat bar to win.</p>
+      <p>The alley stretches forever. Crawl, charge, knock things over. The more <strong>chaos</strong>, the more rats arrive.</p>
+      <p>Get to a human's neck and bite — <strong>take over the body</strong>. Fill the rat bar to win.</p>
     </div>
-    <button id="start-btn" disabled>LOADING…</button>
+    <button id="start-btn" disabled>READY</button>
     <div id="intro-progress">
       <div id="intro-progress-text">BOOT 0%</div>
       <div id="intro-progress-track"><div id="intro-progress-fill"></div></div>
@@ -161,7 +160,7 @@
 <div id="selfie-modal">
   <div class="selfie-card">
     <h2>YOUR FACE FOR THE RAT</h2>
-    <p>Take a selfie — your face will be mapped onto the rat's head in real time.<br>Skip to use the default face.</p>
+    <p>Take a selfie — your face will be mapped onto the rat's head in real time. Skip to use the default face.</p>
     <div class="selfie-preview" id="selfie-preview">
       <img id="selfie-placeholder" alt="" src="data:image/svg+xml;utf8,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'&gt;&lt;rect width='240' height='240' fill='%23241a30'/&gt;&lt;circle cx='120' cy='95' r='40' fill='%23bfa884'/&gt;&lt;rect x='60' y='140' width='120' height='90' rx='40' fill='%23bfa884'/&gt;&lt;/svg&gt;"/>
       <video id="selfie-video" autoplay playsinline muted style="display:none"></video>
@@ -191,16 +190,17 @@
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
-import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
-import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 
 /* ============================================================
-   Urban Legend Mouse — single-file prototype
-   Architecture & idioms copied from 都市傳說2 (Run Artist Run).
-   British English for every identifier and comment.
+   Urban Legend Mouse — PS1-style prototype
+   Performance & visual conventions (strict):
+     1. NearestFilter on every texture, no mipmaps, low resolution.
+     2. MeshBasicMaterial for all static scene geometry (unlit).
+     3. MeshLambertMaterial only for the player rat and humans.
+     4. THREE.Sprite billboards for distant secondary objects.
+     5. Render to a low-resolution WebGLRenderTarget, then blit to
+        the screen through a fullscreen quad with point sampling.
+   British English used throughout for identifiers and comments.
    ============================================================ */
 
 // ===== Helpers =====
@@ -211,162 +211,89 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 const pick=arr=>arr[Math.floor(Math.random()*arr.length)];
 
-// ===== Renderer / Scene / Camera =====
+/* Helper: configure any texture for the PS1 visual budget — point
+   sampling on minify + magnify, no mipmaps. Every CanvasTexture and
+   loaded image runs through this. */
+function pixelate(tex){
+  tex.magFilter=THREE.NearestFilter;
+  tex.minFilter=THREE.NearestFilter;
+  tex.generateMipmaps=false;
+  tex.anisotropy=1;
+  return tex;
+}
+
+// ===== Renderer (low internal resolution → upscale with NearestFilter) =====
 const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-renderer.setSize(W(),H());
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));
+const renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:'low-power'});
+renderer.setPixelRatio(1);          // ignore device pixel ratio — PS1 is fixed-res
 renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.toneMapping=THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure=1.15;
-renderer.shadowMap.enabled=true;
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.NoToneMapping;
+renderer.shadowMap.enabled=false;    // no real-time shadows
+renderer.setClearColor('#1a0e22');
 
-const scene=new THREE.Scene();
-
-// Sky — dusk gradient.
-{
-  const skyCV=document.createElement('canvas');skyCV.width=2;skyCV.height=512;
-  const ctx=skyCV.getContext('2d');
-  const g=ctx.createLinearGradient(0,0,0,512);
-  g.addColorStop(0,'#2c1840');g.addColorStop(0.35,'#583362');
-  g.addColorStop(0.62,'#a85c6a');g.addColorStop(0.85,'#c98a78');g.addColorStop(1,'#9f8676');
-  ctx.fillStyle=g;ctx.fillRect(0,0,2,512);
-  const skyTex=new THREE.CanvasTexture(skyCV);
-  skyTex.colorSpace=THREE.SRGBColorSpace;
-  scene.background=skyTex;
-}
-{
-  const envCV=document.createElement('canvas');envCV.width=256;envCV.height=128;
-  const ctx=envCV.getContext('2d');
-  const g=ctx.createLinearGradient(0,0,envCV.width,0);
-  g.addColorStop(0,'#4a3056');g.addColorStop(0.4,'#5e3a72');g.addColorStop(0.7,'#7a4a6e');g.addColorStop(1,'#c98a7a');
-  ctx.fillStyle=g;ctx.fillRect(0,0,envCV.width,envCV.height);
-  const envTex=new THREE.CanvasTexture(envCV);
-  envTex.mapping=THREE.EquirectangularReflectionMapping;
-  scene.environment=envTex;
-}
-scene.fog=new THREE.FogExp2('#3a2438',0.018);
-
-scene.add(new THREE.HemisphereLight('#c9a8e6','#3a2638',0.65));
-const sun=new THREE.DirectionalLight('#ffd4a0',1.05);
-sun.position.set(12,18,-6);
-sun.castShadow=true;
-sun.shadow.mapSize.set(2048,2048);
-sun.shadow.camera.left=-30;sun.shadow.camera.right=30;
-sun.shadow.camera.top=22;sun.shadow.camera.bottom=-22;
-sun.shadow.bias=-0.0008;
-scene.add(sun);
-scene.add(new THREE.AmbientLight('#ffffff',0.22));
-
-const camera=new THREE.PerspectiveCamera(64,W()/H(),0.05,200);
-
-// ===== Post-processing (VHS grain) =====
-const VHSShader={
-  uniforms:{tDiffuse:{value:null},time:{value:0},intensity:{value:0.80},resolution:{value:new THREE.Vector2(W(),H())}},
-  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-  fragmentShader:`
-    uniform sampler2D tDiffuse;uniform float time;uniform float intensity;uniform vec2 resolution;varying vec2 vUv;
-    float rand(vec2 co){return fract(sin(dot(co,vec2(12.9898,78.233)))*43758.5453);}
-    void main(){
-      vec2 uv=vUv;
-      float wave=sin(uv.y*9.0+time*2.0)*0.0022*intensity;
-      uv.x+=wave;
-      float shift=0.00016*intensity;
-      float r=texture2D(tDiffuse,vec2(uv.x+shift,uv.y)).r;
-      float g=texture2D(tDiffuse,uv).g;
-      float b=texture2D(tDiffuse,vec2(uv.x-shift,uv.y)).b;
-      vec3 col=vec3(r,g,b);
-      float scanline=sin(vUv.y*resolution.y*1.1)*0.016*intensity;
-      col-=scanline;
-      float noise=(rand(vUv*time)-0.5)*0.045*intensity;
-      col+=noise;
-      float vig=1.0-dot((vUv-0.5)*1.2,(vUv-0.5)*1.2);
-      col*=mix(1.0,vig,0.22*intensity);
-      gl_FragColor=vec4(col,1.0);
-    }`
-};
-const composer=new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene,camera));
-const vhsPass=new ShaderPass(VHSShader);
-composer.addPass(vhsPass);
-let vhsEnabled=true;
-window.addEventListener('keydown',e=>{
-  if(e.shiftKey && (e.key==='G'||e.key==='g')){e.preventDefault();vhsEnabled=!vhsEnabled;vhsPass.enabled=vhsEnabled}
+/* Low-resolution back-buffer. Each frame we render the scene to this
+   target, then draw the target onto the canvas at full size through a
+   point-sampled fullscreen quad. PS1 ran at ~320×240; we follow suit
+   on mobile and bump up to ~480×270 on desktop. */
+const LOW_W=480,LOW_H=270;
+const lowResRT=new THREE.WebGLRenderTarget(LOW_W,LOW_H,{
+  minFilter:THREE.NearestFilter,
+  magFilter:THREE.NearestFilter,
+  generateMipmaps:false,
+  depthBuffer:true,
+  stencilBuffer:false
 });
+const screenScene=new THREE.Scene();
+const screenCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const screenQuad=new THREE.Mesh(
+  new THREE.PlaneGeometry(2,2),
+  new THREE.MeshBasicMaterial({map:lowResRT.texture,depthTest:false,depthWrite:false})
+);
+screenScene.add(screenQuad);
+
+// ===== Scene & Camera =====
+const scene=new THREE.Scene();
+// Linear distance fog hides chunk pop-in. MeshBasicMaterial respects it.
+scene.fog=new THREE.Fog('#2a1838',8,38);
+scene.background=new THREE.Color('#2a1838');
+
+/* Lights — only used by the MeshLambertMaterials on the rat & humans.
+   Static scene geometry is unlit MeshBasicMaterial. */
+scene.add(new THREE.AmbientLight('#9a86b8',0.85));
+const sun=new THREE.DirectionalLight('#ffd4a0',0.7);
+sun.position.set(6,12,-2);
+scene.add(sun);
+
+/* Low-angle camera — rat-eye view of a 1.7 m human world. */
+const camera=new THREE.PerspectiveCamera(70,LOW_W/LOW_H,0.05,80);
+camera.position.set(0,0.4,2);
+camera.lookAt(0,0.2,0);
+
 function onResize(){
-  renderer.setSize(W(),H());
-  camera.aspect=W()/H();camera.updateProjectionMatrix();
-  composer.setSize(W(),H());
-  vhsPass.uniforms.resolution.value.set(W(),H());
+  // The canvas covers the viewport; the back-buffer stays at LOW_W×LOW_H.
+  renderer.setSize(W(),H(),false);
+  // Update camera aspect to match the low-res buffer (NOT the viewport),
+  // so the framing stays stable when the user rotates their phone.
+  camera.aspect=LOW_W/LOW_H;
+  camera.updateProjectionMatrix();
 }
 window.addEventListener('resize',onResize);
 onResize();
 
-// ===== Loaders =====
-const loader=new GLTFLoader();
-const textureLoader=new THREE.TextureLoader();
-let charGLTF=null;                       // character.glb — wandering humans
-let playerGLTF=null;                     // player_main.glb — the rat (small)
-let playerTextureSet=null;               // Tripo PBR set from mainplayermodel/
-let clipIdle=null,clipWalk=null,clipRun=null,clipJump=null;
-
-async function loadTexture(path){
-  return new Promise(res=>textureLoader.load(path,tex=>{
-    tex.flipY=false;
-    tex.colorSpace=path.includes('basecolor')?THREE.SRGBColorSpace:THREE.LinearSRGBColorSpace;
-    res(tex);
-  },undefined,()=>res(null)));
-}
-
-async function loadCharacterTemplate(){
-  try{
-    const gltf=await loader.loadAsync('character.glb');
-    charGLTF=gltf;
-    for(const clip of gltf.animations){
-      const n=(clip.name||'').toLowerCase();
-      if(n==='idle')clipIdle=clip;
-      else if(n==='walk')clipWalk=clip;
-      else if(n==='run'||n==='running')clipRun=clip;
-      else if(n==='jump')clipJump=clip;
-    }
-    console.log('[char] loaded, anims:',gltf.animations.map(c=>c.name));
-  }catch(e){console.error('[char] failed',e)}
-}
-
-async function loadPlayerAssets(){
-  try{
-    const [glb,base,normal,rough,metal]=await Promise.all([
-      loader.loadAsync('mainplayermodel/player_main.glb'),
-      loadTexture('mainplayermodel/tripo_model_basecolor.JPEG'),
-      loadTexture('mainplayermodel/tripo_model_normal.JPEG'),
-      loadTexture('mainplayermodel/tripo_model_roughness.JPEG'),
-      loadTexture('mainplayermodel/tripo_model_metallic.JPEG'),
-    ]);
-    playerGLTF=glb;
-    playerTextureSet={base,normal,rough,metal};
-    console.log('[player] loaded, anims:',glb.animations.map(c=>c.name),
-      'tex ok:',{b:!!base,n:!!normal,r:!!rough,m:!!metal});
-  }catch(e){console.error('[player] failed',e)}
-}
-
-// ===== Constants — copy of 都市傳說2 =====
-const PLAYER_MAX_SPEED=4.8;
+// ===== Constants =====
+const PLAYER_MAX_SPEED=4.6;
 const PLAYER_ACCEL=22;
-const PLAYER_DECEL=26;
-const HOST_MAX_SPEED=4.6;
+const HOST_MAX_SPEED=4.4;
 const HOST_ACCEL=18;
 const JUMP_VEL=4.4;
 const GRAVITY=22;
 const GROUND_Y_OFFSET=0.01;
 const RAT_FOOT_OFFSET=0.0;
-const NECK_BITE_RADIUS=1.10;       // bigger because the rat is so small
+const NECK_BITE_RADIUS=1.10;
 const CHAOS_PER_TIP=0.040;
 const CHAOS_DECAY=0.012;
 const WIN_RAT_COUNT=30;
 const BREED_MIN_CHAOS=0.20;
-// Pavement (the playable corridor) Z-range. X is unbounded — the alley
-// extends indefinitely along X via the chunk system below.
 const PAVEMENT_Z_MIN=1.5, PAVEMENT_Z_MAX=9.6;
 document.getElementById('rat-goal').textContent=WIN_RAT_COUNT;
 
@@ -381,249 +308,258 @@ const game={
 };
 let player=null;
 
-// ===== Face texture — selfie or procedural default =====
-const FACE_W=1024,FACE_H=512;
+// ===== Face texture (selfie or procedural default) =====
+const FACE_PX=128;        // very small — PS1 character maps were 64-128px
 const faceCanvas=document.createElement('canvas');
-faceCanvas.width=FACE_W;faceCanvas.height=FACE_H;
+faceCanvas.width=faceCanvas.height=FACE_PX;
 const faceCtx=faceCanvas.getContext('2d');
-const faceTexture=new THREE.CanvasTexture(faceCanvas);
+const faceTexture=pixelate(new THREE.CanvasTexture(faceCanvas));
 faceTexture.colorSpace=THREE.SRGBColorSpace;
-faceTexture.flipY=false;
 
 function paintDefaultFace(){
-  faceCtx.fillStyle='#caa078';faceCtx.fillRect(0,0,FACE_W,FACE_H);
-  const cx=FACE_W*0.5,cy=FACE_H*0.55;
+  faceCtx.fillStyle='#caa078';faceCtx.fillRect(0,0,FACE_PX,FACE_PX);
+  // chunky pixel facial features at the 128-pixel grid
   faceCtx.fillStyle='#1a1320';
-  faceCtx.beginPath();faceCtx.ellipse(cx-58,cy-30,13,18,0,0,Math.PI*2);faceCtx.fill();
-  faceCtx.beginPath();faceCtx.ellipse(cx+58,cy-30,13,18,0,0,Math.PI*2);faceCtx.fill();
-  faceCtx.strokeStyle='#8a6a4c';faceCtx.lineWidth=5;
-  faceCtx.beginPath();faceCtx.moveTo(cx,cy-10);faceCtx.lineTo(cx-8,cy+22);faceCtx.lineTo(cx+8,cy+22);faceCtx.stroke();
-  faceCtx.strokeStyle='#52303a';faceCtx.lineWidth=6;faceCtx.lineCap='round';
-  faceCtx.beginPath();faceCtx.moveTo(cx-38,cy+78);faceCtx.quadraticCurveTo(cx,cy+98,cx+38,cy+78);faceCtx.stroke();
+  faceCtx.fillRect(34,52,12,16);faceCtx.fillRect(82,52,12,16);   // eyes
+  faceCtx.fillStyle='#52303a';
+  faceCtx.fillRect(48,88,32,6);                                   // mouth
+  faceCtx.fillStyle='#8a6a4c';
+  faceCtx.fillRect(60,68,8,16);                                   // nose ridge
   faceTexture.needsUpdate=true;
   console.log('[face] preset painted');
 }
 function paintSelfieOntoFace(source){
-  faceCtx.fillStyle='#caa078';faceCtx.fillRect(0,0,FACE_W,FACE_H);
-  const cx=FACE_W*0.5,cy=FACE_H*0.5;
-  const rx=FACE_W*0.30,ry=FACE_H*0.5;
-  faceCtx.save();
-  faceCtx.beginPath();faceCtx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);faceCtx.clip();
-  const srcW=source.width||source.videoWidth||512;
-  const srcH=source.height||source.videoHeight||512;
-  const dstW=rx*2.05,dstH=ry*2.05;
-  faceCtx.drawImage(source,0,0,srcW,srcH,cx-dstW/2,cy-dstH/2,dstW,dstH);
-  faceCtx.restore();
+  faceCtx.fillStyle='#caa078';faceCtx.fillRect(0,0,FACE_PX,FACE_PX);
+  // Cover the face into the 128-pixel canvas. The selfie is pre-mirrored
+  // so the rat shows the side other people see.
+  faceCtx.drawImage(source,0,0,source.width||512,source.height||512,
+    0,0,FACE_PX,FACE_PX);
   faceTexture.needsUpdate=true;
 }
 paintDefaultFace();
 
-// ===== Texture bakers — all street surfaces are CanvasTextures =====
+// ===== Texture bakers — every map is small + point-sampled =====
 function makeAsphaltTexture(){
-  const c=document.createElement('canvas');c.width=c.height=1024;
+  // 128×128 asphalt swatch with double yellow centre line and dashed
+  // edges. Tiles along the road direction at high repeat.
+  const c=document.createElement('canvas');c.width=c.height=128;
   const cx=c.getContext('2d');
-  cx.fillStyle='#1c1c20';cx.fillRect(0,0,1024,1024);
-  for(let i=0;i<10000;i++){
-    const x=Math.random()*1024,y=Math.random()*1024;
-    cx.fillStyle=`rgba(${30+Math.random()*40},${28+Math.random()*30},${36+Math.random()*30},${Math.random()*0.5})`;
-    cx.fillRect(x,y,1+Math.random()*2.5,1+Math.random()*2.5);
-  }
-  // Double yellow centre line
-  cx.fillStyle='#f0c040';
-  cx.fillRect(60,498,904,4);cx.fillRect(60,508,904,4);
-  // Dashed lane lines on either side
-  cx.fillStyle='rgba(220,220,220,0.55)';
-  for(let x=40;x<984;x+=80) cx.fillRect(x,200,40,4);
-  for(let x=40;x<984;x+=80) cx.fillRect(x,820,40,4);
-  // Manhole / oil stain blobs
-  for(let i=0;i<25;i++){
-    cx.fillStyle=`rgba(0,0,0,${0.18+Math.random()*0.18})`;
-    const x=Math.random()*1024,y=Math.random()*1024,r=12+Math.random()*30;
-    cx.beginPath();cx.ellipse(x,y,r,r*0.6,Math.random()*Math.PI,0,Math.PI*2);cx.fill();
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
-  t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
-}
-
-function makeZebraTexture(){
-  const c=document.createElement('canvas');c.width=1024;c.height=512;
-  const cx=c.getContext('2d');
-  cx.fillStyle='#1c1c20';cx.fillRect(0,0,1024,512);
-  for(let i=0;i<12;i++){
-    cx.fillStyle=(i%2===0)?'#f0c040':'#1c1c20';
-    cx.fillRect(0,i*42+8,1024,36);
-  }
-  for(let i=0;i<400;i++){
-    cx.fillStyle=`rgba(0,0,0,${Math.random()*0.3})`;
-    cx.fillRect(Math.random()*1024,Math.random()*512,2,2);
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
-}
-
-function makePavementTexture(){
-  const c=document.createElement('canvas');c.width=c.height=1024;
-  const cx=c.getContext('2d');
-  cx.fillStyle='#7a4030';cx.fillRect(0,0,1024,1024);
-  const tile=128;
-  for(let i=0;i<8;i++) for(let j=0;j<8;j++){
-    cx.save();
-    cx.translate(i*tile+tile/2,j*tile+tile/2);
-    cx.rotate((Math.random()-0.5)*0.03);
-    const r=120+Math.floor(Math.random()*40);
-    const g=58+Math.floor(Math.random()*20);
-    const b=42+Math.floor(Math.random()*16);
-    cx.fillStyle=`rgb(${r},${g},${b})`;
-    cx.fillRect(-tile/2+4,-tile/2+4,tile-8,tile-8);
-    cx.fillStyle='rgba(255,255,255,0.05)';
-    cx.fillRect(-tile/2+4,-tile/2+4,tile-8,6);
-    // dotted brick centre
-    cx.fillStyle='rgba(0,0,0,0.12)';
-    for(let k=0;k<5;k++) cx.fillRect(-30+k*16,-2,2,2);
-    cx.restore();
-  }
-  for(let i=0;i<260;i++){
-    cx.fillStyle=`rgba(0,0,0,${Math.random()*0.20})`;
-    const x=Math.random()*1024,y=Math.random()*1024,r=4+Math.random()*30;
-    cx.beginPath();cx.ellipse(x,y,r,r*(0.4+Math.random()*0.8),Math.random()*Math.PI,0,Math.PI*2);cx.fill();
-  }
-  // gum dots
-  for(let i=0;i<80;i++){
-    cx.fillStyle=`rgba(60,40,40,${0.4+Math.random()*0.3})`;
-    cx.beginPath();cx.ellipse(Math.random()*1024,Math.random()*1024,3+Math.random()*4,3,0,0,Math.PI*2);cx.fill();
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
-  t.wrapS=t.wrapT=THREE.RepeatWrapping;return t;
-}
-
-function makeBuildingFacadeTexture(seed=0){
-  const c=document.createElement('canvas');c.width=512;c.height=1024;
-  const cx=c.getContext('2d');
-  // Concrete base
-  const baseHues=['#a89890','#9f8a80','#bcaba0','#8d7a72'];
-  cx.fillStyle=baseHues[seed%baseHues.length];cx.fillRect(0,0,512,1024);
-  // Noise
-  for(let i=0;i<4000;i++){
-    cx.fillStyle=`rgba(${60+Math.random()*40},${50+Math.random()*30},${50+Math.random()*30},${Math.random()*0.18})`;
-    cx.fillRect(Math.random()*512,Math.random()*1024,2,2);
-  }
-  // Windows
-  for(let row=0;row<4;row++){
-    for(let col=0;col<3;col++){
-      const x=40+col*155,y=120+row*210;
-      cx.fillStyle='#3a2a2a';cx.fillRect(x-4,y-4,118,166);
-      const grad=cx.createLinearGradient(x,y,x,y+158);
-      grad.addColorStop(0,'#5a6a7e');grad.addColorStop(0.5,'#3a4a5e');grad.addColorStop(1,'#283648');
-      cx.fillStyle=grad;cx.fillRect(x,y,110,158);
-      cx.fillStyle='#6a5a4e';cx.fillRect(x-6,y+158,122,6);
-      cx.fillStyle='#2a1a1a';cx.fillRect(x+53,y,4,158);cx.fillRect(x,y+76,110,4);
-      // air-con unit under some windows
-      if((row+col)%3===1){
-        cx.fillStyle='#cfcfcf';cx.fillRect(x+18,y+170,70,30);
-        cx.fillStyle='#3a3a3a';cx.fillRect(x+22,y+172,62,4);
-      }
-    }
-  }
-  // Weather streaks
-  for(let i=0;i<10;i++){
-    cx.fillStyle=`rgba(40,30,30,${0.16+Math.random()*0.16})`;
-    cx.fillRect(Math.random()*512,0,2+Math.random()*3,1024);
-  }
-  // pipe/cable
-  cx.fillStyle='rgba(40,20,20,0.65)';
-  cx.fillRect(8,40,4,960);
-  cx.fillRect(496,80,4,920);
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
-  t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping;return t;
-}
-
-function makeStallFrontTexture(seed=0){
-  const c=document.createElement('canvas');c.width=1024;c.height=512;
-  const cx=c.getContext('2d');
-  cx.fillStyle='#dcd3c4';cx.fillRect(0,0,1024,512);
-  cx.strokeStyle='rgba(80,60,50,0.25)';cx.lineWidth=1;
-  for(let i=0;i<=32;i++){const x=i*32;cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,512);cx.stroke()}
-  for(let j=0;j<=16;j++){const y=j*32;cx.beginPath();cx.moveTo(0,y);cx.lineTo(1024,y);cx.stroke()}
-  const posterColours=['#d2403e','#1f6dbd','#3aa05e','#e6a82e','#762a86'];
-  for(let i=0;i<7;i++){
-    const x=80+i*130+rand(-12,12),y=120+rand(-20,20),w=70,h=120;
-    cx.fillStyle=posterColours[(i+seed)%posterColours.length];
-    cx.fillRect(x,y,w,h);
-    cx.fillStyle='rgba(255,255,255,0.85)';
-    cx.fillRect(x+6,y+10,w-12,8);cx.fillRect(x+6,y+28,w-22,5);cx.fillRect(x+6,y+40,w-30,5);
-    cx.fillStyle='rgba(0,0,0,0.4)';cx.fillRect(x+6,y+90,w-12,8);
-  }
-  // graffiti tag
-  cx.fillStyle='rgba(60,30,90,0.55)';
-  cx.font='bold 90px sans-serif';
-  cx.fillText('//',780,400);
+  cx.fillStyle='#1c1c20';cx.fillRect(0,0,128,128);
+  // chunky grain
   for(let i=0;i<300;i++){
-    cx.fillStyle=`rgba(80,60,50,${Math.random()*0.12})`;
-    cx.fillRect(Math.random()*1024,Math.random()*512,2,2);
+    cx.fillStyle=`rgba(${40+Math.random()*30},${40+Math.random()*20},${50+Math.random()*20},${Math.random()*0.5})`;
+    cx.fillRect(Math.floor(Math.random()*128),Math.floor(Math.random()*128),1,1);
   }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+  // centre line — chunky yellow
+  cx.fillStyle='#f0c040';
+  cx.fillRect(0,60,128,3);cx.fillRect(0,65,128,3);
+  // dashed edge lines
+  cx.fillStyle='#cfcfcf';
+  for(let x=0;x<128;x+=12) cx.fillRect(x,16,8,2);
+  for(let x=0;x<128;x+=12) cx.fillRect(x,110,8,2);
+  return pixelate(new THREE.CanvasTexture(c));
 }
-
-function makeSignTexture(text,bgColour='#d2403e',textColour='#fff7c2'){
-  const c=document.createElement('canvas');c.width=512;c.height=256;
+function makeZebraTexture(){
+  const c=document.createElement('canvas');c.width=c.height=128;
   const cx=c.getContext('2d');
-  cx.fillStyle=bgColour;cx.fillRect(0,0,512,256);
-  cx.fillStyle='rgba(255,255,255,0.08)';cx.fillRect(8,8,496,18);
-  cx.fillStyle='rgba(0,0,0,0.16)';cx.fillRect(8,228,496,18);
+  cx.fillStyle='#1c1c20';cx.fillRect(0,0,128,128);
+  for(let i=0;i<10;i++){
+    cx.fillStyle=(i%2===0)?'#f0c040':'#1c1c20';
+    cx.fillRect(0,i*12+4,128,10);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makePavementTexture(){
+  // 128×128 red-brick tile pattern, kept chunky for the PS1 look.
+  const c=document.createElement('canvas');c.width=c.height=128;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#7a4030';cx.fillRect(0,0,128,128);
+  for(let i=0;i<4;i++)for(let j=0;j<4;j++){
+    const x=i*32,y=j*32;
+    const r=120+Math.floor(Math.random()*30);
+    const g=58+Math.floor(Math.random()*16);
+    const b=42+Math.floor(Math.random()*12);
+    cx.fillStyle=`rgb(${r},${g},${b})`;
+    cx.fillRect(x+2,y+2,28,28);
+    cx.fillStyle='rgba(255,255,255,0.05)';
+    cx.fillRect(x+2,y+2,28,3);
+  }
+  // chewing-gum specks
+  for(let i=0;i<20;i++){
+    cx.fillStyle=`rgba(50,30,30,${0.5+Math.random()*0.4})`;
+    cx.fillRect(Math.floor(Math.random()*128),Math.floor(Math.random()*128),2,2);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeFacadeTexture(seed=0){
+  const c=document.createElement('canvas');c.width=64;c.height=128;
+  const cx=c.getContext('2d');
+  const hues=['#a89890','#9f8a80','#bcaba0','#8d7a72'];
+  cx.fillStyle=hues[seed%hues.length];cx.fillRect(0,0,64,128);
+  // grain
+  for(let i=0;i<150;i++){
+    cx.fillStyle=`rgba(60,50,50,${Math.random()*0.18})`;
+    cx.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*128),1,1);
+  }
+  // windows — 2 cols × 3 rows of chunky pixel windows
+  for(let row=0;row<3;row++) for(let col=0;col<2;col++){
+    const x=8+col*26,y=24+row*32;
+    cx.fillStyle='#2a1f1a';cx.fillRect(x-1,y-1,20,24);
+    cx.fillStyle='#3a4a5e';cx.fillRect(x,y,18,22);
+    cx.fillStyle='#6a5a4e';cx.fillRect(x-2,y+22,22,2);
+    cx.fillStyle='#2a1a1a';cx.fillRect(x+8,y,2,22);cx.fillRect(x,y+10,18,1);
+  }
+  // weather streaks
+  for(let i=0;i<4;i++){
+    cx.fillStyle=`rgba(40,30,30,${0.18+Math.random()*0.18})`;
+    cx.fillRect(Math.floor(Math.random()*64),0,1,128);
+  }
+  const t=pixelate(new THREE.CanvasTexture(c));
+  t.wrapS=THREE.RepeatWrapping;
+  return t;
+}
+function makeStallFrontTexture(){
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#dcd3c4';cx.fillRect(0,0,128,64);
+  // tile grid
+  cx.strokeStyle='rgba(60,40,30,0.35)';cx.lineWidth=1;
+  for(let i=0;i<=16;i++){cx.beginPath();cx.moveTo(i*8,0);cx.lineTo(i*8,64);cx.stroke()}
+  for(let j=0;j<=8;j++){cx.beginPath();cx.moveTo(0,j*8);cx.lineTo(128,j*8);cx.stroke()}
+  // chunky posters
+  const cols=['#d2403e','#1f6dbd','#3aa05e','#e6a82e','#762a86'];
+  for(let i=0;i<5;i++){
+    const x=10+i*22,y=14+Math.floor(Math.random()*6),w=14,h=24;
+    cx.fillStyle=cols[i%cols.length];cx.fillRect(x,y,w,h);
+    cx.fillStyle='rgba(255,255,255,0.85)';cx.fillRect(x+2,y+2,w-4,2);cx.fillRect(x+2,y+6,w-8,1);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeSignTexture(text,bgColour='#c83a3a',textColour='#fff2b8'){
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const cx=c.getContext('2d');
+  cx.fillStyle=bgColour;cx.fillRect(0,0,128,64);
+  cx.fillStyle='rgba(255,255,255,0.10)';cx.fillRect(2,2,124,4);
+  cx.fillStyle='rgba(0,0,0,0.16)';cx.fillRect(2,58,124,4);
   cx.fillStyle=textColour;
   cx.textAlign='center';cx.textBaseline='middle';
-  cx.font='bold 150px "PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",sans-serif';
-  cx.fillText(text,256,140);
-  for(let i=0;i<60;i++){
-    cx.fillStyle=`rgba(0,0,0,${Math.random()*0.25})`;
-    cx.fillRect(Math.random()*512,Math.random()*256,3,1);
-  }
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+  cx.font='bold 36px "PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",sans-serif';
+  cx.fillText(text,64,36);
+  return pixelate(new THREE.CanvasTexture(c));
 }
-
 function makeStopSignTexture(){
-  const c=document.createElement('canvas');c.width=c.height=256;
+  const c=document.createElement('canvas');c.width=c.height=64;
   const cx=c.getContext('2d');
   cx.fillStyle='#cc1f1f';
   cx.beginPath();
-  const r=120,cxx=128,cyy=128;
+  const r=28,cxx=32,cyy=32;
   for(let i=0;i<8;i++){const a=Math.PI/8+i*Math.PI/4;const x=cxx+Math.cos(a)*r,y=cyy+Math.sin(a)*r;if(i===0)cx.moveTo(x,y);else cx.lineTo(x,y)}
   cx.closePath();cx.fill();
-  cx.strokeStyle='#ffffff';cx.lineWidth=8;cx.stroke();
+  cx.strokeStyle='#ffffff';cx.lineWidth=3;cx.stroke();
   cx.fillStyle='#ffffff';cx.textAlign='center';cx.textBaseline='middle';
-  cx.font='bold 110px "PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",sans-serif';
-  cx.fillText('停',128,138);
-  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+  cx.font='bold 32px "PingFang TC","Microsoft JhengHei","Noto Sans CJK TC",sans-serif';
+  cx.fillText('停',32,34);
+  return pixelate(new THREE.CanvasTexture(c));
 }
 
-// Cache textures — repeated across chunks.
-const TEX={
-  asphalt:null,zebra:null,pavement:null,stallFront:null,stopSign:null,
-  facade:[null,null,null,null],
-  signRed:null,signRed2:null,signBlue:null,signYellow:null,signGreen:null
-};
+// ===== Sprite (billboard) textures — distant clutter =====
+function makeRubbishSprite(){
+  // 32×32 alpha-cut paper rubbish silhouette.
+  const c=document.createElement('canvas');c.width=c.height=32;
+  const cx=c.getContext('2d');
+  const cols=['#e8dec4','#cfc7af','#a09680'];
+  const cx0=16+Math.floor(rand(-2,2)),cy0=22+Math.floor(rand(-2,2));
+  for(let i=0;i<20;i++){
+    const r=4+Math.random()*5;
+    cx.fillStyle=cols[Math.floor(Math.random()*cols.length)];
+    cx.fillRect(cx0-r/2,cy0-r/2,r,r);
+    cx.fillStyle='rgba(0,0,0,0.3)';
+    cx.fillRect(cx0+Math.random()*r-r/2,cy0+Math.random()*r-r/2,1,1);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeWeedSprite(){
+  // Vertical tuft of weed leaves growing from a crack.
+  const c=document.createElement('canvas');c.width=c.height=32;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#3a6a2a';
+  for(let i=0;i<5;i++){
+    const sx=10+Math.floor(rand(-2,2))+i*2,sy=30,h=14+Math.floor(Math.random()*8);
+    cx.fillRect(sx,sy-h,2,h);
+    // leaf bobble
+    cx.fillRect(sx-1,sy-h-1,4,2);
+  }
+  // darker base
+  cx.fillStyle='#1a2a14';cx.fillRect(8,30,16,2);
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeDistantHumanSprite(){
+  // Tiny humanoid silhouette so the alley has a sense of foot traffic
+  // without the cost of full skinned meshes far from the rat.
+  const c=document.createElement('canvas');c.width=c.height=32;
+  const cx=c.getContext('2d');
+  const shirt=pick(['#6b7a52','#4a6b8c','#7a3a3a','#3a5a3a','#5a3a5a']);
+  const trousers='#2a2438';
+  // head
+  cx.fillStyle='#d9b89a';cx.fillRect(13,4,6,6);
+  // torso
+  cx.fillStyle=shirt;cx.fillRect(11,10,10,10);
+  // arms
+  cx.fillRect(8,11,3,8);cx.fillRect(21,11,3,8);
+  // trousers
+  cx.fillStyle=trousers;cx.fillRect(11,20,4,10);cx.fillRect(17,20,4,10);
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeLampGlowSprite(){
+  const c=document.createElement('canvas');c.width=c.height=32;
+  const cx=c.getContext('2d');
+  // radial pixel glow
+  for(let r=14;r>0;r--){
+    const a=Math.max(0,1-r/14);
+    cx.fillStyle=`rgba(255,210,140,${a*0.55})`;
+    cx.fillRect(16-r,16-r,r*2,r*2);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+
+// Cached textures and sprite materials.
+const TEX={},SPRITE_MAT={};
 function initSharedTextures(){
-  TEX.asphalt=makeAsphaltTexture();   TEX.asphalt.repeat.set(2,1);
+  TEX.asphalt=makeAsphaltTexture();TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;TEX.asphalt.repeat.set(2,1);
   TEX.zebra=makeZebraTexture();
-  TEX.pavement=makePavementTexture(); TEX.pavement.repeat.set(8,3);
+  TEX.pavement=makePavementTexture();TEX.pavement.wrapS=TEX.pavement.wrapT=THREE.RepeatWrapping;TEX.pavement.repeat.set(6,3);
   TEX.stallFront=makeStallFrontTexture();
   TEX.stopSign=makeStopSignTexture();
-  for(let i=0;i<4;i++) TEX.facade[i]=makeBuildingFacadeTexture(i);
+  TEX.facade=[makeFacadeTexture(0),makeFacadeTexture(1),makeFacadeTexture(2),makeFacadeTexture(3)];
+  for(const t of TEX.facade){t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping}
   TEX.signRed   =makeSignTexture('麵店','#c83a3a','#fff2b8');
   TEX.signRed2  =makeSignTexture('牛肉','#c83a3a','#fff2b8');
   TEX.signBlue  =makeSignTexture('小吃','#1d4a93','#ffffff');
   TEX.signYellow=makeSignTexture('便當','#e6a82e','#3a1a0a');
   TEX.signGreen =makeSignTexture('早餐','#3a8a4a','#ffffff');
+  // Billboards — share one SpriteMaterial per type so all sprites of
+  // the same kind go through a single draw call when possible.
+  SPRITE_MAT.rubbish     =new THREE.SpriteMaterial({map:makeRubbishSprite(),     transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.weed        =new THREE.SpriteMaterial({map:makeWeedSprite(),        transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.distantHuman=new THREE.SpriteMaterial({map:makeDistantHumanSprite(),transparent:true,alphaTest:0.5,fog:true});
+  SPRITE_MAT.lampGlow    =new THREE.SpriteMaterial({map:makeLampGlowSprite(),    transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
 }
 
-// ===== Prop builders =====
-// Each builder returns the prop root. registerProp tags it with chaos data
-// and adds to game.props. _activeChunk (if set) tracks chunk ownership so
-// disposeChunk can clean up the mesh + game.props entry together.
-let _activeChunk=null;
+/* Convenience — build a basic-material box. Static scene geometry only.
+   `texOrCol` accepts either a THREE.Texture or a hex/colour string. */
+function basicBox(w,h,d,texOrCol,opts={}){
+  const mat=(texOrCol && texOrCol.isTexture)
+    ? new THREE.MeshBasicMaterial({map:texOrCol})
+    : new THREE.MeshBasicMaterial({color:texOrCol||'#cccccc'});
+  Object.assign(mat,opts);
+  return new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+}
 
+// ===== Prop builders — every static prop uses MeshBasicMaterial =====
+// Active-chunk tracker for cleanup.
+let _activeChunk=null;
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
-  root.userData.baseRot={x:root.rotation.x,z:root.rotation.z};
   scene.add(root);
   const p={root,radius,chaosWeight,tipped:false};
   game.props.push(p);
@@ -632,399 +568,224 @@ function registerProp(root,radius=0.45,chaosWeight=1){
 }
 
 function buildStool(x,z,colour){
-  const root=new THREE.Group();
-  root.position.set(x,0.30,z);
-  const seatMat=new THREE.MeshStandardMaterial({color:colour,roughness:0.55,metalness:0.05});
-  const seat=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.20,0.07,20),seatMat);
-  seat.castShadow=true;seat.receiveShadow=true;root.add(seat);
-  const cushionEdge=new THREE.Mesh(new THREE.TorusGeometry(0.19,0.018,8,28),
-    new THREE.MeshStandardMaterial({color:colour,roughness:0.45,metalness:0.08}).clone());
-  cushionEdge.rotation.x=Math.PI/2;cushionEdge.position.y=0.025;root.add(cushionEdge);
-  const ringMat=new THREE.MeshStandardMaterial({color:'#1a1a1a',roughness:0.4,metalness:0.6});
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(0.18,0.013,8,22),ringMat);
-  ring.rotation.x=Math.PI/2;ring.position.y=-0.16;root.add(ring);
-  // Cross strut beneath
-  const strut=new THREE.Mesh(new THREE.BoxGeometry(0.30,0.015,0.015),ringMat);
-  strut.position.y=-0.16;root.add(strut);
-  const strut2=strut.clone();strut2.rotation.y=Math.PI/2;root.add(strut2);
+  // ~30-vert assembly: cushion + 4 splayed legs.
+  const root=new THREE.Group();root.position.set(x,0.30,z);
+  const seatMat=new THREE.MeshBasicMaterial({color:colour});
+  const seat=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.20,0.07,8),seatMat);
+  root.add(seat);
+  const legMat=new THREE.MeshBasicMaterial({color:'#1a1a1a'});
   for(let i=0;i<4;i++){
     const a=Math.PI/4+i*Math.PI/2;
-    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.013,0.30,8),ringMat);
-    leg.position.set(Math.cos(a)*0.17,-0.15,Math.sin(a)*0.17);
-    leg.rotation.z=Math.cos(a)*0.05;leg.rotation.x=Math.sin(a)*0.05;
-    leg.castShadow=true;root.add(leg);
-    // foot pad
-    const pad=new THREE.Mesh(new THREE.CylinderGeometry(0.022,0.022,0.008,8),
-      new THREE.MeshStandardMaterial({color:'#0e0e0e'}));
-    pad.position.copy(leg.position);pad.position.y=-0.31;root.add(pad);
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.022,0.30,0.022),legMat);
+    leg.position.set(Math.cos(a)*0.16,-0.15,Math.sin(a)*0.16);
+    root.add(leg);
   }
   registerProp(root,0.30,0.6);
-  return root;
 }
 
 function buildTable(x,z){
-  const root=new THREE.Group();
-  root.position.set(x,0.55,z);
-  const top=new THREE.Mesh(
-    new THREE.BoxGeometry(0.88,0.04,0.58),
-    new THREE.MeshStandardMaterial({color:'#bfb6a8',roughness:0.7})
-  );
-  top.castShadow=true;top.receiveShadow=true;root.add(top);
-  // Underside lip
-  const lip=new THREE.Mesh(new THREE.BoxGeometry(0.88,0.02,0.58),
-    new THREE.MeshStandardMaterial({color:'#1a1a1a',roughness:0.6,metalness:0.3}));
-  lip.position.y=-0.025;root.add(lip);
-  const legMat=new THREE.MeshStandardMaterial({color:'#3a3a3a',roughness:0.5,metalness:0.4});
+  const root=new THREE.Group();root.position.set(x,0.55,z);
+  const topMat=new THREE.MeshBasicMaterial({color:'#bfb6a8'});
+  const top=new THREE.Mesh(new THREE.BoxGeometry(0.88,0.04,0.58),topMat);
+  root.add(top);
+  const legMat=new THREE.MeshBasicMaterial({color:'#3a3a3a'});
   for(const [sx,sz] of [[-0.38,-0.24],[0.38,-0.24],[-0.38,0.24],[0.38,0.24]]){
     const leg=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.55,0.04),legMat);
-    leg.position.set(sx,-0.30,sz);leg.castShadow=true;root.add(leg);
+    leg.position.set(sx,-0.30,sz);root.add(leg);
   }
-  // Bowl + chopsticks on top — a little dressing
-  const bowl=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.06,0.05,16),
-    new THREE.MeshStandardMaterial({color:'#f7f0dc',roughness:0.5}));
+  // Bowl + chopsticks as set-dressing (still MeshBasic — no lighting).
+  const bowl=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.06,0.05,8),new THREE.MeshBasicMaterial({color:'#f7f0dc'}));
   bowl.position.set(-0.18,0.04,0);root.add(bowl);
-  const broth=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.075,0.025,16),
-    new THREE.MeshStandardMaterial({color:'#a85a32',roughness:0.7,metalness:0.2}));
+  const broth=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.075,0.025,8),new THREE.MeshBasicMaterial({color:'#a85a32'}));
   broth.position.set(-0.18,0.06,0);root.add(broth);
-  // Chopsticks
-  const chopMat=new THREE.MeshStandardMaterial({color:'#d8b878',roughness:0.7});
-  const chop1=new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.003,0.22,6),chopMat);
-  chop1.position.set(0.05,0.04,-0.10);chop1.rotation.z=Math.PI/2;chop1.rotation.y=0.1;root.add(chop1);
-  const chop2=chop1.clone();chop2.position.z=-0.06;chop2.rotation.y=-0.1;root.add(chop2);
   registerProp(root,0.55,1.2);
-  return root;
 }
 
 function buildSoupPot(x,z,scale=1){
-  const root=new THREE.Group();
-  root.position.set(x,0.42*scale,z);
-  const steel=new THREE.MeshStandardMaterial({color:'#cfd2d5',roughness:0.32,metalness:0.75});
-  const innerDark=new THREE.MeshStandardMaterial({color:'#1a1a1a',roughness:0.6});
-  const pot=new THREE.Mesh(new THREE.CylinderGeometry(0.30*scale,0.28*scale,0.85*scale,28),steel);
-  pot.castShadow=true;pot.receiveShadow=true;root.add(pot);
-  // Inner cavity (visible at the top)
-  const inner=new THREE.Mesh(new THREE.CylinderGeometry(0.27*scale,0.25*scale,0.80*scale,28),innerDark);
-  inner.position.y=0.01;root.add(inner);
-  // Rim ring
-  const rim=new THREE.Mesh(new THREE.TorusGeometry(0.30*scale,0.022*scale,10,32),steel);
-  rim.rotation.x=Math.PI/2;rim.position.y=0.42*scale;root.add(rim);
-  // Lid
-  const lid=new THREE.Mesh(new THREE.CylinderGeometry(0.31*scale,0.31*scale,0.04*scale,28),steel);
-  lid.position.y=0.45*scale;lid.castShadow=true;root.add(lid);
-  // Lid knob (sphere + neck)
-  const knobNeck=new THREE.Mesh(new THREE.CylinderGeometry(0.022*scale,0.022*scale,0.03*scale,10),steel);
-  knobNeck.position.y=0.48*scale;root.add(knobNeck);
-  const knob=new THREE.Mesh(new THREE.SphereGeometry(0.045*scale,16,12),
-    new THREE.MeshStandardMaterial({color:'#222',roughness:0.4}));
-  knob.position.y=0.51*scale;root.add(knob);
-  // Side handles (two riveted ears)
-  const earMat=steel;
-  for(const sign of [-1,1]){
-    const ear=new THREE.Mesh(new THREE.TorusGeometry(0.055*scale,0.012*scale,8,16),earMat);
-    ear.position.set(0.305*scale*sign,0.30*scale,0);
-    ear.rotation.y=Math.PI/2;
-    root.add(ear);
-    // bolts
-    for(const py of [0.27*scale,0.33*scale]){
-      const bolt=new THREE.Mesh(new THREE.CylinderGeometry(0.013*scale,0.013*scale,0.012*scale,8),
-        new THREE.MeshStandardMaterial({color:'#888',roughness:0.4,metalness:0.6}));
-      bolt.rotation.z=Math.PI/2;
-      bolt.position.set(0.301*scale*sign,py,0);
-      root.add(bolt);
-    }
-  }
-  // Steam — soft cones
-  const steamMat=new THREE.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:0.14,depthWrite:false});
-  const steam=new THREE.Mesh(new THREE.ConeGeometry(0.28*scale,0.65*scale,18,1,true),steamMat);
-  steam.position.y=0.86*scale;steam.rotation.x=Math.PI;root.add(steam);
-  const steam2=new THREE.Mesh(new THREE.ConeGeometry(0.18*scale,0.45*scale,16,1,true),steamMat);
-  steam2.position.set(-0.08*scale,1.10*scale,0.04*scale);steam2.rotation.x=Math.PI;root.add(steam2);
+  const root=new THREE.Group();root.position.set(x,0.42*scale,z);
+  const steel=new THREE.MeshBasicMaterial({color:'#cfd2d5'});
+  const dark=new THREE.MeshBasicMaterial({color:'#1a1a1a'});
+  const pot=new THREE.Mesh(new THREE.CylinderGeometry(0.30*scale,0.28*scale,0.85*scale,10),steel);
+  root.add(pot);
+  const inner=new THREE.Mesh(new THREE.CylinderGeometry(0.26*scale,0.24*scale,0.80*scale,10),dark);
+  inner.position.y=0.02;root.add(inner);
+  const lid=new THREE.Mesh(new THREE.CylinderGeometry(0.31*scale,0.31*scale,0.04*scale,10),steel);
+  lid.position.y=0.45*scale;root.add(lid);
+  const knob=new THREE.Mesh(new THREE.SphereGeometry(0.045*scale,6,4),dark);
+  knob.position.y=0.50*scale;root.add(knob);
+  // Steam (additive sprite — looks great in PS1 style).
+  const steam=new THREE.Sprite(new THREE.SpriteMaterial({
+    map:makeLampGlowSprite(),transparent:true,blending:THREE.AdditiveBlending,
+    depthWrite:false,fog:false,color:0xffffff,opacity:0.45
+  }));
+  steam.scale.set(0.6,0.8,1);steam.position.y=0.85*scale;root.add(steam);
   registerProp(root,0.40*scale,1.6);
-  return root;
 }
 
 function buildScooter(x,z,rotY=0){
-  const root=new THREE.Group();
-  root.position.set(x,0,z);root.rotation.y=rotY;
-  const body=new THREE.MeshStandardMaterial({color:'#c9cfd6',roughness:0.32,metalness:0.7});
-  const blackPlastic=new THREE.MeshStandardMaterial({color:'#1a1a1a',roughness:0.5,metalness:0.2});
-  const chrome=new THREE.MeshStandardMaterial({color:'#dadada',roughness:0.2,metalness:0.92});
-  // Wheels (torus tyre + rim disc)
+  const root=new THREE.Group();root.position.set(x,0,z);root.rotation.y=rotY;
+  const body=new THREE.MeshBasicMaterial({color:'#c9cfd6'});
+  const blk=new THREE.MeshBasicMaterial({color:'#1a1a1a'});
+  const chrome=new THREE.MeshBasicMaterial({color:'#dadada'});
+  // wheels (low-poly torus)
   for(const px of [-0.55,0.55]){
-    const tyre=new THREE.Mesh(new THREE.TorusGeometry(0.24,0.10,14,24),blackPlastic);
-    tyre.rotation.y=Math.PI/2;tyre.position.set(px,0.24,0);tyre.castShadow=true;root.add(tyre);
-    const rim=new THREE.Mesh(new THREE.CylinderGeometry(0.135,0.135,0.045,16),chrome);
+    const tyre=new THREE.Mesh(new THREE.TorusGeometry(0.24,0.10,6,8),blk);
+    tyre.rotation.y=Math.PI/2;tyre.position.set(px,0.24,0);root.add(tyre);
+    const rim=new THREE.Mesh(new THREE.CylinderGeometry(0.13,0.13,0.05,8),chrome);
     rim.rotation.z=Math.PI/2;rim.position.set(px,0.24,0);root.add(rim);
-    // Spokes
-    for(let i=0;i<5;i++){
-      const a=i*Math.PI*2/5;
-      const sp=new THREE.Mesh(new THREE.BoxGeometry(0.020,0.21,0.020),
-        new THREE.MeshStandardMaterial({color:'#666',roughness:0.4,metalness:0.6}));
-      sp.position.set(px+0.002,0.24,0);
-      sp.rotation.x=a;sp.rotation.z=Math.PI/2;root.add(sp);
-    }
   }
-  // Step-through frame (curved using two boxes)
+  // frame + fairing
   const frame=new THREE.Mesh(new THREE.BoxGeometry(0.86,0.32,0.34),body);
-  frame.position.set(0,0.46,0);frame.castShadow=true;root.add(frame);
-  // Footrest plank
-  const foot=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.04,0.32),blackPlastic);
-  foot.position.set(0.15,0.30,0);root.add(foot);
-  // Front fairing (tall, swept-back)
+  frame.position.set(0,0.46,0);root.add(frame);
   const fairing=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.70,0.42),body);
-  fairing.position.set(0.55,0.55,0);fairing.rotation.z=-0.10;fairing.castShadow=true;root.add(fairing);
-  // Headlight
-  const headlight=new THREE.Mesh(new THREE.SphereGeometry(0.11,18,12),
-    new THREE.MeshStandardMaterial({color:'#fff5c8',emissive:'#ffd070',emissiveIntensity:0.45,roughness:0.3}));
-  headlight.position.set(0.72,0.86,0);headlight.scale.set(1,0.7,0.7);root.add(headlight);
-  // Indicator lamps
-  for(const pz of [-0.18,0.18]){
-    const ind=new THREE.Mesh(new THREE.SphereGeometry(0.025,10,8),
-      new THREE.MeshStandardMaterial({color:'#f6b540',emissive:'#f6b540',emissiveIntensity:0.4}));
-    ind.position.set(0.72,0.96,pz);root.add(ind);
-  }
-  // Handlebar column + handlebars + grips
-  const col=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.42,10),chrome);
+  fairing.position.set(0.55,0.55,0);fairing.rotation.z=-0.10;root.add(fairing);
+  // headlight
+  const hl=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.16,0.30),new THREE.MeshBasicMaterial({color:'#fff5c8'}));
+  hl.position.set(0.72,0.85,0);root.add(hl);
+  // handlebar column + bars + grips
+  const col=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.42,0.05),chrome);
   col.position.set(0.66,1.05,0);col.rotation.z=-0.10;root.add(col);
-  const bars=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.70,10),chrome);
-  bars.rotation.x=Math.PI/2;bars.position.set(0.66,1.19,0);root.add(bars);
-  for(const pz of [-0.32,0.32]){
-    const grip=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.10,12),blackPlastic);
-    grip.rotation.x=Math.PI/2;grip.position.set(0.66,1.19,pz);root.add(grip);
-  }
-  // Wing mirrors
-  for(const pz of [-0.40,0.40]){
-    const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.18,8),chrome);
-    stem.position.set(0.66,1.30,pz);root.add(stem);
-    const mirror=new THREE.Mesh(new THREE.CircleGeometry(0.05,16),
-      new THREE.MeshStandardMaterial({color:'#cccccc',roughness:0.15,metalness:0.8,side:THREE.DoubleSide}));
-    mirror.position.set(0.66,1.40,pz);mirror.rotation.y=-Math.PI/2;root.add(mirror);
-  }
-  // Seat
-  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.10,0.36),
-    new THREE.MeshStandardMaterial({color:'#0e0e0e',roughness:0.5}));
-  seat.position.set(-0.22,0.70,0);seat.castShadow=true;root.add(seat);
-  // Seat ridge
-  const seatRidge=new THREE.Mesh(new THREE.BoxGeometry(0.58,0.04,0.04),
-    new THREE.MeshStandardMaterial({color:'#222',roughness:0.5}));
-  seatRidge.position.set(-0.22,0.76,0);root.add(seatRidge);
-  // Rear box / luggage rack with tail-light
-  const rack=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.05,0.34),chrome);
+  const bars=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.70),chrome);
+  bars.position.set(0.66,1.19,0);root.add(bars);
+  // seat
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(0.55,0.10,0.34),new THREE.MeshBasicMaterial({color:'#0e0e0e'}));
+  seat.position.set(-0.20,0.70,0);root.add(seat);
+  // rear box
+  const rack=new THREE.Mesh(new THREE.BoxGeometry(0.30,0.04,0.32),chrome);
   rack.position.set(-0.55,0.66,0);root.add(rack);
-  const taillight=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.10,0.32),
-    new THREE.MeshStandardMaterial({color:'#c52828',emissive:'#c52828',emissiveIntensity:0.5}));
-  taillight.position.set(-0.74,0.80,0);root.add(taillight);
-  // Number plate
-  const plate=new THREE.Mesh(new THREE.BoxGeometry(0.03,0.10,0.24),
-    new THREE.MeshStandardMaterial({color:'#ffffff',roughness:0.5}));
-  plate.position.set(-0.72,0.60,0);root.add(plate);
-  registerProp(root,0.85,2.4);
-  return root;
+  registerProp(root,0.80,2.2);
 }
 
 function buildCar(x,z,rotY=0,colour='#2a2c30'){
-  const root=new THREE.Group();
-  root.position.set(x,0,z);root.rotation.y=rotY;
-  const bodyMat=new THREE.MeshStandardMaterial({color:colour,roughness:0.32,metalness:0.7});
-  const glassMat=new THREE.MeshStandardMaterial({color:'#0c0f14',roughness:0.12,metalness:0.7,transparent:true,opacity:0.82});
-  const tyreMat=new THREE.MeshStandardMaterial({color:'#0a0a0a',roughness:0.85});
-  const chrome=new THREE.MeshStandardMaterial({color:'#cfcfcf',roughness:0.22,metalness:0.92});
-  // Lower body
+  const root=new THREE.Group();root.position.set(x,0,z);root.rotation.y=rotY;
+  const bodyMat=new THREE.MeshBasicMaterial({color:colour});
+  const glassMat=new THREE.MeshBasicMaterial({color:'#0c0f14'});
+  const tyreMat=new THREE.MeshBasicMaterial({color:'#0a0a0a'});
+  const chrome=new THREE.MeshBasicMaterial({color:'#cfcfcf'});
   const lower=new THREE.Mesh(new THREE.BoxGeometry(4.4,0.85,1.95),bodyMat);
-  lower.position.set(0,0.55,0);lower.castShadow=true;lower.receiveShadow=true;root.add(lower);
-  // Bonnet & boot
-  const bonnet=new THREE.Mesh(new THREE.BoxGeometry(1.30,0.20,1.85),bodyMat);
-  bonnet.position.set(1.45,1.0,0);root.add(bonnet);
-  const boot=new THREE.Mesh(new THREE.BoxGeometry(1.10,0.18,1.85),bodyMat);
-  boot.position.set(-1.55,1.0,0);root.add(boot);
-  // Roof / greenhouse
-  const glass=new THREE.Mesh(new THREE.BoxGeometry(2.20,0.72,1.85),glassMat);
-  glass.position.set(0,1.45,0);root.add(glass);
-  const roofTop=new THREE.Mesh(new THREE.BoxGeometry(2.10,0.10,1.78),bodyMat);
-  roofTop.position.set(0,1.82,0);root.add(roofTop);
-  // Wheels
+  lower.position.y=0.55;root.add(lower);
+  const bonnet=new THREE.Mesh(new THREE.BoxGeometry(1.30,0.20,1.85),bodyMat);bonnet.position.set(1.45,1.0,0);root.add(bonnet);
+  const boot=new THREE.Mesh(new THREE.BoxGeometry(1.10,0.18,1.85),bodyMat);boot.position.set(-1.55,1.0,0);root.add(boot);
+  const glass=new THREE.Mesh(new THREE.BoxGeometry(2.20,0.72,1.85),glassMat);glass.position.y=1.45;root.add(glass);
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(2.10,0.10,1.78),bodyMat);roof.position.y=1.82;root.add(roof);
   for(const [px,pz] of [[1.45,0.98],[1.45,-0.98],[-1.45,0.98],[-1.45,-0.98]]){
-    const w=new THREE.Mesh(new THREE.CylinderGeometry(0.36,0.36,0.30,22),tyreMat);
-    w.rotation.x=Math.PI/2;w.position.set(px,0.36,pz);w.castShadow=true;root.add(w);
-    const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.33,18),chrome);
+    const w=new THREE.Mesh(new THREE.CylinderGeometry(0.36,0.36,0.30,10),tyreMat);
+    w.rotation.x=Math.PI/2;w.position.set(px,0.36,pz);root.add(w);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.32,8),chrome);
     hub.rotation.x=Math.PI/2;hub.position.set(px,0.36,pz);root.add(hub);
-    // 5 spokes
-    for(let i=0;i<5;i++){
-      const a=i*Math.PI*2/5;
-      const sp=new THREE.Mesh(new THREE.BoxGeometry(0.026,0.32,0.025),chrome);
-      sp.position.set(px+(pz>0?0.01:-0.01),0.36,pz);
-      sp.rotation.z=a;sp.rotation.x=Math.PI/2;root.add(sp);
-    }
   }
-  // Headlights
+  // Headlights / tail-lights — chunky flat blocks.
   for(const pz of [-0.66,0.66]){
-    const hl=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.20,0.36),
-      new THREE.MeshStandardMaterial({color:'#fff7d2',emissive:'#fff3b0',emissiveIntensity:0.35,roughness:0.3}));
-    hl.position.set(2.22,0.95,pz);root.add(hl);
-  }
-  // Grille
-  const grille=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.32,1.20),
-    new THREE.MeshStandardMaterial({color:'#0a0a0a',roughness:0.4,metalness:0.6}));
-  grille.position.set(2.225,0.80,0);root.add(grille);
-  // Number plate
-  const plate=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.18,0.50),
-    new THREE.MeshStandardMaterial({color:'#ffffff',roughness:0.45}));
-  plate.position.set(2.235,0.60,0);root.add(plate);
-  // Tail-lights
-  for(const pz of [-0.66,0.66]){
-    const tl=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.18,0.36),
-      new THREE.MeshStandardMaterial({color:'#c52828',emissive:'#c52828',emissiveIntensity:0.4}));
-    tl.position.set(-2.22,0.95,pz);root.add(tl);
-  }
-  // Wing mirrors
-  for(const pz of [-0.96,0.96]){
-    const wm=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.08,0.10),bodyMat);
-    wm.position.set(0.50,1.30,pz);root.add(wm);
-  }
-  // Door handles
-  for(const px of [-0.40,0.60]){
-    for(const pz of [-1.0,1.0]){
-      const dh=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.04,0.04),chrome);
-      dh.position.set(px,1.10,pz);root.add(dh);
-    }
+    const h=new THREE.Mesh(new THREE.BoxGeometry(0.10,0.20,0.36),new THREE.MeshBasicMaterial({color:'#fff7d2'}));
+    h.position.set(2.22,0.95,pz);root.add(h);
+    const t=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.18,0.36),new THREE.MeshBasicMaterial({color:'#c52828'}));
+    t.position.set(-2.22,0.95,pz);root.add(t);
   }
   registerProp(root,2.2,3.4);
-  return root;
 }
 
 function buildBin(x,z,colour='#2a3a44'){
-  const root=new THREE.Group();
-  root.position.set(x,0.42,z);
-  const m=new THREE.MeshStandardMaterial({color:colour,roughness:0.7});
-  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.20,0.84,18),m);
-  cyl.castShadow=true;cyl.receiveShadow=true;root.add(cyl);
-  const lip=new THREE.Mesh(new THREE.TorusGeometry(0.22,0.022,8,22),m);
-  lip.rotation.x=Math.PI/2;lip.position.y=0.42;root.add(lip);
-  // Bag overflowing
-  const bag=new THREE.Mesh(new THREE.SphereGeometry(0.18,14,10),
-    new THREE.MeshStandardMaterial({color:'#1a1a1a',roughness:0.95}));
+  const root=new THREE.Group();root.position.set(x,0.42,z);
+  const m=new THREE.MeshBasicMaterial({color:colour});
+  const cyl=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.20,0.84,10),m);root.add(cyl);
+  const bag=new THREE.Mesh(new THREE.SphereGeometry(0.18,8,6),new THREE.MeshBasicMaterial({color:'#1a1a1a'}));
   bag.position.y=0.46;bag.scale.y=0.55;root.add(bag);
   registerProp(root,0.32,0.9);
-  return root;
 }
 
-// Awning section — slanted box + posts. Always at the same Z relative
-// to a chunk's stall row.
 function buildAwning(xStart,xEnd,zCentre=7.4){
   const len=xEnd-xStart;
-  const cx=(xStart+xEnd)/2;
   const root=new THREE.Group();
-  root.position.set(cx,2.6,zCentre);
+  root.position.set((xStart+xEnd)/2,2.6,zCentre);
   root.rotation.x=-0.18;
-  const canopy=new THREE.Mesh(
-    new THREE.BoxGeometry(len,0.10,3.6),
-    new THREE.MeshStandardMaterial({color:'#3a9f5a',roughness:0.7,metalness:0.05})
-  );
-  canopy.castShadow=true;canopy.receiveShadow=true;root.add(canopy);
-  // Front bright stripe
-  const stripe=new THREE.Mesh(
-    new THREE.BoxGeometry(len,0.18,0.10),
-    new THREE.MeshStandardMaterial({color:'#bfe8c2',roughness:0.5})
-  );
+  const canopy=new THREE.Mesh(new THREE.BoxGeometry(len,0.10,3.6),new THREE.MeshBasicMaterial({color:'#3a9f5a'}));
+  root.add(canopy);
+  const stripe=new THREE.Mesh(new THREE.BoxGeometry(len,0.18,0.10),new THREE.MeshBasicMaterial({color:'#bfe8c2'}));
   stripe.position.set(0,-0.15,-1.8);root.add(stripe);
-  // Awning ribs
-  const ribMat=new THREE.MeshStandardMaterial({color:'#3a3a3a',roughness:0.5,metalness:0.4});
-  const ribCount=Math.max(2,Math.round(len/2.2));
-  for(let i=0;i<=ribCount;i++){
-    const t=i/ribCount;
-    const rx=-len/2+t*len;
-    const rib=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.04,3.4),ribMat);
-    rib.position.set(rx,0.06,0);root.add(rib);
-  }
   scene.add(root);
-  if(_activeChunk) _activeChunk.meshes.push(root);
-  // Steel posts holding the awning up.
-  const postMat=new THREE.MeshStandardMaterial({color:'#5a5a5a',roughness:0.6,metalness:0.4});
+  if(_activeChunk)_activeChunk.meshes.push(root);
+  // Steel posts.
+  const postMat=new THREE.MeshBasicMaterial({color:'#5a5a5a'});
   for(const xPost of [xStart+0.4,xEnd-0.4]){
-    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,2.8,12),postMat);
-    post.position.set(xPost,1.4,5.7);
-    post.castShadow=true;
-    scene.add(post);
-    if(_activeChunk) _activeChunk.meshes.push(post);
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,2.8,6),postMat);
+    post.position.set(xPost,1.4,5.7);scene.add(post);
+    if(_activeChunk)_activeChunk.meshes.push(post);
   }
-  return root;
 }
 
-// Hanging shop signs — placed flat against the building.
-function buildHangingSign(x,y,z,tex,w=2.2,h=1.1){
-  const sign=new THREE.Mesh(
-    new THREE.BoxGeometry(w,h,0.10),
-    new THREE.MeshStandardMaterial({map:tex,roughness:0.7})
-  );
-  sign.position.set(x,y,z);
-  scene.add(sign);
-  if(_activeChunk) _activeChunk.meshes.push(sign);
-  return sign;
-}
-
-// Stop sign + traffic light cluster at each chunk's corner.
 function buildSignPole(x){
-  const poleMat=new THREE.MeshStandardMaterial({color:'#3a3a3a',roughness:0.5,metalness:0.4});
-  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,5,10),poleMat);
-  pole.position.set(x,2.5,1.0);pole.castShadow=true;scene.add(pole);
-  if(_activeChunk) _activeChunk.meshes.push(pole);
+  // Stop sign + traffic light cluster. Lit lamps are tiny additive
+  // sprites so they pop in the dusk fog.
+  const poleMat=new THREE.MeshBasicMaterial({color:'#3a3a3a'});
+  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,5,6),poleMat);
+  pole.position.set(x,2.5,1.0);scene.add(pole);
+  if(_activeChunk)_activeChunk.meshes.push(pole);
   const stop=new THREE.Mesh(
     new THREE.CircleGeometry(0.42,8),
-    new THREE.MeshStandardMaterial({map:TEX.stopSign,transparent:true,roughness:0.6,side:THREE.DoubleSide})
+    new THREE.MeshBasicMaterial({map:TEX.stopSign,transparent:true,side:THREE.DoubleSide})
   );
   stop.rotation.y=Math.PI/8;stop.position.set(x,3.8,1.05);scene.add(stop);
-  if(_activeChunk) _activeChunk.meshes.push(stop);
-  const housing=new THREE.Mesh(
-    new THREE.BoxGeometry(0.36,1.2,0.36),
-    new THREE.MeshStandardMaterial({color:'#1a1a1a',roughness:0.5,metalness:0.3})
-  );
-  housing.position.set(x,2.4,1.05);housing.castShadow=true;scene.add(housing);
-  if(_activeChunk) _activeChunk.meshes.push(housing);
-  const discMat=clr=>new THREE.MeshStandardMaterial({color:clr,emissive:clr,emissiveIntensity:0.6,roughness:0.4});
+  if(_activeChunk)_activeChunk.meshes.push(stop);
+  const housing=new THREE.Mesh(new THREE.BoxGeometry(0.36,1.2,0.36),new THREE.MeshBasicMaterial({color:'#1a1a1a'}));
+  housing.position.set(x,2.4,1.05);scene.add(housing);
+  if(_activeChunk)_activeChunk.meshes.push(housing);
   for(const [c,py] of [['#7a2020',2.85],['#7a6020',2.40],['#3aff60',1.95]]){
-    const d=new THREE.Mesh(new THREE.CircleGeometry(0.11,16),discMat(c));
-    d.position.set(x,py,1.24);scene.add(d);
-    if(_activeChunk) _activeChunk.meshes.push(d);
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(0.11,8),new THREE.MeshBasicMaterial({color:c}));
+    disc.position.set(x,py,1.24);scene.add(disc);
+    if(_activeChunk)_activeChunk.meshes.push(disc);
+  }
+  // Glow sprite at the green lamp.
+  const glow=new THREE.Sprite(SPRITE_MAT.lampGlow.clone());
+  glow.scale.set(0.7,0.7,1);glow.position.set(x,1.95,1.30);
+  scene.add(glow);if(_activeChunk)_activeChunk.meshes.push(glow);
+}
+
+function buildHangingSign(x,y,z,tex,w=2.2,h=1.1){
+  const sign=new THREE.Mesh(new THREE.BoxGeometry(w,h,0.10),new THREE.MeshBasicMaterial({map:tex}));
+  sign.position.set(x,y,z);scene.add(sign);
+  if(_activeChunk)_activeChunk.meshes.push(sign);
+}
+
+// ===== Sprite billboards — distant clutter (the user-requested POC #3) =====
+function scatterBillboards(xBase,xEnd){
+  const chunk=_activeChunk;
+  // Rubbish papers along the kerb edge.
+  for(let i=0;i<14;i++){
+    const s=new THREE.Sprite(SPRITE_MAT.rubbish);
+    s.scale.set(0.30,0.30,1);
+    s.position.set(rand(xBase,xEnd),0.12,rand(1.3,3.0));
+    scene.add(s);chunk.meshes.push(s);
+  }
+  // Weeds growing out of pavement cracks.
+  for(let i=0;i<10;i++){
+    const s=new THREE.Sprite(SPRITE_MAT.weed);
+    s.scale.set(0.36,0.36,1);
+    s.position.set(rand(xBase,xEnd),0.18,rand(2.0,7.5));
+    scene.add(s);chunk.meshes.push(s);
+  }
+  // Distant pedestrians far down the road — sprite stand-ins so the
+  // alley feels inhabited without skinned-mesh cost.
+  for(let i=0;i<6;i++){
+    const s=new THREE.Sprite(SPRITE_MAT.distantHuman);
+    s.scale.set(0.85,1.10,1);
+    s.position.set(rand(xBase,xEnd),0.85,rand(-7.5,-5));
+    scene.add(s);chunk.meshes.push(s);
   }
 }
 
-// ===== Chunk system — infinite alley along X axis =====
-const CHUNK_SIZE=24;       // metres of X-extent per chunk
-const CHUNK_WINDOW=1;      // chunks each side of current → 3 active total
-const chunks=new Map();    // idx → {idx, meshes:[], props:[], humans:[]}
+// ===== Chunk system — infinite alley along the X axis =====
+const CHUNK_SIZE=24, CHUNK_WINDOW=1;
+const chunks=new Map();
 let lastChunkIdx=null;
-
-function disposeMaterials(m){
-  if(!m) return;
-  if(Array.isArray(m)) m.forEach(disposeMaterials);
-  else m.dispose?.();
-}
-function disposeMesh(o){
-  scene.remove(o);
-  o.traverse(n=>{
-    if(n.isMesh){
-      n.geometry?.dispose();
-      disposeMaterials(n.material);
-    }
-  });
-}
-
+function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
+function disposeMesh(o){scene.remove(o);o.traverse(n=>{if(n.isMesh){n.geometry?.dispose();disposeMaterials(n.material)}})}
 function disposeChunk(chunk){
   for(const m of chunk.meshes) disposeMesh(m);
-  for(const p of chunk.props){
-    const idx=game.props.indexOf(p);
-    if(idx>=0) game.props.splice(idx,1);
-  }
+  for(const p of chunk.props){const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)}
   for(const h of chunk.humans){
-    if(h.parasitised){
-      // Don't despawn the host the player is currently driving — give
-      // them back control of the rat first.
-      exitHost();
-    }
+    if(h.parasitised) exitHost();
     if(h.root && h.root.parent) h.root.parent.remove(h.root);
-    if(h.inst && h.inst.mixer) h.inst.mixer.uncacheRoot(h.inst.root);
-    const i=game.humans.indexOf(h);
-    if(i>=0) game.humans.splice(i,1);
+    const i=game.humans.indexOf(h);if(i>=0) game.humans.splice(i,1);
   }
 }
 
@@ -1033,147 +794,68 @@ function generateChunk(idx){
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
 
-  // --- Road plane
+  // Road — single tiled plane per chunk.
   {
-    const tex=TEX.asphalt.clone();
-    tex.colorSpace=THREE.SRGBColorSpace;
-    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(2,1);
-    const road=new THREE.Mesh(
-      new THREE.PlaneGeometry(CHUNK_SIZE,9),
-      new THREE.MeshStandardMaterial({map:tex,roughness:0.97})
-    );
-    road.rotation.x=-Math.PI/2;
-    road.position.set(xBase+CHUNK_SIZE/2,0,-2.5);
-    road.receiveShadow=true;scene.add(road);chunk.meshes.push(road);
+    const tex=TEX.asphalt.clone();tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(2,1);pixelate(tex);
+    const road=new THREE.Mesh(new THREE.PlaneGeometry(CHUNK_SIZE,9),new THREE.MeshBasicMaterial({map:tex}));
+    road.rotation.x=-Math.PI/2;road.position.set(xBase+CHUNK_SIZE/2,0,-2.5);
+    scene.add(road);chunk.meshes.push(road);
   }
+  // Pedestrian crossing near the chunk start.
+  {
+    const z=new THREE.Mesh(new THREE.PlaneGeometry(7,5),new THREE.MeshBasicMaterial({map:TEX.zebra}));
+    z.rotation.x=-Math.PI/2;z.position.set(xBase+4,0.011,-2.5);
+    scene.add(z);chunk.meshes.push(z);
+  }
+  // Pavement
+  {
+    const tex=TEX.pavement.clone();tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(6,3);pixelate(tex);
+    const pave=new THREE.Mesh(new THREE.PlaneGeometry(CHUNK_SIZE,9),new THREE.MeshBasicMaterial({map:tex}));
+    pave.rotation.x=-Math.PI/2;pave.position.set(xBase+CHUNK_SIZE/2,0.06,5.5);
+    scene.add(pave);chunk.meshes.push(pave);
+  }
+  // Kerb + red-strip
+  {
+    const kerb=basicBox(CHUNK_SIZE,0.12,0.25,'#bcbcbc');
+    kerb.position.set(xBase+CHUNK_SIZE/2,0.06,1.05);scene.add(kerb);chunk.meshes.push(kerb);
+    const red=basicBox(CHUNK_SIZE,0.12,0.08,'#a02020');
+    red.position.set(xBase+CHUNK_SIZE/2,0.062,1.18);scene.add(red);chunk.meshes.push(red);
+  }
+  // Buildings (back wall + stall frontage + far building across the road).
+  const facadeTex=TEX.facade[((idx%4)+4)%4].clone();facadeTex.wrapS=THREE.RepeatWrapping;facadeTex.repeat.set(CHUNK_SIZE/13,1);pixelate(facadeTex);
+  const facade=new THREE.Mesh(new THREE.BoxGeometry(CHUNK_SIZE,8,1.8),new THREE.MeshBasicMaterial({map:facadeTex}));
+  facade.position.set(xBase+CHUNK_SIZE/2,4,10.5);scene.add(facade);chunk.meshes.push(facade);
+  const stallFront=new THREE.Mesh(new THREE.BoxGeometry(CHUNK_SIZE,2.4,0.2),new THREE.MeshBasicMaterial({map:TEX.stallFront}));
+  stallFront.position.set(xBase+CHUNK_SIZE/2,1.2,9.6);scene.add(stallFront);chunk.meshes.push(stallFront);
+  const farTex=TEX.facade[((idx+2)%4+4)%4].clone();farTex.wrapS=THREE.RepeatWrapping;farTex.repeat.set(CHUNK_SIZE/12,1);pixelate(farTex);
+  const farFacade=new THREE.Mesh(new THREE.BoxGeometry(CHUNK_SIZE,9,2),new THREE.MeshBasicMaterial({map:farTex,color:'#a89890'}));
+  farFacade.position.set(xBase+CHUNK_SIZE/2,4.5,-9);scene.add(farFacade);chunk.meshes.push(farFacade);
 
-  // --- Zebra crossings near each chunk boundary so they appear regularly.
-  for(const zx of [xBase+3,xBase+CHUNK_SIZE-3]){
-    if(Math.abs(zx-Math.round(zx/8)*8)>1) continue;       // sparse
-  }
-  // Always put one zebra near the start of each chunk.
-  {
-    const zebra=new THREE.Mesh(
-      new THREE.PlaneGeometry(7,5),
-      new THREE.MeshStandardMaterial({map:TEX.zebra,roughness:0.95})
-    );
-    zebra.rotation.x=-Math.PI/2;
-    zebra.position.set(xBase+4,0.011,-2.5);
-    zebra.receiveShadow=true;scene.add(zebra);chunk.meshes.push(zebra);
-  }
-
-  // --- Pavement (red-brick)
-  {
-    const tex=TEX.pavement.clone();
-    tex.colorSpace=THREE.SRGBColorSpace;
-    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(6,3);
-    const pave=new THREE.Mesh(
-      new THREE.PlaneGeometry(CHUNK_SIZE,9),
-      new THREE.MeshStandardMaterial({map:tex,roughness:0.9})
-    );
-    pave.rotation.x=-Math.PI/2;
-    pave.position.set(xBase+CHUNK_SIZE/2,0.06,5.5);
-    pave.receiveShadow=true;scene.add(pave);chunk.meshes.push(pave);
-  }
-  // Kerb
-  {
-    const kerb=new THREE.Mesh(
-      new THREE.BoxGeometry(CHUNK_SIZE,0.12,0.25),
-      new THREE.MeshStandardMaterial({color:'#bcbcbc',roughness:0.9})
-    );
-    kerb.position.set(xBase+CHUNK_SIZE/2,0.06,1.05);
-    kerb.castShadow=true;kerb.receiveShadow=true;scene.add(kerb);chunk.meshes.push(kerb);
-  }
-  // Painted red strip along the kerb (Taipei pavement convention).
-  {
-    const red=new THREE.Mesh(
-      new THREE.BoxGeometry(CHUNK_SIZE,0.12,0.08),
-      new THREE.MeshStandardMaterial({color:'#a02020',roughness:0.9})
-    );
-    red.position.set(xBase+CHUNK_SIZE/2,0.062,1.18);
-    scene.add(red);chunk.meshes.push(red);
-  }
-
-  // --- Buildings (back wall + lower stall frontage)
-  const facadeTex=TEX.facade[((idx%4)+4)%4];
-  const facadeMap=facadeTex.clone();facadeMap.colorSpace=THREE.SRGBColorSpace;
-  facadeMap.wrapS=THREE.RepeatWrapping;facadeMap.repeat.set(CHUNK_SIZE/13,1);
-  const facade=new THREE.Mesh(
-    new THREE.BoxGeometry(CHUNK_SIZE,8,1.8),
-    new THREE.MeshStandardMaterial({map:facadeMap,roughness:0.95})
-  );
-  facade.position.set(xBase+CHUNK_SIZE/2,4,10.5);
-  facade.castShadow=true;facade.receiveShadow=true;scene.add(facade);chunk.meshes.push(facade);
-  // Stall frontage
-  const stallFrontTex=TEX.stallFront;
-  const stallFrontMap=stallFrontTex.clone();stallFrontMap.colorSpace=THREE.SRGBColorSpace;
-  const stallFront=new THREE.Mesh(
-    new THREE.BoxGeometry(CHUNK_SIZE,2.4,0.2),
-    new THREE.MeshStandardMaterial({map:stallFrontMap,roughness:0.9})
-  );
-  stallFront.position.set(xBase+CHUNK_SIZE/2,1.2,9.6);
-  scene.add(stallFront);chunk.meshes.push(stallFront);
-  // Far building (visual depth across the road)
-  const farTex=TEX.facade[((idx+2)%4+4)%4].clone();
-  farTex.colorSpace=THREE.SRGBColorSpace;farTex.wrapS=THREE.RepeatWrapping;farTex.repeat.set(CHUNK_SIZE/12,1);
-  const farFacade=new THREE.Mesh(
-    new THREE.BoxGeometry(CHUNK_SIZE,9,2),
-    new THREE.MeshStandardMaterial({map:farTex,roughness:0.95,color:'#a89890'})
-  );
-  farFacade.position.set(xBase+CHUNK_SIZE/2,4.5,-9);
-  farFacade.castShadow=true;farFacade.receiveShadow=true;scene.add(farFacade);chunk.meshes.push(farFacade);
-
-  // --- Awning over the stall row (centred on the chunk)
+  // Awning, hanging signs, traffic light/stop pole.
   buildAwning(xBase+2,xBase+CHUNK_SIZE-2,7.4);
-
-  // --- Hanging signs across the building
   const signTex=[TEX.signRed,TEX.signRed2,TEX.signBlue,TEX.signYellow,TEX.signGreen];
-  for(let i=0;i<3;i++){
-    const t=signTex[(idx*3+i)%signTex.length];
-    buildHangingSign(xBase+4+i*7,3.5,9.5,t,2.2,1.1);
-  }
-  // Vertical sign at the corner
+  for(let i=0;i<3;i++) buildHangingSign(xBase+4+i*7,3.5,9.5,signTex[(idx*3+i)%signTex.length],2.2,1.1);
   const vTex=signTex[(idx+1)%signTex.length];
-  const vert=new THREE.Mesh(
-    new THREE.BoxGeometry(0.9,3.4,0.10),
-    new THREE.MeshStandardMaterial({map:vTex,roughness:0.7})
-  );
+  const vert=new THREE.Mesh(new THREE.BoxGeometry(0.9,3.4,0.10),new THREE.MeshBasicMaterial({map:vTex}));
   vert.position.set(xBase+CHUNK_SIZE-2,4.5,9.5);scene.add(vert);chunk.meshes.push(vert);
-
-  // --- Stop sign / traffic light pole at chunk start
   buildSignPole(xBase+1);
 
-  // --- Props randomly distributed across the chunk's pavement
-  // Pots (a row in front of the stall)
-  for(let i=0;i<4;i++){
-    const x=xBase+rand(4,CHUNK_SIZE-4);
-    buildSoupPot(x,5.6+rand(-0.2,0.2),0.95+Math.random()*0.10);
-  }
-  // Tables under the awning
-  for(let i=0;i<4;i++){
-    const x=xBase+rand(2,CHUNK_SIZE-2);
-    buildTable(x,6.5+rand(-0.2,0.2));
-  }
-  // Stools around the tables
+  // Props
+  for(let i=0;i<4;i++) buildSoupPot(xBase+rand(4,CHUNK_SIZE-4),5.6+rand(-0.2,0.2),0.95+Math.random()*0.10);
+  for(let i=0;i<4;i++) buildTable(xBase+rand(2,CHUNK_SIZE-2),6.5+rand(-0.2,0.2));
   const stoolColours=['#d04545','#3577c4','#e69825','#5cae53','#a64ba6','#cf6b8c'];
-  for(let i=0;i<14;i++){
-    const x=xBase+rand(2,CHUNK_SIZE-2);
-    const z=rand(5.6,7.6);
-    buildStool(x,z,pick(stoolColours));
-  }
-  // A couple of bins
+  for(let i=0;i<14;i++) buildStool(xBase+rand(2,CHUNK_SIZE-2),rand(5.6,7.6),pick(stoolColours));
   buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),5.5,pick(['#3a4540','#5c2c2c','#2a3a44']));
   buildBin(xBase+rand(1.5,CHUNK_SIZE-1.5),5.5,pick(['#3a4540','#5c2c2c','#2a3a44']));
-  // Scooters (1-2 per chunk)
   buildScooter(xBase+rand(3,CHUNK_SIZE-3),rand(2.6,3.4),Math.random()*Math.PI*2);
   if(Math.random()<0.6) buildScooter(xBase+rand(3,CHUNK_SIZE-3),rand(2.6,3.4),Math.random()*Math.PI*2);
-  // One parked car on the road, sometimes.
-  if(Math.random()<0.6){
-    buildCar(xBase+rand(4,CHUNK_SIZE-4),-3.2,Math.random()<0.5?0:Math.PI,
-      pick(['#2a2c30','#1c1c1c','#5a3030','#1a3a4a','#a8a8a8']));
-  }
+  if(Math.random()<0.6) buildCar(xBase+rand(4,CHUNK_SIZE-4),-3.2,Math.random()<0.5?0:Math.PI,
+    pick(['#2a2c30','#1c1c1c','#5a3030','#1a3a4a','#a8a8a8']));
 
-  // --- Humans (1-2 wandering, occasional cleaner)
+  // Sprite billboards — the PS1 trick that keeps the polycount in check.
+  scatterBillboards(xBase,xBase+CHUNK_SIZE);
+
+  // Humans
   const humanCount=2+(Math.random()<0.5?1:0);
   for(let i=0;i<humanCount;i++){
     const x=xBase+rand(2,CHUNK_SIZE-2);
@@ -1183,9 +865,8 @@ function generateChunk(idx){
     if(h){chunk.humans.push(h);game.humans.push(h)}
   }
 
-  chunks.set(idx,chunk);
-  _activeChunk=null;
-  console.log('[chunk] generated idx='+idx,' props='+chunk.props.length,' humans='+chunk.humans.length);
+  chunks.set(idx,chunk);_activeChunk=null;
+  console.log('[chunk] '+idx+' props='+chunk.props.length+' humans='+chunk.humans.length);
 }
 
 function ensureChunksAroundX(x){
@@ -1195,246 +876,173 @@ function ensureChunksAroundX(x){
   for(let i=c-CHUNK_WINDOW;i<=c+CHUNK_WINDOW;i++){
     if(!chunks.has(i)) generateChunk(i);
   }
-  // Despawn far chunks
   for(const [idx,chunk] of [...chunks]){
-    if(Math.abs(idx-c)>CHUNK_WINDOW){
-      console.log('[chunk] dispose idx='+idx);
-      disposeChunk(chunk);
-      chunks.delete(idx);
-    }
+    if(Math.abs(idx-c)>CHUNK_WINDOW){disposeChunk(chunk);chunks.delete(idx);console.log('[chunk] dispose '+idx)}
   }
 }
 
-// ===== Rat — built from player_main.glb (with Tripo PBR textures) =====
-function applyPlayerTextures(root){
-  // Replace the basecolor map for the head mesh (the one with the highest
-  // mesh-centre Y) with the selfie canvas. Other meshes keep the Tripo
-  // basecolor. This is what makes the rat carry the player's face.
-  let headMesh=null,headY=-Infinity;
-  root.traverse(o=>{
-    if(o.isMesh){
-      const bb=new THREE.Box3().setFromObject(o);
-      const cy=(bb.max.y+bb.min.y)/2;
-      if(cy>headY){headY=cy;headMesh=o}
-    }
-  });
-  root.traverse(o=>{
-    if(!o.isMesh||!o.material) return;
-    const mats=Array.isArray(o.material)?o.material:[o.material];
-    for(const m of mats){
-      m.side=THREE.DoubleSide;m.transparent=false;
-      if(playerTextureSet?.base) m.map=(o===headMesh)?faceTexture:playerTextureSet.base;
-      if(playerTextureSet?.normal) m.normalMap=playerTextureSet.normal;
-      if(playerTextureSet?.rough) m.roughnessMap=playerTextureSet.rough;
-      if(playerTextureSet?.metal) m.metalnessMap=playerTextureSet.metal;
-      m.needsUpdate=true;
-    }
-  });
-}
-
+/* ============================================================
+   Low-poly procedural rat — human head + four-legged body
+   The "Running Crawl.fbx" animation is approximated procedurally:
+     • Two diagonal leg pairs cycle out of phase by π.
+     • Spine yaws side-to-side.
+     • Body bobs up-and-down with the leg cycle.
+   Total geometry: ~50 triangles (head sphere + 4 leg boxes + body
+   capsule + tail cylinders + ears). Lit with MeshLambertMaterial —
+   the only dynamic actor that gets real-time shading.
+   ============================================================ */
 function buildRat({isPlayer=false}={}){
-  // Always create a root so the rat is positionable.
-  const outer=new THREE.Group();
-  scene.add(outer);
-  let mixer=null,actIdle=null,actWalk=null,actRun=null;
-  let height=0.30;
-  if(playerGLTF){
-    const root=SkeletonUtils.clone(playerGLTF.scene);
-    // Apply PBR + face texture per material clone (clone materials first
-    // so each rat instance can independently swap the head map).
-    root.traverse(o=>{
-      if(o.isMesh && o.material){
-        const mats=Array.isArray(o.material)?[...o.material]:[o.material];
-        const cloned=mats.map(m=>m.clone());
-        o.material=Array.isArray(o.material)?cloned:cloned[0];
-        o.castShadow=true;o.frustumCulled=false;
-      }
-    });
-    if(isPlayer) applyPlayerTextures(root);
-    else{
-      // Non-player rats: just apply Tripo basecolor uniformly.
-      root.traverse(o=>{
-        if(!o.isMesh||!o.material) return;
-        const mats=Array.isArray(o.material)?o.material:[o.material];
-        for(const m of mats){
-          if(playerTextureSet?.base) m.map=playerTextureSet.base;
-          if(playerTextureSet?.normal) m.normalMap=playerTextureSet.normal;
-          if(playerTextureSet?.rough) m.roughnessMap=playerTextureSet.rough;
-          if(playerTextureSet?.metal) m.metalnessMap=playerTextureSet.metal;
-          m.needsUpdate=true;
-        }
-      });
-    }
-    // Normalise feet to local y=0 within outer.
-    outer.add(root);
-    root.updateMatrixWorld(true);
-    const bbox=new THREE.Box3().setFromObject(root);
-    const rawH=bbox.max.y-bbox.min.y;
-    // Scale the model so its final on-screen height is ~30 cm (rat-sized).
-    const targetH=0.32;
-    const s=targetH/Math.max(0.001,rawH);
-    root.scale.setScalar(s);
-    root.updateMatrixWorld(true);
-    const bbox2=new THREE.Box3().setFromObject(root);
-    root.position.y-=bbox2.min.y;
-    height=bbox2.max.y-bbox2.min.y;
-    // Animation mixer — use built-in animations if available, else
-    // fall back to character.glb's clips. Either way, idle plays first.
-    mixer=new THREE.AnimationMixer(root);
-    const tryClip=name=>{
-      const ownClip=playerGLTF.animations.find(c=>c.name?.toLowerCase().includes(name));
-      const sharedClip={idle:clipIdle,walk:clipWalk,run:clipRun}[name];
-      return ownClip||sharedClip||null;
-    };
-    const ci=tryClip('idle'),cw=tryClip('walk'),cr=tryClip('run');
-    if(ci){actIdle=mixer.clipAction(ci);actIdle.play()}
-    if(cw) actWalk=mixer.clipAction(cw);
-    if(cr) actRun=mixer.clipAction(cr);
-    console.log('[rat] built (model), height='+height.toFixed(2)+'m');
-  }else{
-    // Fallback procedural rat (small body + face sphere) so the player
-    // is visible even before the GLB has loaded.
-    const fur=new THREE.MeshStandardMaterial({color:isPlayer?'#5d4a3a':'#4a3a2e',roughness:0.85});
-    const body=new THREE.Mesh(new THREE.SphereGeometry(0.16,16,12),fur);
-    body.scale.set(1.2,0.7,0.85);body.castShadow=true;outer.add(body);
-    const head=new THREE.Mesh(new THREE.SphereGeometry(0.18,20,16),
-      isPlayer?new THREE.MeshStandardMaterial({map:faceTexture,roughness:0.55})
-              :new THREE.MeshStandardMaterial({color:'#bfa078'}));
-    head.position.set(0.18,0.04,0);outer.add(head);
-    height=0.30;
-    console.warn('[rat] built (fallback procedural)');
+  const root=new THREE.Group();
+  root.position.y=RAT_FOOT_OFFSET;
+  // Body — single squashed sphere keeps the silhouette readable.
+  const fur=new THREE.MeshLambertMaterial({color:isPlayer?'#5d4a3a':'#3e2f24'});
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.13,8,6),fur);
+  body.scale.set(1.55,0.78,0.95);
+  body.position.set(-0.04,0.14,0);
+  root.add(body);
+  // Head — pixel-sphere with the face texture (player only).
+  const headMat=isPlayer
+    ? new THREE.MeshLambertMaterial({map:faceTexture})
+    : new THREE.MeshLambertMaterial({color:'#bfa078'});
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.16,10,8),headMat);
+  head.position.set(0.18,0.18,0);
+  root.add(head);
+  // Ears — flat thin quads as billboards would be too noisy here.
+  const earMat=new THREE.MeshLambertMaterial({color:'#7a5b46'});
+  const earL=new THREE.Mesh(new THREE.SphereGeometry(0.045,6,4),earMat);
+  earL.scale.set(1,0.7,1);earL.position.set(0.18,0.32,-0.10);root.add(earL);
+  const earR=earL.clone();earR.position.z=0.10;root.add(earR);
+  // Legs — four boxes positioned at the corners of the body.
+  const legMat=new THREE.MeshLambertMaterial({color:'#3e2f24'});
+  const legs=[];
+  const legSpots=[
+    [ 0.08,-0.085],
+    [ 0.08, 0.085],
+    [-0.16,-0.090],
+    [-0.16, 0.090]
+  ];
+  for(const [px,pz] of legSpots){
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.16,0.05),legMat);
+    leg.position.set(px,0.08,pz);
+    root.add(leg);legs.push(leg);
   }
+  // Tail — chain of 4 boxes, gently curved.
+  const tailParts=[];
+  let prevX=-0.22,prevY=0.14;
+  for(let i=0;i<4;i++){
+    const seg=new THREE.Mesh(new THREE.BoxGeometry(0.085,0.03,0.03),legMat);
+    seg.position.set(prevX-0.05-i*0.08,prevY+i*0.012,0);
+    seg.rotation.z=-0.15-i*0.04;
+    prevX=seg.position.x;
+    root.add(seg);tailParts.push(seg);
+  }
+  scene.add(root);
   return {
-    kind:'rat',root:outer,isPlayer,
-    inst:mixer?{mixer,actIdle,actWalk,actRun,currentBase:'actIdle'}:null,
+    kind:'rat',root,isPlayer,
+    parts:{body,head,legs,tailParts},
     vel:new THREE.Vector3(),
     curSpeed:0,yaw:0,vy:0,isAir:false,
     controllable:isPlayer,
-    walkPhase:0,bobBase:0,height
+    walkPhase:0,bobBase:0,height:0.30
   };
 }
 
-// ===== Human builder — character.glb + ALWAYS-visible placeholder =====
-function buildCharacterInstance(tint=null){
-  if(!charGLTF) return null;
-  const root=SkeletonUtils.clone(charGLTF.scene);
-  root.traverse(o=>{
-    if(o.isMesh){
-      o.frustumCulled=false;o.castShadow=true;o.receiveShadow=true;
-      if(o.material){
-        const mats=Array.isArray(o.material)?[...o.material]:[o.material];
-        const cloned=mats.map(m=>{
-          const cm=m.clone();
-          cm.side=THREE.DoubleSide;
-          if(tint && cm.color) cm.color.multiply(tint);
-          return cm;
-        });
-        o.material=Array.isArray(o.material)?cloned:cloned[0];
-      }
-    }
-  });
-  // Scale to roughly 1.7 m. The 2 project did x100 to undo Mixamo's 0.01
-  // export, then bbox-normalised. We do the same but verify by setting
-  // an explicit target height after measuring.
-  root.scale.setScalar(100);
-  const outer=new THREE.Group();
-  outer.add(root);
-  root.updateMatrixWorld(true);
-  let bbox=new THREE.Box3().setFromObject(root);
-  let rawH=bbox.max.y-bbox.min.y;
-  // Safety: if scale 100 produced something wildly wrong, rescale to a
-  // target height of 1.7 m.
-  if(rawH<0.5 || rawH>4){
-    const s=(rawH<0.5)?1.7/Math.max(0.001,rawH):1.7/rawH;
-    root.scale.multiplyScalar(s);
-    root.updateMatrixWorld(true);
-    bbox=new THREE.Box3().setFromObject(root);
+/* Approximation of Running Crawl.fbx — purely scripted; no skin mixer.
+   Legs cycle in diagonal pairs (FL+BR up while FR+BL down). Tail and
+   body sway. Stride speed scales with the rat's curSpeed so the
+   animation matches the gameplay velocity. */
+function animateRat(rat,dt){
+  const speed=Math.max(0.05,rat.curSpeed);
+  rat.walkPhase+=dt*speed*7;
+  const p=rat.walkPhase;
+  const a=Math.sin(p),b=Math.sin(p+Math.PI);
+  rat.parts.legs[0].rotation.x= a*0.7;     // front-left
+  rat.parts.legs[3].rotation.x= a*0.7;     // back-right
+  rat.parts.legs[1].rotation.x= b*0.7;     // front-right
+  rat.parts.legs[2].rotation.x= b*0.7;     // back-left
+  // Body bob and yaw
+  rat.parts.body.position.y=0.14+Math.abs(a)*0.025;
+  rat.parts.head.position.y=0.18+Math.abs(a)*0.020;
+  rat.parts.head.rotation.y=Math.sin(p*0.5)*0.10;
+  // Tail swish — increasing amplitude toward the tip.
+  for(let i=0;i<rat.parts.tailParts.length;i++){
+    const part=rat.parts.tailParts[i];
+    part.rotation.y=Math.sin(p*0.8+i*0.6)*(0.10+i*0.05);
   }
-  // Drop feet to local y=0.
-  root.position.y-=bbox.min.y;
-  root.updateMatrixWorld(true);
-  const finalBox=new THREE.Box3().setFromObject(root);
-  const finalH=finalBox.max.y-finalBox.min.y;
-  const mixer=new THREE.AnimationMixer(root);
-  const actIdle=clipIdle?mixer.clipAction(clipIdle):null;
-  const actWalk=clipWalk?mixer.clipAction(clipWalk):null;
-  const actRun=clipRun?mixer.clipAction(clipRun):null;
-  const actJump=clipJump?mixer.clipAction(clipJump):null;
-  if(actJump){actJump.setLoop(THREE.LoopOnce);actJump.clampWhenFinished=true}
-  actIdle && actIdle.play();
-  console.log('[human] glb instance built — final height='+finalH.toFixed(2)+'m');
-  return {outer,root,mixer,actIdle,actWalk,actRun,actJump,
-    currentBase:actIdle?'actIdle':null,
-    height:finalH};
 }
 
-function setHumanBase(inst,name,fade=0.18){
-  if(!inst||inst.currentBase===name)return;
-  const prev=inst.currentBase?inst[inst.currentBase]:null;
-  const next=inst[name];
-  if(prev && prev.fadeOut) prev.fadeOut(fade);
-  if(next && next.reset){next.reset().fadeIn(fade).play()}
-  inst.currentBase=name;
-}
-
+/* ============================================================
+   Low-poly procedural human (~40 tris) — head + torso + 2 arms +
+   2 legs as boxes. The Fast Run.fbx animation is approximated via
+   scripted limb swing whose amplitude and frequency scale with the
+   human's curSpeed (walk: small swing; run: big swing + bigger
+   stride). MeshLambertMaterial so the figure picks up the sun's
+   warm dusk light — the static city around them stays unlit.
+   ============================================================ */
 function buildHuman({position,role='wanderer'}={}){
   const root=new THREE.Group();
   root.position.copy(position);
   scene.add(root);
-  // ALWAYS-visible placeholder — a quick humanoid silhouette that stays
-  // in the scene if character.glb didn't load. We swap it out for the
-  // skinned model only after the model is verified to have non-zero size.
-  const placeholderColour=role==='cleaner'?'#4a6b8c':'#6b7a52';
-  const ph=new THREE.Group();
-  const trousers=new THREE.MeshStandardMaterial({color:'#2a2438',roughness:0.95});
-  const shirt=new THREE.MeshStandardMaterial({color:placeholderColour,roughness:0.85});
-  const skin=new THREE.MeshStandardMaterial({color:'#d9b89a',roughness:0.6});
-  const legGeo=new THREE.CapsuleGeometry(0.11,0.58,6,12);
-  const legL=new THREE.Mesh(legGeo,trousers);legL.position.set(-0.13,0.42,0);legL.castShadow=true;ph.add(legL);
-  const legR=legL.clone();legR.position.x=0.13;ph.add(legR);
-  const torso=new THREE.Mesh(new THREE.CapsuleGeometry(0.26,0.55,6,12),shirt);
-  torso.position.y=1.08;torso.castShadow=true;ph.add(torso);
-  const armGeo=new THREE.CapsuleGeometry(0.085,0.50,4,10);
-  const armL=new THREE.Mesh(armGeo,shirt);armL.position.set(-0.34,1.10,0);armL.rotation.z=0.15;armL.castShadow=true;ph.add(armL);
-  const armR=armL.clone();armR.position.x=0.34;armR.rotation.z=-0.15;ph.add(armR);
-  const headMesh=new THREE.Mesh(new THREE.SphereGeometry(0.22,20,16),skin);
-  headMesh.position.y=1.62;headMesh.castShadow=true;ph.add(headMesh);
-  root.add(ph);
-
-  // Try to attach the skinned model.
-  let inst=null;
-  try{
-    inst=buildCharacterInstance(role==='cleaner'?new THREE.Color('#a8c8e8'):null);
-  }catch(err){
-    console.error('[human] buildCharacterInstance threw',err);
-  }
-  if(inst && inst.height>0.5){
-    root.remove(ph);
-    root.add(inst.outer);
-  }else{
-    console.warn('[human] using placeholder — inst='+!!inst+' height='+(inst?inst.height:'n/a'));
-  }
-  // Shoulder rat (always present, hidden by default).
+  const shirtColour=role==='cleaner'?'#4a6b8c':pick(['#6b7a52','#a83a3a','#3a5a7a','#7a5a3a','#5a3a5a']);
+  const trousers=new THREE.MeshLambertMaterial({color:'#2a2438'});
+  const shirt=new THREE.MeshLambertMaterial({color:shirtColour});
+  const skin=new THREE.MeshLambertMaterial({color:'#d9b89a'});
+  // Legs (long boxes for the chunky PS1 silhouette).
+  const legL=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.78,0.22),trousers);
+  legL.position.set(-0.14,0.42,0);root.add(legL);
+  const legR=legL.clone();legR.position.x=0.14;root.add(legR);
+  // Torso
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(0.54,0.62,0.32),shirt);
+  torso.position.y=1.10;root.add(torso);
+  // Arms
+  const armL=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.62,0.18),shirt);
+  armL.position.set(-0.36,1.10,0);root.add(armL);
+  const armR=armL.clone();armR.position.x=0.36;root.add(armR);
+  // Head — chunky cube + skin material.
+  const head=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.40,0.36),skin);
+  head.position.y=1.60;root.add(head);
+  // Hair — small dark box on top.
+  const hair=new THREE.Mesh(new THREE.BoxGeometry(0.40,0.10,0.40),new THREE.MeshLambertMaterial({color:'#1a1318'}));
+  hair.position.y=1.84;root.add(hair);
+  // Shoulder rat indicator (hidden until parasitised).
   const shoulderRat=new THREE.Mesh(
-    new THREE.SphereGeometry(0.10,12,8),
-    new THREE.MeshStandardMaterial({color:'#5d4a3a'})
+    new THREE.SphereGeometry(0.10,6,4),
+    new THREE.MeshLambertMaterial({color:'#5d4a3a'})
   );
-  shoulderRat.position.set(0.22,1.40,0);
-  shoulderRat.visible=false;
+  shoulderRat.position.set(0.22,1.40,0);shoulderRat.visible=false;
   root.add(shoulderRat);
-
   return {
-    kind:'human',role,inst,
-    root,
-    placeholder:ph,
-    placeholderLegs:[legL,legR],
-    placeholderArms:[armL,armR],
+    kind:'human',role,root,
+    parts:{legL,legR,torso,armL,armR,head,hair,shoulderRat},
     shoulderRat,
     vel:new THREE.Vector3(),
     curSpeed:0,yaw:Math.random()*Math.PI*2,vy:0,isAir:false,
     controllable:false,parasitised:false,
-    wanderTimer:rand(0.4,2.2),walkPhase:0
+    wanderTimer:rand(0.4,2.2),walkPhase:0,height:1.72
   };
+}
+
+/* Approximation of Fast Run.fbx for humans — limb swing scales with
+   curSpeed. Below ~0.4 m/s the human is "idle" (no swing). Above
+   ~3 m/s the swing peaks at a run amplitude with extra body lean. */
+function animateHuman(h,dt){
+  const speed=Math.max(0,h.curSpeed);
+  const intensity=clamp(speed/HOST_MAX_SPEED,0,1);
+  h.walkPhase+=dt*lerp(0,12,intensity);
+  const p=h.walkPhase;
+  const amp=lerp(0,0.85,intensity);
+  // Opposing legs / arms.
+  h.parts.legL.rotation.x= Math.sin(p)*amp;
+  h.parts.legR.rotation.x=-Math.sin(p)*amp;
+  h.parts.armL.rotation.x=-Math.sin(p)*amp*0.85;
+  h.parts.armR.rotation.x= Math.sin(p)*amp*0.85;
+  // Slight forward lean while running.
+  h.parts.torso.rotation.x=-intensity*0.18;
+  h.parts.head.rotation.x =-intensity*0.10;
+  h.parts.hair.rotation.x =-intensity*0.10;
+  // Body bob — small vertical oscillation.
+  const bob=Math.abs(Math.sin(p))*0.04*intensity;
+  h.root.position.y=bob;
 }
 
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
@@ -1447,15 +1055,12 @@ const inputFlags={jump:false,action:false};
   const STICK_MAX=38;
   let ptrId=null,cx=0,cy=0;
   zone.addEventListener('pointerdown',e=>{
-    if(ptrId!==null)return;
-    e.preventDefault();
+    if(ptrId!==null)return;e.preventDefault();
     ptrId=e.pointerId;zone.setPointerCapture(ptrId);
-    const r=zone.getBoundingClientRect();
-    cx=r.left+r.width/2;cy=r.top+r.height/2;
+    const r=zone.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;
   });
   zone.addEventListener('pointermove',e=>{
-    if(e.pointerId!==ptrId)return;
-    e.preventDefault();
+    if(e.pointerId!==ptrId)return;e.preventDefault();
     const dx=e.clientX-cx,dy=e.clientY-cy;
     const d=Math.min(Math.hypot(dx,dy),STICK_MAX);
     const a=Math.atan2(dy,dx);
@@ -1464,13 +1069,10 @@ const inputFlags={jump:false,action:false};
     joyX=sx/STICK_MAX;joyY=sy/STICK_MAX;
   });
   const end=e=>{if(e.pointerId!==ptrId)return;ptrId=null;joyX=0;joyY=0;stick.style.transform='translate(0,0)'};
-  zone.addEventListener('pointerup',end);
-  zone.addEventListener('pointercancel',end);
+  zone.addEventListener('pointerup',end);zone.addEventListener('pointercancel',end);
 }
-const jumpBtn=document.getElementById('jump-btn');
-const biteBtn=document.getElementById('bite-btn');
-jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
-biteBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.action=true});
+document.getElementById('jump-btn').addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
+document.getElementById('bite-btn').addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.action=true});
 window.addEventListener('keydown',e=>{
   if(e.code==='KeyW')keys.w=true;if(e.code==='KeyA')keys.a=true;
   if(e.code==='KeyS')keys.s=true;if(e.code==='KeyD')keys.d=true;
@@ -1486,8 +1088,8 @@ window.addEventListener('keyup',e=>{
   if(e.code==='ArrowLeft')keys.left=false;if(e.code==='ArrowRight')keys.right=false;
 });
 
-// ===== Camera — rat-eye view (low, close, slight upward gaze) =====
-let camYaw=Math.PI,camPitch=0.18,camDist=2.2;
+// ===== Camera — rat-eye, low orbit (formula identical to 都市傳說2) =====
+let camYaw=Math.PI,camPitch=0.18,camDist=1.8;
 let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
 canvas.addEventListener('pointerdown',e=>{
   if(e.target!==canvas)return;
@@ -1500,24 +1102,21 @@ canvas.addEventListener('pointermove',e=>{
   camPitch=clamp(pitch0+(e.clientY-dy0)/H()*3,-0.10,1.10);
 });
 const endDrag=e=>{if(e.pointerId===dragPId){dragging=false;dragPId=null}};
-canvas.addEventListener('pointerup',endDrag);
-canvas.addEventListener('pointercancel',endDrag);
-canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,1.2,8)},{passive:false});
+canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
+canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,1.0,6)},{passive:false});
 
 function updateCam(){
-  const ent=game.controlled;
-  if(!ent)return;
+  const ent=game.controlled;if(!ent)return;
   const isHost=(game.controlMode==='host');
   const focusH=isHost?1.55:0.22;
   const tx=ent.root.position.x;
   const ty=ent.root.position.y+focusH;
   const tz=ent.root.position.z;
-  const dist=isHost?Math.max(camDist*1.5,4.2):camDist;
+  const dist=isHost?Math.max(camDist*1.6,3.6):camDist;
   const cx=tx+Math.sin(camYaw)*dist*Math.cos(camPitch);
   const cy=ty+Math.sin(camPitch)*dist + (isHost?0:0.05);
   const cz=tz+Math.cos(camYaw)*dist*Math.cos(camPitch);
-  camera.position.set(cx,cy,cz);
-  camera.lookAt(tx,ty,tz);
+  camera.position.set(cx,cy,cz);camera.lookAt(tx,ty,tz);
 }
 
 // ===== Selfie capture flow =====
@@ -1532,7 +1131,7 @@ let selfieStream=null,selfieFrozenCanvas=null;
 async function openCamera(){
   try{
     selfieStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'user',width:{ideal:720},height:{ideal:720}},audio:false
+      video:{facingMode:'user',width:{ideal:512},height:{ideal:512}},audio:false
     });
     selfieVideo.srcObject=selfieStream;await selfieVideo.play();
     selfieVideo.style.display='block';
@@ -1546,7 +1145,7 @@ async function openCamera(){
   }
 }
 function freezeSelfieFrame(){
-  const size=512;
+  const size=256;
   const c=document.createElement('canvas');c.width=c.height=size;
   const ctx=c.getContext('2d');
   const vw=selfieVideo.videoWidth,vh=selfieVideo.videoHeight;
@@ -1556,17 +1155,10 @@ function freezeSelfieFrame(){
   ctx.restore();
   return c;
 }
-function stopSelfieStream(){
-  if(!selfieStream)return;
-  for(const t of selfieStream.getTracks())t.stop();
-  selfieStream=null;selfieVideo.srcObject=null;
-}
+function stopSelfieStream(){if(!selfieStream)return;for(const t of selfieStream.getTracks())t.stop();selfieStream=null;selfieVideo.srcObject=null}
 function closeSelfieAnd(frozenCanvas){
   stopSelfieStream();
-  if(frozenCanvas){
-    paintSelfieOntoFace(frozenCanvas);
-    console.log('[face] selfie captured ('+frozenCanvas.width+'x'+frozenCanvas.height+')');
-  }
+  if(frozenCanvas){paintSelfieOntoFace(frozenCanvas);console.log('[face] selfie captured')}
   selfieModal.classList.remove('show');
   startGame();
 }
@@ -1581,23 +1173,19 @@ btnCapture.addEventListener('click',()=>{
 });
 btnRetake.addEventListener('click',()=>{
   document.querySelectorAll('#selfie-preview canvas').forEach(n=>n.remove());
-  selfieVideo.style.display='block';
-  btnRetake.style.display='none';btnConfirm.style.display='none';
+  selfieVideo.style.display='block';btnRetake.style.display='none';btnConfirm.style.display='none';
   btnCapture.style.display='block';
 });
 btnConfirm.addEventListener('click',()=>closeSelfieAnd(selfieFrozenCanvas));
 btnSkip.addEventListener('click',()=>closeSelfieAnd(null));
 
-// ===== Parasitism — POC #4 =====
+// ===== Parasitism =====
 const modeBadge=document.getElementById('mode-badge');
 const hintEl=document.getElementById('hint');
 let hintTimer=0;
-function showHint(text,seconds=2.2){hintEl.textContent=text;hintEl.classList.add('show');hintTimer=seconds}
+function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
 const _tmpVec=new THREE.Vector3();
-function neckPositionOf(human,out=_tmpVec){
-  out.set(0,1.55,0);
-  return out.applyMatrix4(human.root.matrixWorld);
-}
+function neckPositionOf(h,out=_tmpVec){out.set(0,1.55,0);return out.applyMatrix4(h.root.matrixWorld)}
 function nearestBiteableHuman(rat){
   const ratPos=rat.root.position;
   let best=null,bestD=NECK_BITE_RADIUS;
@@ -1610,67 +1198,52 @@ function nearestBiteableHuman(rat){
 }
 function enterHost(rat,host){
   rat.root.visible=false;rat.controllable=false;
-  host.controllable=true;host.parasitised=true;
-  host.shoulderRat.visible=true;
+  host.controllable=true;host.parasitised=true;host.shoulderRat.visible=true;
   game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
   modeBadge.textContent='CONTROL · HOST';modeBadge.classList.add('mode-host');
   showHint('Inside the host. BITE to leave.');
-  console.log('[parasitism] host acquired');
 }
 function exitHost(){
-  const host=game.parasitisedHost;
-  if(!host)return;
+  const host=game.parasitisedHost;if(!host)return;
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
   player.root.position.set(host.root.position.x+fx*0.7,RAT_FOOT_OFFSET,host.root.position.z+fz*0.7);
   player.yaw=host.yaw;player.root.rotation.y=host.yaw;
   player.root.visible=true;player.controllable=true;
-  host.controllable=false;host.parasitised=false;
-  host.shoulderRat.visible=false;host.wanderTimer=rand(0.5,2);
+  host.controllable=false;host.parasitised=false;host.shoulderRat.visible=false;host.wanderTimer=rand(0.5,2);
   game.controlMode='rat';game.controlled=player;game.parasitisedHost=null;
   modeBadge.textContent='CONTROL · RAT';modeBadge.classList.remove('mode-host');
   showHint('Back in the rat.');
-  console.log('[parasitism] host released');
 }
 function handleActionPress(){
   if(game.controlMode==='rat'){
     const host=nearestBiteableHuman(player);
-    if(host)enterHost(player,host);
+    if(host) enterHost(player,host);
     else showHint('Get closer to a human’s neck.');
-  }else{
-    exitHost();
-  }
+  }else exitHost();
 }
 
-// ===== Movement — verbatim 都市傳說2 pattern =====
+// ===== Movement — same formula as 都市傳說2 =====
 function clampZ(p){
   if(p.z<PAVEMENT_Z_MIN)p.z=PAVEMENT_Z_MIN;
   else if(p.z>PAVEMENT_Z_MAX)p.z=PAVEMENT_Z_MAX;
 }
 function updatePlayer(dt){
-  const ent=game.controlled;
-  if(!ent||!ent.controllable)return;
+  const ent=game.controlled;if(!ent||!ent.controllable)return;
   const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
   const rightX=Math.cos(camYaw),rightZ=-Math.sin(camYaw);
   let kx=0,ky=0;
-  if(keys.w||keys.up)ky-=1;
-  if(keys.s||keys.down)ky+=1;
-  if(keys.a||keys.left)kx-=1;
-  if(keys.d||keys.right)kx+=1;
+  if(keys.w||keys.up)ky-=1;if(keys.s||keys.down)ky+=1;
+  if(keys.a||keys.left)kx-=1;if(keys.d||keys.right)kx+=1;
   let ix=kx+joyX,iy=ky+joyY;
-  const il=Math.hypot(ix,iy);
-  if(il>1){ix/=il;iy/=il}
+  const il=Math.hypot(ix,iy);if(il>1){ix/=il;iy/=il}
   const hasInput=(il>0.05);
   const mdx=-iy*fwdX+ix*rightX;
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
   const targetSpeed=isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
-  if(hasInput){
-    ent.curSpeed=Math.min(targetSpeed,ent.curSpeed+accel*dt);
-    ent.yaw=Math.atan2(mdx,mdz);
-  }else{
-    ent.curSpeed=0;
-  }
+  if(hasInput){ent.curSpeed=Math.min(targetSpeed,ent.curSpeed+accel*dt);ent.yaw=Math.atan2(mdx,mdz)}
+  else ent.curSpeed=0;
   if(ent.curSpeed>0){
     ent.root.position.x+=mdx*ent.curSpeed*dt;
     ent.root.position.z+=mdz*ent.curSpeed*dt;
@@ -1680,43 +1253,29 @@ function updatePlayer(dt){
   if(!isHost){
     if(inputFlags.jump){if(!ent.isAir){ent.vy=JUMP_VEL;ent.isAir=true}inputFlags.jump=false}
     if(ent.isAir){
-      ent.vy-=GRAVITY*dt;
-      ent.root.position.y+=ent.vy*dt;
-      if(ent.root.position.y<=floorY+GROUND_Y_OFFSET){
-        ent.root.position.y=floorY+GROUND_Y_OFFSET;ent.vy=0;ent.isAir=false;
-      }
-    }else{
-      ent.root.position.y=floorY+GROUND_Y_OFFSET;
-    }
+      ent.vy-=GRAVITY*dt;ent.root.position.y+=ent.vy*dt;
+      if(ent.root.position.y<=floorY+GROUND_Y_OFFSET){ent.root.position.y=floorY+GROUND_Y_OFFSET;ent.vy=0;ent.isAir=false}
+    }else ent.root.position.y=floorY+GROUND_Y_OFFSET;
   }else{
-    inputFlags.jump=false;
-    ent.root.position.y=0;
+    inputFlags.jump=false;ent.root.position.y=0;
   }
   const curY=ent.root.rotation.y;
   let diff=ent.yaw-curY;
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   ent.root.rotation.y=curY+diff*Math.min(1,dt*14);
-  // Animation cross-fade for both rats and humans (whichever inst exists).
-  if(ent.inst){
-    if(ent.curSpeed>3.0) setHumanBase(ent.inst,'actRun',0.18);
-    else if(ent.curSpeed>0.4) setHumanBase(ent.inst,'actWalk',0.18);
-    else setHumanBase(ent.inst,'actIdle',0.20);
-  }
 }
 
 // ===== Chaos / prop tipping =====
 function tickProps(dt){
-  const ent=game.controlled;
-  if(!ent)return;
+  const ent=game.controlled;if(!ent)return;
   const ex=ent.root.position.x,ez=ent.root.position.z;
   const speed=ent.curSpeed;
   const hostMul=(game.controlMode==='host')?1.4:1.0;
   for(const p of game.props){
     if(p.tipped)continue;
     const dx=p.root.position.x-ex,dz=p.root.position.z-ez;
-    const d2=dx*dx+dz*dz;
-    if(d2<p.radius*p.radius && speed>0.5){
+    if(dx*dx+dz*dz<p.radius*p.radius && speed>0.5){
       const a=Math.atan2(dz,dx);
       p.root.rotation.z=-Math.cos(a)*Math.PI*0.40;
       p.root.rotation.x= Math.sin(a)*Math.PI*0.40;
@@ -1729,39 +1288,26 @@ function tickProps(dt){
   }
 }
 
-// ===== Humans tick — wander + mixer advance + placeholder limb sway =====
+// ===== Humans tick — wander + animate =====
 function tickHumans(dt){
   for(const h of game.humans){
-    if(h.inst) h.inst.mixer.update(dt);
-    if(h.controllable)continue;
-    h.wanderTimer-=dt;
-    if(h.wanderTimer<=0){
-      h.wanderTimer=1.6+Math.random()*2.6;
-      h.yaw+=(Math.random()-0.5)*Math.PI*0.8;
+    if(!h.controllable){
+      h.wanderTimer-=dt;
+      if(h.wanderTimer<=0){h.wanderTimer=1.6+Math.random()*2.6;h.yaw+=(Math.random()-0.5)*Math.PI*0.8}
+      const spd=h.role==='cleaner'?1.6:1.05;
+      h.curSpeed=spd;
+      h.root.position.x+=Math.sin(h.yaw)*spd*dt;
+      h.root.position.z+=Math.cos(h.yaw)*spd*dt;
+      if(h.root.position.z<PAVEMENT_Z_MIN+0.3||h.root.position.z>PAVEMENT_Z_MAX-0.5){
+        h.yaw+=Math.PI;clampZ(h.root.position);
+      }
+      const curY=h.root.rotation.y;
+      let diff=h.yaw-curY;
+      while(diff>Math.PI)diff-=Math.PI*2;
+      while(diff<-Math.PI)diff+=Math.PI*2;
+      h.root.rotation.y=curY+diff*Math.min(1,dt*6);
     }
-    const spd=h.role==='cleaner'?1.6:1.05;
-    h.curSpeed=spd;
-    h.root.position.x+=Math.sin(h.yaw)*spd*dt;
-    h.root.position.z+=Math.cos(h.yaw)*spd*dt;
-    if(h.root.position.z<PAVEMENT_Z_MIN+0.3||h.root.position.z>PAVEMENT_Z_MAX-0.5){
-      h.yaw+=Math.PI;
-      clampZ(h.root.position);
-    }
-    const curY=h.root.rotation.y;
-    let diff=h.yaw-curY;
-    while(diff>Math.PI)diff-=Math.PI*2;
-    while(diff<-Math.PI)diff+=Math.PI*2;
-    h.root.rotation.y=curY+diff*Math.min(1,dt*6);
-    if(h.inst) setHumanBase(h.inst,spd>1.4?'actRun':(spd>0.2?'actWalk':'actIdle'),0.2);
-    // Animate the placeholder limbs if the inst hasn't replaced them.
-    if(h.placeholder && h.placeholder.parent){
-      h.walkPhase+=spd*dt*5;
-      const swing=Math.sin(h.walkPhase)*0.45*Math.min(1,spd/1.6);
-      h.placeholderLegs[0].rotation.x= swing;
-      h.placeholderLegs[1].rotation.x=-swing;
-      h.placeholderArms[0].rotation.x=-swing*0.7;
-      h.placeholderArms[1].rotation.x= swing*0.7;
-    }
+    animateHuman(h,dt);
   }
 }
 
@@ -1781,7 +1327,6 @@ function tickBreeding(dt){
   game.rats.push(rat);
   if(game.rats.length>=WIN_RAT_COUNT)triggerRatsWin();
 }
-
 function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
@@ -1792,9 +1337,8 @@ function tickFollowerRats(dt){
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
     r.root.rotation.y=a;
-    r.bobBase=(r.bobBase||0)+spd*dt*8;
-    r.root.position.y=RAT_FOOT_OFFSET+Math.sin(r.bobBase)*0.02;
-    if(r.inst) r.inst.mixer.update(dt);
+    r.curSpeed=spd;
+    animateRat(r,dt);
   }
 }
 
@@ -1831,17 +1375,15 @@ startBtn.addEventListener('click',()=>{
   selfieModal.classList.add('show');
 });
 function startGame(){
-  gameState='playing';
-  gameTime=0;game.chaos=0;game.chaosDisplay=0;
+  gameState='playing';gameTime=0;
+  game.chaos=0;game.chaosDisplay=0;
   setIntroProgress(100,'READY');
   console.log('[boot] startGame');
 }
 function triggerRatsWin(){
   if(gameState==='won')return;
-  gameState='won';
-  document.body.classList.add('game-won');
+  gameState='won';document.body.classList.add('game-won');
   ratsWinEl.classList.add('show');
-  console.log('[win] rats triumphant');
 }
 ratsWinReplay.addEventListener('click',()=>location.reload());
 
@@ -1852,7 +1394,6 @@ function tick(){
   const now=performance.now();
   const dt=Math.min(0.05,(now-last)/1000);
   last=now;
-  const nowS=now/1000;
   try{
     if(gameState==='playing'){
       gameTime+=dt;
@@ -1862,46 +1403,42 @@ function tick(){
       tickHumans(dt);
       tickBreeding(dt);
       tickFollowerRats(dt);
+      // The controlled rat's own crawl cycle (other rats are handled in
+      // tickFollowerRats so we don't animate them twice).
+      if(game.controlMode==='rat') animateRat(player,dt);
+      else if(game.parasitisedHost) animateHuman(game.parasitisedHost,dt);
       updateHUD(dt);
-      // Player's mixer also needs to advance.
-      if(player.inst) player.inst.mixer.update(dt);
-      if(game.parasitisedHost && game.parasitisedHost.inst){
-        // (already advanced in tickHumans)
-      }
-      // Stream chunks based on player position.
       ensureChunksAroundX(player.root.position.x);
     }else if(gameState==='intro'){
-      for(const h of game.humans){if(h.inst)h.inst.mixer.update(dt)}
-      if(player && player.inst) player.inst.mixer.update(dt);
+      // Just spin the limbs gently so the world doesn't look frozen
+      // behind the intro card.
+      for(const h of game.humans){h.curSpeed=0.05;animateHuman(h,dt)}
+      if(player){player.curSpeed=0.0;animateRat(player,dt)}
     }
     updateCam();
-    vhsPass.uniforms.time.value=nowS;
-    composer.render();
-  }catch(e){
-    console.error('[tick] update failed:',e);
-  }
+
+    // Two-pass render — scene → low-res target → screen quad.
+    renderer.setRenderTarget(lowResRT);
+    renderer.render(scene,camera);
+    renderer.setRenderTarget(null);
+    renderer.render(screenScene,screenCam);
+  }catch(e){console.error('[tick] update failed:',e)}
 }
 
 // ===== Init =====
-async function init(){
-  setIntroProgress(5,'BOOT');
+function init(){
+  setIntroProgress(15,'BOOT');
   initSharedTextures();
-  setIntroProgress(15,'TEXTURES');
-  // Load both character files in parallel.
-  const charP=loadCharacterTemplate();
-  const playerP=loadPlayerAssets();
-  await charP;
-  setIntroProgress(40,'CHAR');
-  await playerP;
-  setIntroProgress(70,'PLAYER');
+  setIntroProgress(45,'TEXTURES');
 
-  // Build the player rat at origin (chunk 0 centre).
+  // Build the player rat first so the camera has something to follow.
   player=buildRat({isPlayer:true});
   player.root.position.set(12,RAT_FOOT_OFFSET,4.2);
   game.rats.push(player);
   game.controlled=player;
+  setIntroProgress(70,'RAT');
 
-  // Generate the starting chunks around the player.
+  // Streamed chunks around the player's starting X.
   ensureChunksAroundX(player.root.position.x);
   setIntroProgress(95,'WORLD');
 
@@ -1911,7 +1448,7 @@ async function init(){
   startBtn.textContent='BEGIN';
   setIntroProgress(100,'READY');
   introProgressText.textContent='READY — TAP BEGIN';
-  console.log('[boot] scene ready — humans='+game.humans.length+' rats='+game.rats.length);
+  console.log('[boot] PS1 scene ready — humans='+game.humans.length+' rats='+game.rats.length);
 }
 init();
 </script>
