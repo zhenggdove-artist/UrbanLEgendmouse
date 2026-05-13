@@ -257,7 +257,7 @@ screenScene.add(screenQuad);
 // ===== Scene & Camera =====
 const scene=new THREE.Scene();
 // Linear distance fog hides chunk pop-in. MeshBasicMaterial respects it.
-scene.fog=new THREE.Fog('#2a1838',8,38);
+scene.fog=new THREE.Fog('#2a1838',10,64);
 scene.background=new THREE.Color('#2a1838');
 
 /* Lights — only used by the MeshLambertMaterials on the rat & humans.
@@ -502,27 +502,30 @@ function makePavementTexture(){
   return pixelate(new THREE.CanvasTexture(c));
 }
 function makeFacadeTexture(seed=0){
-  const c=document.createElement('canvas');c.width=64;c.height=128;
+  const c=document.createElement('canvas');c.width=96;c.height=128;
   const cx=c.getContext('2d');
-  const hues=['#a89890','#9f8a80','#bcaba0','#8d7a72'];
-  cx.fillStyle=hues[seed%hues.length];cx.fillRect(0,0,64,128);
-  // grain
-  for(let i=0;i<150;i++){
-    cx.fillStyle=`rgba(60,50,50,${Math.random()*0.18})`;
-    cx.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*128),1,1);
+  const hues=['#c8c4bf','#c2beb8','#d1cdc8','#bdb8b1'];
+  cx.fillStyle=hues[seed%hues.length];cx.fillRect(0,0,96,128);
+  cx.strokeStyle='rgba(72,72,72,0.55)';cx.lineWidth=1;
+  for(let x=0;x<=96;x+=8){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,128);cx.stroke()}
+  for(let y=0;y<=128;y+=8){cx.beginPath();cx.moveTo(0,y);cx.lineTo(96,y);cx.stroke()}
+  for(let i=0;i<220;i++){
+    const tone=186+Math.floor(Math.random()*26);
+    cx.fillStyle=`rgba(${tone},${tone},${tone-3},${0.12+Math.random()*0.18})`;
+    cx.fillRect(Math.floor(Math.random()*96),Math.floor(Math.random()*128),1,1);
   }
   // windows — 2 cols × 3 rows of chunky pixel windows
-  for(let row=0;row<3;row++) for(let col=0;col<2;col++){
-    const x=8+col*26,y=24+row*32;
-    cx.fillStyle='#2a1f1a';cx.fillRect(x-1,y-1,20,24);
-    cx.fillStyle='#3a4a5e';cx.fillRect(x,y,18,22);
-    cx.fillStyle='#6a5a4e';cx.fillRect(x-2,y+22,22,2);
-    cx.fillStyle='#2a1a1a';cx.fillRect(x+8,y,2,22);cx.fillRect(x,y+10,18,1);
+  for(let i=0;i<10;i++){
+    cx.fillStyle=`rgba(90,90,90,${0.10+Math.random()*0.10})`;
+    const x=Math.floor(Math.random()*96);
+    const y=Math.floor(Math.random()*128);
+    cx.fillRect(x,y,1,8+Math.floor(Math.random()*20));
   }
-  // weather streaks
-  for(let i=0;i<4;i++){
-    cx.fillStyle=`rgba(40,30,30,${0.18+Math.random()*0.18})`;
-    cx.fillRect(Math.floor(Math.random()*64),0,1,128);
+  for(let i=0;i<8;i++){
+    const x=8+Math.floor(Math.random()*72),y=12+Math.floor(Math.random()*88);
+    cx.fillStyle='#55565a';cx.fillRect(x,y,12,18);
+    cx.fillStyle='#7f8ea1';cx.fillRect(x+1,y+1,10,16);
+    cx.fillStyle='rgba(42,42,42,0.6)';cx.fillRect(x+5,y+1,1,16);cx.fillRect(x+1,y+8,10,1);
   }
   const t=pixelate(new THREE.CanvasTexture(c));
   t.wrapS=THREE.RepeatWrapping;
@@ -542,6 +545,51 @@ function makeStallFrontTexture(){
     const x=10+i*22,y=14+Math.floor(Math.random()*6),w=14,h=24;
     cx.fillStyle=cols[i%cols.length];cx.fillRect(x,y,w,h);
     cx.fillStyle='rgba(255,255,255,0.85)';cx.fillRect(x+2,y+2,w-4,2);cx.fillRect(x+2,y+6,w-8,1);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeDirtyTarpTexture(colour='#3a7ac6'){
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const cx=c.getContext('2d');
+  cx.fillStyle=colour;cx.fillRect(0,0,128,64);
+  for(let i=0;i<180;i++){
+    cx.fillStyle=`rgba(255,255,255,${Math.random()*0.08})`;
+    cx.fillRect(Math.floor(Math.random()*128),Math.floor(Math.random()*64),2,1);
+  }
+  for(let i=0;i<12;i++){
+    cx.fillStyle=`rgba(32,26,18,${0.10+Math.random()*0.10})`;
+    cx.fillRect(Math.floor(Math.random()*128),Math.floor(Math.random()*64),10+Math.floor(Math.random()*14),2+Math.floor(Math.random()*4));
+  }
+  cx.fillStyle='rgba(255,255,255,0.10)';
+  for(let y=0;y<64;y+=10) cx.fillRect(0,y,128,1);
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeDirtyWoodTexture(){
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#9d7757';cx.fillRect(0,0,128,64);
+  for(let i=0;i<22;i++){
+    cx.fillStyle=`rgba(92,58,32,${0.16+Math.random()*0.12})`;
+    cx.fillRect(0,i*3,128,1);
+  }
+  for(let i=0;i<16;i++){
+    cx.fillStyle=`rgba(42,28,18,${0.16+Math.random()*0.16})`;
+    cx.fillRect(Math.floor(Math.random()*128),Math.floor(Math.random()*64),8+Math.floor(Math.random()*24),2);
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function makeGrimyMetalTexture(){
+  const c=document.createElement('canvas');c.width=64;c.height=64;
+  const cx=c.getContext('2d');
+  cx.fillStyle='#8b8d90';cx.fillRect(0,0,64,64);
+  for(let i=0;i<240;i++){
+    const tone=110+Math.floor(Math.random()*70);
+    cx.fillStyle=`rgba(${tone},${tone},${tone},${0.18+Math.random()*0.18})`;
+    cx.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*64),1,1);
+  }
+  for(let i=0;i<8;i++){
+    cx.fillStyle=`rgba(86,54,22,${0.16+Math.random()*0.14})`;
+    cx.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*64),8+Math.floor(Math.random()*14),2+Math.floor(Math.random()*6));
   }
   return pixelate(new THREE.CanvasTexture(c));
 }
@@ -670,6 +718,7 @@ function makeStringBulbSprite(){
 
 // Cached textures and sprite materials.
 const TEX={},SPRITE_MAT={};
+const STALL_TEX={tarp:new Map(),wood:null,metal:null};
 // Filled in by loadGraffitiTextures() — random panels stuck on building walls.
 const GRAFFITI_TEX=[];
 let ratPortraitTexture=null;
@@ -696,6 +745,8 @@ function initSharedTextures(){
   TEX.signTall1 =makeSignTexture('營業','#c83a3a','#fff2b8');
   TEX.signTall2 =makeSignTexture('開店','#1d4a93','#ffffff');
   // Sprite billboards — one SpriteMaterial per type for draw-call sharing.
+  STALL_TEX.wood=makeDirtyWoodTexture();
+  STALL_TEX.metal=makeGrimyMetalTexture();
   SPRITE_MAT.rubbish        =new THREE.SpriteMaterial({map:makeRubbishSprite(),     transparent:true,alphaTest:0.5,fog:true});
   SPRITE_MAT.weed           =new THREE.SpriteMaterial({map:makeWeedSprite(),        transparent:true,alphaTest:0.5,fog:true});
   SPRITE_MAT.distantHuman   =new THREE.SpriteMaterial({map:makeDistantHumanSprite(),transparent:true,alphaTest:0.5,fog:true});
@@ -1012,7 +1063,7 @@ function scatterBillboards(xBase,xEnd){
 }
 
 // ===== Chunk system — infinite alley along the X axis =====
-const CHUNK_SIZE=24, CHUNK_WINDOW=1;
+const CHUNK_SIZE=24, CHUNK_WINDOW=3;
 const chunks=new Map();
 let lastChunkIdx=null;
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
@@ -1042,10 +1093,12 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   const len=xEnd-xStart;
   // Tarp colour palette — common night-market plastic-sheeting colours.
   const tarpCol=pick(['#c66a3a','#3a7ac6','#c2c2b8','#b04a4a','#3a8a4a','#8a4ac6']);
+  if(!STALL_TEX.tarp.has(tarpCol)) STALL_TEX.tarp.set(tarpCol,makeDirtyTarpTexture(tarpCol));
+  const tarpTex=STALL_TEX.tarp.get(tarpCol);
   // Canopy — slightly tilted toward the centre.
   const canopy=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.9,0.10,2.6),
-    new THREE.MeshBasicMaterial({color:tarpCol})
+    new THREE.MeshBasicMaterial({map:tarpTex,color:'#e5ddd4'})
   );
   canopy.position.set((xStart+xEnd)/2,2.5,(zOuter+zInner)/2);
   canopy.rotation.x=facing*0.12;
@@ -1053,7 +1106,7 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   // Stripe along the front edge — different colour so the tarp reads.
   const stripe=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.9,0.18,0.10),
-    new THREE.MeshBasicMaterial({color:'#1a1318'})
+    new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#2b262c'})
   );
   stripe.position.set((xStart+xEnd)/2,2.45,zInner+facing*0.05);
   scene.add(stripe);if(_activeChunk)_activeChunk.meshes.push(stripe);
@@ -1067,10 +1120,16 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   // Display table running the length of the stall.
   const table=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.85,0.85,0.85),
-    new THREE.MeshBasicMaterial({color:'#bfa07a'})
+    new THREE.MeshBasicMaterial({map:STALL_TEX.wood,color:'#d7c2aa'})
   );
   table.position.set((xStart+xEnd)/2,0.45,zInner+facing*0.6);
   scene.add(table);if(_activeChunk)_activeChunk.meshes.push(table);
+  const topSkin=new THREE.Mesh(
+    new THREE.BoxGeometry(len*0.83,0.04,0.88),
+    new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#9d8c7d'})
+  );
+  topSkin.position.set((xStart+xEnd)/2,0.88,zInner+facing*0.6);
+  scene.add(topSkin);if(_activeChunk)_activeChunk.meshes.push(topSkin);
   // Goods piled on the table — chunky merch boxes in random colours.
   const goodCols=['#d23a3a','#3a8ad2','#d2a83a','#8ad23a','#a83ad2','#3ad28a','#f0e060','#ffffff'];
   const goodCount=Math.max(3,Math.floor(len*1.4));
@@ -1079,6 +1138,14 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
     const box=basicBox(w,h,d,pick(goodCols));
     box.position.set(rand(xStart+0.4,xEnd-0.4),0.85+h/2+rand(0,0.1),zInner+facing*rand(0.3,0.85));
     scene.add(box);if(_activeChunk)_activeChunk.meshes.push(box);
+  }
+  for(let i=0;i<2;i++){
+    const bucket=new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12,0.10,0.22,8),
+      new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:pick(['#8b948e','#c96555','#6b88a8'])})
+    );
+    bucket.position.set(rand(xStart+0.5,xEnd-0.5),0.11,zInner+facing*rand(0.9,1.4));
+    scene.add(bucket);if(_activeChunk)_activeChunk.meshes.push(bucket);
   }
 }
 function generateChunk(idx){
@@ -1101,7 +1168,7 @@ function generateChunk(idx){
   for(const sign of [-1,+1]){
     const t=TEX.facade[((idx*2+(sign>0?1:0))%4+4)%4].clone();
     t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping;
-    t.repeat.set(CHUNK_SIZE/13,1);pixelate(t);
+    t.repeat.set(CHUNK_SIZE/8,1);pixelate(t);
     const facade=new THREE.Mesh(
       new THREE.BoxGeometry(CHUNK_SIZE,9,1.6),
       new THREE.MeshBasicMaterial({map:t,color:'#b8a89c'})
@@ -1111,7 +1178,7 @@ function generateChunk(idx){
     // Ground-floor shop frontage — white tile.
     const front=new THREE.Mesh(
       new THREE.BoxGeometry(CHUNK_SIZE,2.4,0.18),
-      new THREE.MeshBasicMaterial({map:TEX.stallFront,color:'#f0e8d8'})
+      new THREE.MeshBasicMaterial({map:t,color:'#f0e8d8'})
     );
     front.position.set(xBase+CHUNK_SIZE/2,1.2,sign*9.65);
     scene.add(front);chunk.meshes.push(front);
@@ -1238,14 +1305,13 @@ function generateChunk(idx){
 
 function ensureChunksAroundX(x){
   const c=Math.floor(x/CHUNK_SIZE);
-  if(c===lastChunkIdx) return;
-  lastChunkIdx=c;
   for(let i=c-CHUNK_WINDOW;i<=c+CHUNK_WINDOW;i++){
     if(!chunks.has(i)) generateChunk(i);
   }
   for(const [idx,chunk] of [...chunks]){
     if(Math.abs(idx-c)>CHUNK_WINDOW){disposeChunk(chunk);chunks.delete(idx);console.log('[chunk] dispose '+idx)}
   }
+  lastChunkIdx=c;
 }
 
 /* ============================================================
