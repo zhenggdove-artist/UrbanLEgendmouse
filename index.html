@@ -2265,8 +2265,8 @@ function buildHuman({position,role='wanderer'}={}){
     root.add(shoulderRat);
   }
   const status=attachHumanStatusProps(root);
-  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y,0.08);
-  status.parasiteOverlay.scale.set(1.53,1.53,1);
+  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
+  status.parasiteOverlay.scale.set(2.3,2.3,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
@@ -4187,6 +4187,10 @@ function tickFollowerRats(dt){
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
     resolveWorldCollisions(r,prevX,prevZ,0.22);
+    const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
+    const baseGroundY=RAT_FOOT_OFFSET;
+    const targetY=supportY>GROUND_Y_OFFSET+0.001 ? supportY+(RAT_FOOT_OFFSET-GROUND_Y_OFFSET) : baseGroundY;
+    r.root.position.y=targetY;
     r.root.rotation.y=a;
     r.curSpeed=spd;
     if(r.moveIntent){
@@ -4415,7 +4419,9 @@ async function init(){
       idleHumanFBX,walkHumanFBX,runHumanFBX,jumpHumanFBX,kickHumanFBX,cleanHumanFBX,pickupHumanFBX,
       baseColourTex,normalTex,roughTex,metalTex,
       idleWomanFBX,walkWomanFBX,runWomanFBX,jumpWomanFBX,kickWomanFBX,cleanWomanFBX,pickupWomanFBX,
-      baseColourTexWoman,normalTexWoman,roughTexWoman,metalTexWoman
+      baseColourTexWoman,normalTexWoman,roughTexWoman,metalTexWoman,
+      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,cleanBoyFBX,
+      baseColourTexBoy,normalTexBoy,roughTexBoy,metalTexBoy
     ]=await Promise.all([
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
@@ -4438,7 +4444,17 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/basecolor_1024.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_metallic.JPEG')
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/清潔姿勢.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_metallic.JPEG')
     ]);
     HUMAN_VARIANTS.length=0;
     HUMAN_VARIANTS.push(makeHumanVariant({
@@ -4450,6 +4466,11 @@ async function init(){
       source:idleWomanFBX,
       idle:idleWomanFBX,walk:walkWomanFBX,run:runWomanFBX,jump:jumpWomanFBX,kick:kickWomanFBX,pickup:pickupWomanFBX,clean:cleanWomanFBX,
       skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleBoyFBX,
+      idle:idleBoyFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
+      skin:{base:baseColourTexBoy,normal:normalTexBoy,roughness:roughTexBoy,metal:metalTexBoy}
     }));
     characterSource=HUMAN_VARIANTS[0].source;
     HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
