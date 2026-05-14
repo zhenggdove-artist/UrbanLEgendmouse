@@ -573,6 +573,7 @@ const game={
   rats:[],humans:[],props:[],
   fx:[],
   chaosSpots:[],
+  deathSpots:[],
   ratCityMode:false,
   ratCityAngle:0,
   leaderboard:[]
@@ -645,7 +646,7 @@ function ps1ifyCharacterMaterials(root,tint){
     o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
     const mats=Array.isArray(o.material)?o.material:[o.material];
     const replaced=mats.map(src=>{
-      const m=new THREE.MeshStandardMaterial();
+      const m=HUMAN_SKIN.base ? new THREE.MeshBasicMaterial() : new THREE.MeshStandardMaterial();
       m.color.set('#d9c08a');
       if(src){
         if(src.color)        m.color.copy(src.color);
@@ -654,8 +655,8 @@ function ps1ifyCharacterMaterials(root,tint){
           pixelate(m.map);
           m.map.colorSpace=THREE.SRGBColorSpace;
         }
-        if(src.emissive)     m.emissive.copy(src.emissive);
-        if(src.emissiveMap){
+        if(src.emissive && m.emissive)     m.emissive.copy(src.emissive);
+        if(src.emissiveMap && 'emissiveMap' in m){
           m.emissiveMap=src.emissiveMap;
           pixelate(m.emissiveMap);
         }
@@ -670,29 +671,33 @@ function ps1ifyCharacterMaterials(root,tint){
         m.map=HUMAN_SKIN.base;
         m.map.colorSpace=THREE.SRGBColorSpace;
       }
-      if(HUMAN_SKIN.normal) m.normalMap=HUMAN_SKIN.normal;
-      if(HUMAN_SKIN.roughness) m.roughnessMap=HUMAN_SKIN.roughness;
-      if(HUMAN_SKIN.metal) m.metalnessMap=HUMAN_SKIN.metal;
+      if(HUMAN_SKIN.normal && 'normalMap' in m) m.normalMap=HUMAN_SKIN.normal;
+      if(HUMAN_SKIN.roughness && 'roughnessMap' in m) m.roughnessMap=HUMAN_SKIN.roughness;
+      if(HUMAN_SKIN.metal && 'metalnessMap' in m) m.metalnessMap=HUMAN_SKIN.metal;
       if(m.map) m.map.flipY=true;
       if(m.normalMap) m.normalMap.flipY=true;
       if(m.roughnessMap) m.roughnessMap.flipY=true;
       if(m.metalnessMap) m.metalnessMap.flipY=true;
-      m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
-      m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
+      if('roughness' in m) m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
+      if('metalness' in m) m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
       if(HUMAN_SKIN.base){
-        m.color.setRGB(1.08,1.08,1.08);
-        m.emissive.setRGB(0.12,0.12,0.12);
-        m.emissiveIntensity=0.9;
+        m.color.setRGB(1.22,1.22,1.22);
+        if(m.emissive){
+          m.emissive.setRGB(0.18,0.18,0.18);
+          m.emissiveIntensity=1.15;
+        }
       }else{
         m.color.multiplyScalar(1.8);
-        m.emissive.setRGB(0.36,0.36,0.36);
-        m.emissiveIntensity=1;
+        if(m.emissive){
+          m.emissive.setRGB(0.36,0.36,0.36);
+          m.emissiveIntensity=1;
+        }
       }
-      m.normalScale.set(0.6,0.6);
+      if(m.normalScale) m.normalScale.set(0.6,0.6);
       m.needsUpdate=true;
       if(tint && m.color){
         if(HUMAN_SKIN.base){
-          m.emissive.add(tint.clone().multiplyScalar(0.08));
+          m.color.multiply(tint.clone().lerp(new THREE.Color('#ffffff'),0.72));
         }else{
           m.color.multiply(tint);
         }
@@ -1910,8 +1915,17 @@ function generateChunk(idx){
   // total stays under ~8 across the whole 3-chunk window.
   const humanCount=2+(Math.random()<0.4?1:0);
   for(let i=0;i<humanCount;i++){
-    const x=xBase+rand(2,CHUNK_SIZE-2);
-    const z=rand(-2.2,2.2);
+    let x=xBase+rand(2,CHUNK_SIZE-2);
+    let z=rand(-2.2,2.2);
+    for(let tries=0;tries<6;tries++){
+      const blocked=game.deathSpots.some(s=>{
+        const dx=s.x-x, dz=s.z-z;
+        return dx*dx+dz*dz<4.2*4.2;
+      });
+      if(!blocked) break;
+      x=xBase+rand(2,CHUNK_SIZE-2);
+      z=rand(-2.2,2.2);
+    }
     const role=(i===0 && (idx%2===0))?'cleaner':'wanderer';
     const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
     if(h){chunk.humans.push(h);game.humans.push(h)}
@@ -2131,7 +2145,7 @@ function buildHuman({position,role='wanderer'}={}){
     const status=attachHumanStatusProps(root);
     status.parasiteOverlay.position.set(0,1.45,0.05);
     scene.add(root);
-    return {kind:'human',role,root,inst:null,shoulderRat:ph,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,
+    return {kind:'human',role,root,inst:null,shoulderRat:ph,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
@@ -2162,7 +2176,7 @@ function buildHuman({position,role='wanderer'}={}){
   const status=attachHumanStatusProps(root);
   status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y,0.08);
   status.parasiteOverlay.scale.set(1.02,1.02,1);
-  return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,
+  return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
@@ -2262,6 +2276,39 @@ function tickRatBillboard(rat,dt){
   rat.legs[2].position.y=0.06+Math.max(0,-swing);
   rat.legs[3].position.y=0.06+Math.max(0, swing);
 }
+function syncParasiteOverlay(host,dt,mx=0,my=0){
+  if(!host?.parasiteOverlay?.visible)return;
+  if(!host.parasiteAnim) host.parasiteAnim={state:'idle',frame:0,timer:0};
+  let state='idle';
+  if(my<-0.35 && mx>0.2) state='forwardRight';
+  else if(my<-0.35 && mx<-0.2) state='forwardLeft';
+  else if(my<-0.35) state='forward';
+  else if(my>0.35) state='back';
+  else if(mx<-0.2) state='left';
+  else if(mx>0.2) state='right';
+  let frames=PLAYER_RAT_FRAMES[state];
+  if(!frames?.length){
+    if(state==='forward') frames=PLAYER_RAT_FRAMES.forwardRight;
+    else if(state==='right') frames=PLAYER_RAT_FRAMES.left;
+    else if(state==='forwardLeft') frames=PLAYER_RAT_FRAMES.forwardRight;
+    else frames=PLAYER_RAT_FRAMES.idle;
+  }
+  const frameDuration=state==='idle'?0.09:0.065;
+  if(host.parasiteAnim.state!==state){
+    host.parasiteAnim.state=state;
+    host.parasiteAnim.frame=0;
+    host.parasiteAnim.timer=0;
+    host.parasiteOverlay.material.map=frames[0];
+  }else{
+    host.parasiteAnim.timer+=dt;
+    while(host.parasiteAnim.timer>=frameDuration){
+      host.parasiteAnim.timer-=frameDuration;
+      host.parasiteAnim.frame=(host.parasiteAnim.frame+1)%frames.length;
+      host.parasiteOverlay.material.map=frames[host.parasiteAnim.frame];
+    }
+  }
+  host.parasiteOverlay.material.needsUpdate=true;
+}
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
   if(host?.root){
@@ -2358,6 +2405,7 @@ function killHost(host){
   spawnBiteBlood(host,10);
   spawnImpactDebris(host.root.position,120,'#b11428');
   spawnComicImpact(host.root.position,'SPLAT!','#ff95a3');
+  game.deathSpots.push({x:host.root.position.x,z:host.root.position.z,ttl:45});
   if(game.parasitisedHost===host){
     const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
     player.root.position.set(host.root.position.x+fx*0.9,(player.baseY||0),host.root.position.z+fz*0.9);
@@ -2535,6 +2583,12 @@ function tickTransientFX(dt){
     }
   }
 }
+function tickDeathSpots(dt){
+  for(let i=game.deathSpots.length-1;i>=0;i--){
+    game.deathSpots[i].ttl-=dt;
+    if(game.deathSpots[i].ttl<=0) game.deathSpots.splice(i,1);
+  }
+}
 function loadRatCityLeaderboard(){
   try{
     const raw=localStorage.getItem(RAT_CITY_STORAGE_KEY);
@@ -2575,9 +2629,10 @@ function attachHumanStatusProps(root){
   cleanBar.root.position.set(0,2.15,0);
   root.add(cleanBar.root);
   const parasiteOverlay=new THREE.Sprite(new THREE.SpriteMaterial({
-    map:PLAYER_RAT_FRAMES.idle[0]||null,transparent:true,alphaTest:0.08,depthWrite:false,fog:true
+    map:PLAYER_RAT_FRAMES.idle[0]||null,transparent:true,alphaTest:0.04,depthWrite:false,depthTest:false,fog:true
   }));
-  parasiteOverlay.scale.set(0.78,0.78,1);
+  parasiteOverlay.renderOrder=50;
+  parasiteOverlay.scale.set(1.26,1.26,1);
   parasiteOverlay.visible=false;
   root.add(parasiteOverlay);
   return {bloodPool,cleanBar,parasiteOverlay};
@@ -3258,6 +3313,11 @@ function enterHost(rat,host){
     host.parasiteOverlay.material.needsUpdate=true;
     host.parasiteOverlay.visible=true;
   }
+  if(host.parasiteAnim){
+    host.parasiteAnim.state='idle';
+    host.parasiteAnim.frame=0;
+    host.parasiteAnim.timer=0;
+  }
   host.parasiteTimer=HOST_PARASITE_TIME;
   game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
   modeBadge.textContent='CONTROL · HOST';modeBadge.classList.add('mode-host');
@@ -3458,7 +3518,7 @@ function doHostAttack(){
   if(!host||host.attackCooldown>0||host.downTimer>0)return;
   host.attackCooldown=0.42;
   host.actionName='kick';
-  host.actionTimer=0.34;
+  host.actionTimer=Math.max(0.72,host.inst?.actions?.kick?.getClip?.().duration||0.72);
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
   let struck=false;
   for(const p of game.props){
@@ -3504,6 +3564,7 @@ function tickControllableHostState(dt){
     host.actionTimer=Math.max(0,host.actionTimer-dt);
     if(host.actionTimer<=0) host.actionName=null;
   }
+  syncParasiteOverlay(host,dt,host.moveInputX||0,host.moveInputY||0);
   if(host.throwCharging){
     host.throwCharge=Math.min(HOST_THROW_CHARGE_MAX,host.throwCharge+dt);
     updateActionButtons();
@@ -3556,6 +3617,10 @@ function updatePlayer(dt){
     ent.moveIntent.x=ix;
     ent.moveIntent.y=iy;
   }
+  if(ent.kind==='human'){
+    ent.moveInputX=ix;
+    ent.moveInputY=iy;
+  }
   const mdx=-iy*fwdX+ix*rightX;
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
@@ -3574,6 +3639,9 @@ function updatePlayer(dt){
       const biteTarget=headPos.clone().add(lungeDir);
       biteTarget.y=headPos.y+RAT_BITE_Y_OFFSET;
       ent.root.position.lerp(biteTarget,Math.min(1,dt*12));
+      ent.root.position.y=biteTarget.y;
+      ent.vy=0;
+      ent.isAir=false;
       ent.yaw=Math.atan2(host.root.position.x-ent.root.position.x,host.root.position.z-ent.root.position.z);
       ent.root.rotation.y=ent.yaw;
       ent.root.visible=true;
@@ -4012,6 +4080,7 @@ function stepFrame(dt){
   if(gameState==='playing'){
     gameTime+=dt;
     if(game.ratCityMode && ratCityAutoRotate) game.ratCityAngle+=dt*0.22;
+    tickDeathSpots(dt);
     tickChaosSpots(dt);
     if(inputFlags.action){handleActionPress();inputFlags.action=false}
     updatePlayer(dt);
