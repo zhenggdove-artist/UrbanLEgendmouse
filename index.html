@@ -60,7 +60,10 @@
   .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos)}
   .hud-box.rats .fill{background:var(--accent-soft)}
   #mode-badge{left:11%;top:9.8%}
-  #host-life-box{left:11%;top:18.1%;display:none}
+  #host-life-box{left:5.5%;top:51%;display:none;min-width:auto;width:74px;padding:10px 8px 12px}
+  #host-life-box .label{display:block;font-size:10px;letter-spacing:0.16em;margin-bottom:8px}
+  #host-life-box .bar{width:20px;height:220px;margin:0 auto;border-radius:14px;background:linear-gradient(180deg,#10080f,#26161a)}
+  #host-life-box .fill{top:auto;bottom:0;left:0;right:0;width:100%;height:0;background:linear-gradient(180deg,#fff3c9,#ffe071 45%,#ffb95f 78%,#ff7c7c 100%)}
   #chaos-box{left:82%;top:9.8%}
   #rats-box{left:82%;top:17.2%}
   #rat-city-btn{position:fixed;left:50%;top:8.4%;transform:translate(-50%,-50%);z-index:15;
@@ -236,7 +239,8 @@
     .hud-box{font-size:10px;padding:5px 8px}
     .hud-box.meter{min-width:124px}
     #mode-badge{left:18%;top:7.2%}
-    #host-life-box{left:18%;top:13.8%;width:22%}
+    #host-life-box{left:9%;top:52%;width:68px}
+    #host-life-box .bar{height:176px}
     #chaos-box{left:72%;top:7.2%}
     #rats-box{left:72%;top:14%}
     #rat-city-btn{top:7.4%;padding:9px 14px;font-size:14px;letter-spacing:0.18em}
@@ -259,7 +263,7 @@
 
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
-  <div class="hud-box meter" id="host-life-box">HOST LIFE<div class="bar"><div class="fill" id="host-life-fill"></div></div></div>
+  <div class="hud-box meter" id="host-life-box"><span class="label">HOST LIFE</span><div class="bar"><div class="fill" id="host-life-fill"></div></div></div>
   <div class="hud-box meter" id="chaos-box">CHAOS <span id="chaos-score">0</span><div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
   <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span>
     <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
@@ -2241,7 +2245,7 @@ function tickActor(ent,dt){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
-      else if(ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
+      else if(ent.controllable && ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
       else if(ent.curSpeed>0.08 && ent.inst.actions.walk) next='walk';
     }
     if(ent.animState!==next){
@@ -2645,14 +2649,14 @@ function loadRatCityLeaderboard(){
 function saveRatCityLeaderboard(){
   localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,8)));
 }
-function makeProgressBar3D(width=0.9,height=0.12){
+function makeProgressBar3D(width=1.12,height=0.18){
   const root=new THREE.Group();
   const bg=new THREE.Mesh(
     new THREE.PlaneGeometry(width,height),
     new THREE.MeshBasicMaterial({color:'#120914',transparent:true,opacity:0.78,depthWrite:false})
   );
   const fill=new THREE.Mesh(
-    new THREE.PlaneGeometry(width*0.94,height*0.66),
+    new THREE.PlaneGeometry(width*0.94,height*0.74),
     new THREE.MeshBasicMaterial({color:'#8cff7b',transparent:true,opacity:0.92,depthWrite:false})
   );
   fill.position.z=0.01;
@@ -2671,7 +2675,7 @@ function attachHumanStatusProps(root){
   bloodPool.visible=false;
   root.add(bloodPool);
   const cleanBar=makeProgressBar3D();
-  cleanBar.root.position.set(0,2.15,0);
+  cleanBar.root.position.set(0,2.28,0);
   root.add(cleanBar.root);
   const parasiteOverlay=new THREE.Sprite(new THREE.SpriteMaterial({
     map:PLAYER_RAT_FRAMES.idle[0]||null,transparent:true,alphaTest:0.04,depthWrite:false,depthTest:false,fog:true
@@ -3701,6 +3705,15 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
   }
   softClampZ(pos);
 }
+function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
+  const curY=ent.root.rotation.y;
+  let diff=targetYaw-curY;
+  while(diff>Math.PI)diff-=Math.PI*2;
+  while(diff<-Math.PI)diff+=Math.PI*2;
+  ent.root.rotation.y=curY+diff*Math.min(1,dt*turnRate);
+  ent.yaw=targetYaw;
+  return diff;
+}
 function updatePlayer(dt){
   if(game.ratCityMode)return;
   const ent=game.controlled;if(!ent||!ent.controllable)return;
@@ -3929,10 +3942,12 @@ function tickCleaner(cleaner,dt){
   if(!cleaner.targetProp){
     cleaner.wanderTimer-=dt;
     if(cleaner.wanderTimer<=0){cleaner.wanderTimer=1.0+Math.random()*1.8;cleaner.yaw+=(Math.random()-0.5)*Math.PI*0.9}
-    cleaner.curSpeed=1.05;
+    const turnDiff=rotateTowardYaw(cleaner,cleaner.yaw,dt,5.4);
+    const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.26?0.32:1);
+    cleaner.curSpeed=0.78*moveScale;
     const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
-    cleaner.root.position.x+=Math.sin(cleaner.yaw)*cleaner.curSpeed*dt;
-    cleaner.root.position.z+=Math.cos(cleaner.yaw)*cleaner.curSpeed*dt;
+    cleaner.root.position.x+=Math.sin(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
+    cleaner.root.position.z+=Math.cos(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
     resolveWorldCollisions(cleaner,prevX,prevZ,0.38);
     if(cleaner.root.position.z<ALLEY_Z_MIN+0.3||cleaner.root.position.z>ALLEY_Z_MAX-0.5){
       cleaner.yaw+=Math.PI;softClampZ(cleaner.root.position);
@@ -3943,16 +3958,18 @@ function tickCleaner(cleaner,dt){
   const dx=prop.root.position.x-cleaner.root.position.x;
   const dz=prop.root.position.z-cleaner.root.position.z;
   const dist=Math.hypot(dx,dz);
-  cleaner.yaw=Math.atan2(dx,dz);
+  const desiredYaw=Math.atan2(dx,dz);
+  const turnDiff=rotateTowardYaw(cleaner,desiredYaw,dt,6.2);
   if(dist>CLEANER_TIDY_RADIUS){
     cleaner.behaviour='seek';
-    cleaner.curSpeed=1.85;
+    const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.24?0.28:1);
+    cleaner.curSpeed=1.08*moveScale;
     cleaner.cleanBar.root.visible=true;
-    cleaner.cleanBar.fill.scale.x=0.08;
-    cleaner.cleanBar.fill.position.x=-(cleaner.cleanBar.width*0.94)*0.46;
+    cleaner.cleanBar.fill.scale.x=0.14;
+    cleaner.cleanBar.fill.position.x=-(cleaner.cleanBar.width*0.94)*0.43;
     const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
-    cleaner.root.position.x+=Math.sin(cleaner.yaw)*cleaner.curSpeed*dt;
-    cleaner.root.position.z+=Math.cos(cleaner.yaw)*cleaner.curSpeed*dt;
+    cleaner.root.position.x+=Math.sin(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
+    cleaner.root.position.z+=Math.cos(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
     resolveWorldCollisions(cleaner,prevX,prevZ,0.38);
     softClampZ(cleaner.root.position);
     cleaner.tidyTimer=CLEANER_TIDY_TIME;
@@ -3999,20 +4016,17 @@ function tickHumans(dt){
     }else if(!h.controllable){
       h.wanderTimer-=dt;
       if(h.wanderTimer<=0){h.wanderTimer=1.6+Math.random()*2.6;h.yaw+=(Math.random()-0.5)*Math.PI*0.8}
-      const spd=h.role==='cleaner'?1.6:1.05;
-      h.curSpeed=spd;
+      const turnDiff=rotateTowardYaw(h,h.yaw,dt,5.2);
+      const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.28?0.3:1);
+      const spd=0.76;
+      h.curSpeed=spd*moveScale;
       const prevX=h.root.position.x, prevZ=h.root.position.z;
-      h.root.position.x+=Math.sin(h.yaw)*spd*dt;
-      h.root.position.z+=Math.cos(h.yaw)*spd*dt;
+      h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
+      h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
       resolveWorldCollisions(h,prevX,prevZ,0.38);
       if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
         h.yaw+=Math.PI;softClampZ(h.root.position);
       }
-      const curY=h.root.rotation.y;
-      let diff=h.yaw-curY;
-      while(diff>Math.PI)diff-=Math.PI*2;
-      while(diff<-Math.PI)diff+=Math.PI*2;
-      h.root.rotation.y=curY+diff*Math.min(1,dt*6);
     }
     tickActor(h,dt);
   }
@@ -4089,7 +4103,7 @@ function updateHUD(dt){
   ratFill.style.width=Math.min(100,game.rats.length*5).toFixed(0)+'%';
   if(game.controlMode==='host'&&game.parasitisedHost){
     hostLifeBox.style.display='block';
-    hostLifeFill.style.width=(clamp(game.parasitisedHost.parasiteTimer/HOST_PARASITE_TIME,0,1)*100).toFixed(1)+'%';
+    hostLifeFill.style.height=(clamp(game.parasitisedHost.parasiteTimer/HOST_PARASITE_TIME,0,1)*100).toFixed(1)+'%';
   }else{
     hostLifeBox.style.display='none';
   }
@@ -4286,12 +4300,13 @@ async function init(){
 
   try{
     const [
-      idleHumanFBX,walkHumanFBX,runHumanFBX,kickHumanFBX,cleanHumanFBX,pickupHumanFBX,
+      idleHumanFBX,walkHumanFBX,runHumanFBX,jumpHumanFBX,kickHumanFBX,cleanHumanFBX,pickupHumanFBX,
       baseColourTex,normalTex,roughTex,metalTex
     ]=await Promise.all([
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/跑步.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/踢ATTACK.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/清潔姿勢.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/拿起物件.fbx'),
@@ -4308,7 +4323,7 @@ async function init(){
     HUMAN_CLIPS.idle=idleHumanFBX.animations[0]||null;
     HUMAN_CLIPS.walk=walkHumanFBX.animations[0]||null;
     HUMAN_CLIPS.run=runHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.jump=null;
+    HUMAN_CLIPS.jump=jumpHumanFBX.animations[0]||null;
     HUMAN_CLIPS.kick=kickHumanFBX.animations[0]||null;
     HUMAN_CLIPS.pickup=pickupHumanFBX.animations[0]||null;
     HUMAN_CLIPS.punch=null;
