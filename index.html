@@ -2272,14 +2272,8 @@ function buildHuman({position,role='wanderer'}={}){
     root.add(shoulderRat);
   }
   const status=attachHumanStatusProps(root);
-  if(inst.headBone){
-    status.parasiteOverlay.position.set(2,-10,7);
-    status.parasiteOverlay.scale.setScalar(1.93/(root.scale.x||1));
-    inst.headBone.add(status.parasiteOverlay);
-  }else{
-    status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
-    status.parasiteOverlay.scale.set(1.93,1.93,1);
-  }
+  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
+  status.parasiteOverlay.scale.set(1.93,1.93,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
@@ -2417,6 +2411,13 @@ function syncParasiteOverlay(host,dt,mx=0,my=0){
       host.parasiteAnim.frame=(host.parasiteAnim.frame+1)%frames.length;
       host.parasiteOverlay.material.map=frames[host.parasiteAnim.frame];
     }
+  }
+  if(host.inst?.headBone){
+    const headWorld=new THREE.Vector3();
+    host.inst.headBone.getWorldPosition(headWorld);
+    headWorld.y-=0.06;
+    const localPos=host.root.worldToLocal(headWorld);
+    host.parasiteOverlay.position.copy(localPos);
   }
   host.parasiteOverlay.material.needsUpdate=true;
 }
@@ -2751,6 +2752,7 @@ function attachHumanStatusProps(root){
     map:PLAYER_RAT_FRAMES.idle[0]||null,transparent:true,alphaTest:0.04,depthWrite:false,depthTest:false,fog:true
   }));
   parasiteOverlay.renderOrder=50;
+  parasiteOverlay.center.set(0.5,0.38);
   parasiteOverlay.scale.set(1.26,1.26,1);
   parasiteOverlay.visible=false;
   root.add(parasiteOverlay);
