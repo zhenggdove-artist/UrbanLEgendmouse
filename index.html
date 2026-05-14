@@ -541,8 +541,8 @@ const HOST_MAX_SPEED=4.4;
 const HOST_ACCEL=18;
 const JUMP_VEL=8.8;
 const GRAVITY=22;
-const GROUND_Y_OFFSET=-1;
-const RAT_FOOT_OFFSET=0.0;
+const GROUND_Y_OFFSET=0.01;
+const RAT_FOOT_OFFSET=-0.5;
 const NECK_BITE_RADIUS=1.50;    // horizontal — bite when the rat is at the host's feet
 const CHAOS_PER_TIP=0.040;
 const CHAOS_DECAY=0.012;
@@ -598,6 +598,7 @@ let crawlFBX=null,runFBX=null;
 let characterSource=null;
 const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
 const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null};
+const HUMAN_VARIANTS=[];
 
 function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
@@ -626,6 +627,23 @@ function loadTextureSequence(paths){
     return tex;
   })));
 }
+function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
+  return {
+    source,
+    skin,
+    clips:{
+      idle:idle?.animations?.[0]||null,
+      walk:walk?.animations?.[0]||null,
+      run:run?.animations?.[0]||null,
+      jump:jump?.animations?.[0]||null,
+      kick:kick?.animations?.[0]||null,
+      pickup:pickup?.animations?.[0]||null,
+      punch:null,
+      punchcombo:null,
+      clean:clean?.animations?.[0]||null
+    }
+  };
+}
 
 const PLAYER_RAT_FRAME_PATHS={
   idle:Array.from({length:14},(_,i)=>`asset/mouse/mouseidle/mouseidle_${String(i+1).padStart(4,'0')}.png`),
@@ -645,13 +663,13 @@ const RAT_BITE_Y_OFFSET=2.16;
 // Apply PS1 treatment to a cloned skinned actor. We still keep dynamic
 // characters lit, but the material stack follows the reference project:
 // imported skin textures override the placeholder source material.
-function ps1ifyCharacterMaterials(root,tint){
+function ps1ifyCharacterMaterials(root,tint,skin=HUMAN_SKIN){
   root.traverse(o=>{
     if(!o.isMesh)return;
     o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
     const mats=Array.isArray(o.material)?o.material:[o.material];
     const replaced=mats.map(src=>{
-      const m=HUMAN_SKIN.base ? new THREE.MeshBasicMaterial() : new THREE.MeshStandardMaterial();
+      const m=skin.base ? new THREE.MeshBasicMaterial() : new THREE.MeshStandardMaterial();
       m.color.set('#d9c08a');
       if(src){
         if(src.color)        m.color.copy(src.color);
@@ -672,20 +690,20 @@ function ps1ifyCharacterMaterials(root,tint){
         if(src.roughness!==undefined)   m.roughness=src.roughness;
         if(src.metalness!==undefined)   m.metalness=src.metalness;
       }
-      if(HUMAN_SKIN.base){
-        m.map=HUMAN_SKIN.base;
+      if(skin.base){
+        m.map=skin.base;
         m.map.colorSpace=THREE.SRGBColorSpace;
       }
-      if(HUMAN_SKIN.normal && 'normalMap' in m) m.normalMap=HUMAN_SKIN.normal;
-      if(HUMAN_SKIN.roughness && 'roughnessMap' in m) m.roughnessMap=HUMAN_SKIN.roughness;
-      if(HUMAN_SKIN.metal && 'metalnessMap' in m) m.metalnessMap=HUMAN_SKIN.metal;
+      if(skin.normal && 'normalMap' in m) m.normalMap=skin.normal;
+      if(skin.roughness && 'roughnessMap' in m) m.roughnessMap=skin.roughness;
+      if(skin.metal && 'metalnessMap' in m) m.metalnessMap=skin.metal;
       if(m.map) m.map.flipY=true;
       if(m.normalMap) m.normalMap.flipY=true;
       if(m.roughnessMap) m.roughnessMap.flipY=true;
       if(m.metalnessMap) m.metalnessMap.flipY=true;
       if('roughness' in m) m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
       if('metalness' in m) m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
-      if(HUMAN_SKIN.base){
+      if(skin.base){
         m.color.setRGB(1.22,1.22,1.22);
         if(m.emissive){
           m.emissive.setRGB(0.18,0.18,0.18);
@@ -701,7 +719,7 @@ function ps1ifyCharacterMaterials(root,tint){
       if(m.normalScale) m.normalScale.set(0.6,0.6);
       m.needsUpdate=true;
       if(tint && m.color){
-        if(HUMAN_SKIN.base){
+        if(skin.base){
           m.color.multiply(tint.clone().lerp(new THREE.Color('#ffffff'),0.72));
         }else{
           m.color.multiply(tint);
@@ -1764,7 +1782,7 @@ function generateChunk(idx){
   floorTex.repeat.set(2,4);pixelate(floorTex);
   const floor=new THREE.Mesh(
     new THREE.PlaneGeometry(CHUNK_SIZE,22),
-    new THREE.MeshBasicMaterial({map:floorTex,color:'#3a322e'})
+    new THREE.MeshBasicMaterial({map:floorTex,color:'#8b8b86'})
   );
   floor.rotation.x=-Math.PI/2;
   floor.position.set(xBase+CHUNK_SIZE/2,0,0);
@@ -2015,9 +2033,9 @@ function ensureChunksAroundX(x){
    final height matches. Mixamo bones use centimetres internally, so
    targeting metres here means small rats (0.30 m) end up at scale
    ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
-function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
-  const root=SkeletonUtils.clone(characterSource);
-  ps1ifyCharacterMaterials(root,tint);
+function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,skin=HUMAN_SKIN}){
+  const root=SkeletonUtils.clone(source);
+  ps1ifyCharacterMaterials(root,tint,skin);
   const outer=new THREE.Group();
   outer.add(root);
   root.updateMatrixWorld(true);
@@ -2184,7 +2202,7 @@ function buildRat({isPlayer=false}={}){
    ============================================================ */
 const HUMAN_WORLD_Y_OFFSET=-1;
 function buildHuman({position,role='wanderer'}={}){
-  if(!characterSource||!HUMAN_CLIPS.run){
+  if(!HUMAN_VARIANTS.length){
     // FBX placeholder — capsule body so we never silently skip a spawn.
     const root=new THREE.Group();
     root.position.set(position.x,HUMAN_WORLD_Y_OFFSET,position.z);
@@ -2205,7 +2223,8 @@ function buildHuman({position,role='wanderer'}={}){
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
     : new THREE.Color(pick(['#f0d6d0','#d9d6cf','#e6c7b5','#d7d6e8','#c9d3d8']));
-  const inst=buildSkinnedActor({targetHeight:1.52,tint,clips:HUMAN_CLIPS});
+  const variant=pick(HUMAN_VARIANTS);
+  const inst=buildSkinnedActor({targetHeight:1.52,tint,clips:variant.clips,source:variant.source,skin:variant.skin});
   const root=inst.outer;
   root.position.set(position.x,HUMAN_WORLD_Y_OFFSET,position.z);
   scene.add(root);
@@ -2448,6 +2467,14 @@ function killHost(host){
   host.root.rotation.x=0;
   host.root.position.y=host.baseY||0;
   if(host.bloodPool){
+    const bloodPos=new THREE.Vector3();
+    host.root.getWorldPosition(bloodPos);
+    if(host.bloodPool.parent!==scene){
+      host.bloodPool.parent?.remove(host.bloodPool);
+      scene.add(host.bloodPool);
+    }
+    host.bloodPool.rotation.set(-Math.PI/2,0,0);
+    host.bloodPool.position.set(bloodPos.x,0.03,bloodPos.z);
     host.bloodPool.visible=true;
     host.bloodPool.scale.set(2.4,2.4,2.4);
   }
@@ -2687,7 +2714,7 @@ function attachHumanStatusProps(root){
   return {bloodPool,cleanBar,parasiteOverlay};
 }
 function makeComicTextTexture(text,fill='#fff7c2',stroke='#310c16',fontSize=44){
-  const c=document.createElement('canvas');c.width=192;c.height=96;
+  const c=document.createElement('canvas');c.width=320;c.height=112;
   const cx=c.getContext('2d');
   cx.clearRect(0,0,c.width,c.height);
   cx.translate(c.width/2,c.height/2);
@@ -3497,16 +3524,9 @@ function knockHumanDown(target,sourceYaw=0){
   if(!target||target.parasitised||target.controllable||target.dead)return;
   if(target.targetProp && target.targetProp.reservedBy===target) target.targetProp.reservedBy=null;
   target.targetProp=null;
-  target.behaviour='wander';
-  target.curSpeed=0;
-  target.downTimer=1.3;
-  spawnComicImpact(target.root.position,'KRAK!','#fff7a6');
-  spawnImpactDebris(target.root.position,18,'#f7d9b4');
-  target.root.position.y=target.baseY||0;
-  target.root.rotation.x=0;
-  target.root.rotation.z=(Math.random()<0.5?-1:1)*1.08;
   target.root.position.x+=Math.sin(sourceYaw)*0.24;
   target.root.position.z+=Math.cos(sourceYaw)*0.24;
+  killHost(target);
 }
 function liftProp(host,prop){
   if(!host||!prop)return false;
@@ -3755,7 +3775,7 @@ function updatePlayer(dt){
         camera.position.z-headPos.z
       ).normalize().multiplyScalar(0.16);
       const biteTarget=headPos.clone().add(lungeDir);
-      biteTarget.y=headPos.y+RAT_BITE_Y_OFFSET;
+      biteTarget.y=(host.baseY||host.root.position.y)+RAT_BITE_Y_OFFSET;
       ent.root.position.lerp(biteTarget,Math.min(1,dt*12));
       ent.root.position.y=biteTarget.y;
       ent.vy=0;
@@ -4301,7 +4321,9 @@ async function init(){
   try{
     const [
       idleHumanFBX,walkHumanFBX,runHumanFBX,jumpHumanFBX,kickHumanFBX,cleanHumanFBX,pickupHumanFBX,
-      baseColourTex,normalTex,roughTex,metalTex
+      baseColourTex,normalTex,roughTex,metalTex,
+      idleWomanFBX,walkWomanFBX,runWomanFBX,jumpWomanFBX,kickWomanFBX,cleanWomanFBX,pickupWomanFBX,
+      baseColourTexWoman,normalTexWoman,roughTexWoman,metalTexWoman
     ]=await Promise.all([
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
@@ -4313,22 +4335,36 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/basecolor_1024.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_metallic.JPEG')
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/站著發呆.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/跑步.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/跳躍.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/清潔姿勢.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/拿起物品.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_metallic.JPEG')
     ]);
-    HUMAN_SKIN.base=baseColourTex;
-    HUMAN_SKIN.normal=normalTex;
-    HUMAN_SKIN.roughness=roughTex;
-    HUMAN_SKIN.metal=metalTex;
-    characterSource=idleHumanFBX;
-    HUMAN_CLIPS.idle=idleHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.walk=walkHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.run=runHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.jump=jumpHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.kick=kickHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.pickup=pickupHumanFBX.animations[0]||null;
-    HUMAN_CLIPS.punch=null;
-    HUMAN_CLIPS.punchcombo=null;
-    HUMAN_CLIPS.clean=cleanHumanFBX.animations[0]||null;
+    HUMAN_VARIANTS.length=0;
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleHumanFBX,
+      idle:idleHumanFBX,walk:walkHumanFBX,run:runHumanFBX,jump:jumpHumanFBX,kick:kickHumanFBX,pickup:pickupHumanFBX,clean:cleanHumanFBX,
+      skin:{base:baseColourTex,normal:normalTex,roughness:roughTex,metal:metalTex}
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleWomanFBX,
+      idle:idleWomanFBX,walk:walkWomanFBX,run:runWomanFBX,jump:jumpWomanFBX,kick:kickWomanFBX,pickup:pickupWomanFBX,clean:cleanWomanFBX,
+      skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
+    }));
+    characterSource=HUMAN_VARIANTS[0].source;
+    HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
+    HUMAN_SKIN.normal=HUMAN_VARIANTS[0].skin.normal;
+    HUMAN_SKIN.roughness=HUMAN_VARIANTS[0].skin.roughness;
+    HUMAN_SKIN.metal=HUMAN_VARIANTS[0].skin.metal;
+    Object.assign(HUMAN_CLIPS,HUMAN_VARIANTS[0].clips);
     console.log('[fbx] human clips loaded:',Object.keys(HUMAN_CLIPS).filter(k=>HUMAN_CLIPS[k]));
   }catch(e){
     console.error('[fbx] load failed — humans will use placeholder capsules',e);
