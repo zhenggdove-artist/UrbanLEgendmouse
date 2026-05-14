@@ -76,7 +76,7 @@
   #rat-city-panel.min p,#rat-city-panel.min #rat-city-list,#rat-city-panel.min #rat-city-name,#rat-city-panel.min #rat-city-save{display:none}
   #rat-city-panel h3{margin:0 0 6px;font:700 17px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.18em;color:#fff1c2}
   #rat-city-panel p{margin:0 0 12px;font:11px/1.5 "Courier New",monospace;color:#dbcaa3;text-transform:uppercase}
-  .rat-city-row{display:flex;gap:8px;align-items:center}
+  .rat-city-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding-right:142px}
   #rat-city-name{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,244,192,0.28);
     background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em}
   #rat-city-save,#rat-city-close,#rat-city-min{appearance:none;border:none;border-radius:10px;padding:10px 12px;cursor:pointer;
@@ -84,6 +84,9 @@
   #rat-city-save{background:#ffd166;color:#2a1320}
   #rat-city-close{background:#ff8fb8;color:#351320}
   #rat-city-min{background:#9fd6ff;color:#17324b}
+  #rat-city-close,#rat-city-min{position:absolute;top:16px;z-index:2}
+  #rat-city-close{right:16px}
+  #rat-city-min{right:84px}
   #rat-city-score{margin:10px 0 12px;font:12px/1.4 "Courier New",monospace;color:#fff1c2;letter-spacing:0.08em}
   #rat-city-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
   #rat-city-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;
@@ -413,16 +416,16 @@ const screenQuad=new THREE.Mesh(
       }
       void main(){
         vec2 uv=vUv;
-        float wobble=sin(uv.y*18.0+time*3.6)*0.00175;
-        float glitch=step(0.92,sin(time*0.8+uv.y*14.0))*0.0028;
+        float wobble=sin(uv.y*18.0+time*3.6)*0.00115;
+        float glitch=step(0.94,sin(time*0.8+uv.y*14.0))*0.0012;
         vec2 shift=vec2(wobble+glitch,0.0);
-        float r=texture2D(map,uv+shift*1.8).r;
-        float g=texture2D(map,uv+shift*0.6).g;
-        float b=texture2D(map,uv-shift*1.2).b;
+        float r=texture2D(map,uv+shift*1.05).r;
+        float g=texture2D(map,uv+shift*0.35).g;
+        float b=texture2D(map,uv-shift*0.8).b;
         vec3 colour=vec3(r,g,b);
-        float scanline=sin(uv.y*resolution.y*1.35)*0.0385;
-        float noise=(hash(vec2(floor(uv.y*resolution.y*0.45),floor(time*48.0)))-0.5)*0.056;
-        float band=step(0.985,sin(time*1.7+uv.y*9.0))*0.056;
+        float scanline=sin(uv.y*resolution.y*1.35)*0.018;
+        float noise=(hash(vec2(floor(uv.y*resolution.y*0.45),floor(time*48.0)))-0.5)*0.018;
+        float band=step(0.992,sin(time*1.7+uv.y*9.0))*0.022;
         colour-=scanline;
         colour+=noise;
         colour=colour*(1.0-band);
@@ -629,6 +632,9 @@ const PLAYER_RAT_FRAME_PATHS={
   back:Array.from({length:8},(_,i)=>`asset/mouse/mousebackword/mousebackword_${String(i+1).padStart(4,'0')}.png`)
 };
 const PLAYER_RAT_FRAMES={idle:[],bite:[],forward:[],forwardRight:[],forwardLeft:[],left:[],right:[],back:[]};
+const HOST_HEAD_WORLD_Y_OFFSET=2.12;
+const HOST_HEAD_OVERLAY_Y=2.16;
+const RAT_BITE_Y_OFFSET=-0.06;
 
 // Apply PS1 treatment to a cloned skinned actor. We still keep dynamic
 // characters lit, but the material stack follows the reference project:
@@ -2154,7 +2160,7 @@ function buildHuman({position,role='wanderer'}={}){
     root.add(shoulderRat);
   }
   const status=attachHumanStatusProps(root);
-  status.parasiteOverlay.position.set(0.02,1.56,0.08);
+  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y,0.08);
   status.parasiteOverlay.scale.set(1.02,1.02,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
@@ -2259,7 +2265,7 @@ function tickRatBillboard(rat,dt){
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
   if(host?.root){
-    const topY=host.root.position.y+1.52;
+    const topY=host.root.position.y+HOST_HEAD_WORLD_Y_OFFSET;
     if(host?.inst?.headBone){
       host.inst.headBone.getWorldPosition(v);
       v.y=topY;
@@ -2269,20 +2275,21 @@ function getHumanHeadWorldPos(host){
   }
   return v;
 }
-function spawnBiteBlood(host){
+function spawnBiteBlood(host,multiplier=1){
   const base=getHumanHeadWorldPos(host);
-  for(let i=0;i<90;i++){
+  const count=Math.round(90*multiplier);
+  for(let i=0;i<count;i++){
     const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
       map:FX_TEX.blood,transparent:true,depthWrite:false,fog:false,
       color:new THREE.Color(i%3===0?'#ffb2b2':'#d81f41')
     }));
-    sprite.scale.setScalar(rand(0.12,0.28));
+    sprite.scale.setScalar(rand(0.12,0.28)*Math.sqrt(Math.max(1,multiplier))*0.75);
     sprite.position.copy(base).add(new THREE.Vector3(rand(-0.09,0.09),rand(-0.06,0.14),rand(-0.09,0.09)));
     scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
-      vel:new THREE.Vector3(rand(-1.8,1.8),rand(0.8,3.6),rand(-1.8,1.8)),
-      gravity:4.4,life:0.8,maxLife:0.8,spin:rand(-14,14)
+      vel:new THREE.Vector3(rand(-1.8,1.8)*Math.min(2.8,multiplier*0.22+1),rand(0.8,3.6)*Math.min(2.6,multiplier*0.18+1),rand(-1.8,1.8)*Math.min(2.8,multiplier*0.22+1)),
+      gravity:4.4,life:0.8+Math.min(0.8,multiplier*0.04),maxLife:0.8+Math.min(0.8,multiplier*0.04),spin:rand(-14,14)
     });
   }
 }
@@ -2348,8 +2355,8 @@ function killHost(host){
     host.bloodPool.visible=true;
     host.bloodPool.scale.set(2.4,2.4,2.4);
   }
-  spawnBiteBlood(host);
-  spawnImpactDebris(host.root.position,28,'#b11428');
+  spawnBiteBlood(host,10);
+  spawnImpactDebris(host.root.position,120,'#b11428');
   spawnComicImpact(host.root.position,'SPLAT!','#ff95a3');
   if(game.parasitisedHost===host){
     const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
@@ -3056,26 +3063,38 @@ window.addEventListener('keyup',e=>{
 
 // ===== Camera — rat-eye, low orbit (formula identical to 都市傳說2) =====
 let camYaw=Math.PI,camPitch=0.12,camDist=2.2;
+let ratCityPitch=0.58,ratCityZoom=26,ratCityAutoRotate=true;
 let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
 canvas.addEventListener('pointerdown',e=>{
-  if(game.ratCityMode)return;
   if(e.target!==canvas)return;
   e.preventDefault();
   canvas.setPointerCapture?.(e.pointerId);
   dragging=true;dragPId=e.pointerId;
-  dx0=e.clientX;dy0=e.clientY;yaw0=camYaw;pitch0=camPitch;
+  dx0=e.clientX;dy0=e.clientY;
+  yaw0=game.ratCityMode?game.ratCityAngle:camYaw;
+  pitch0=game.ratCityMode?ratCityPitch:camPitch;
 });
 canvas.addEventListener('pointermove',e=>{
-  if(game.ratCityMode)return;
   if(!dragging||e.pointerId!==dragPId)return;
-  camYaw=yaw0-(e.clientX-dx0)/W()*4;
-  camPitch=clamp(pitch0+(e.clientY-dy0)/H()*3,-0.10,1.10);
+  if(game.ratCityMode){
+    ratCityAutoRotate=false;
+    game.ratCityAngle=yaw0-(e.clientX-dx0)/W()*4;
+    ratCityPitch=clamp(pitch0+(e.clientY-dy0)/H()*2.2,0.24,1.2);
+  }else{
+    camYaw=yaw0-(e.clientX-dx0)/W()*4;
+    camPitch=clamp(pitch0+(e.clientY-dy0)/H()*3,-0.10,1.10);
+  }
 });
 const endDrag=e=>{if(e.pointerId===dragPId){dragging=false;canvas.releasePointerCapture?.(e.pointerId);dragPId=null}};
 canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
 canvas.addEventListener('wheel',e=>{
-  if(game.ratCityMode)return;
-  e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,1.0,6);
+  e.preventDefault();
+  if(game.ratCityMode){
+    ratCityAutoRotate=false;
+    ratCityZoom=clamp(ratCityZoom+e.deltaY*0.03,10,42);
+  }else{
+    camDist=clamp(camDist+e.deltaY*0.015,1.0,6);
+  }
 },{passive:false});
 
 function updateCam(){
@@ -3087,10 +3106,11 @@ function updateCam(){
     const tx=player?player.root.position.x:12;
     const ty=1.2;
     const tz=0;
-    const radius=26;
-    const cx=tx+Math.sin(game.ratCityAngle)*radius;
-    const cy=22;
-    const cz=tz+Math.cos(game.ratCityAngle)*radius*0.55;
+    const radius=ratCityZoom;
+    const flatRadius=radius*Math.cos(ratCityPitch);
+    const cx=tx+Math.sin(game.ratCityAngle)*flatRadius;
+    const cy=8+Math.sin(ratCityPitch)*radius;
+    const cz=tz+Math.cos(game.ratCityAngle)*flatRadius*0.82;
     camera.position.set(cx,cy,cz);
     camera.lookAt(tx,ty,tz);
     return;
@@ -3298,6 +3318,9 @@ function setRatCityMode(enabled){
   ratCityBtn.textContent=enabled?'BACK TO CHAOS':'RAT CITY';
   if(enabled){
     game.ratCityAngle=camYaw;
+    ratCityPitch=0.58;
+    ratCityZoom=26;
+    ratCityAutoRotate=true;
     renderRatCityLeaderboard();
   }
 }
@@ -3549,7 +3572,7 @@ function updatePlayer(dt){
         camera.position.z-headPos.z
       ).normalize().multiplyScalar(0.16);
       const biteTarget=headPos.clone().add(lungeDir);
-      biteTarget.y=headPos.y-0.22;
+      biteTarget.y=headPos.y+RAT_BITE_Y_OFFSET;
       ent.root.position.lerp(biteTarget,Math.min(1,dt*12));
       ent.yaw=Math.atan2(host.root.position.x-ent.root.position.x,host.root.position.z-ent.root.position.z);
       ent.root.rotation.y=ent.yaw;
@@ -3988,7 +4011,7 @@ let last=performance.now();
 function stepFrame(dt){
   if(gameState==='playing'){
     gameTime+=dt;
-    if(game.ratCityMode) game.ratCityAngle+=dt*0.22;
+    if(game.ratCityMode && ratCityAutoRotate) game.ratCityAngle+=dt*0.22;
     tickChaosSpots(dt);
     if(inputFlags.action){handleActionPress();inputFlags.action=false}
     updatePlayer(dt);
