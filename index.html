@@ -62,6 +62,29 @@
   #mode-badge{left:11%;top:9.8%}
   #chaos-box{left:82%;top:9.8%}
   #rats-box{left:82%;top:17.2%}
+  #rat-city-btn{position:fixed;left:50%;top:8.4%;transform:translate(-50%,-50%);z-index:15;
+    appearance:none;border:none;border-radius:999px;padding:10px 22px;cursor:pointer;
+    background:linear-gradient(180deg,rgba(255,244,192,0.96),rgba(255,180,120,0.94));
+    color:#3b1420;font:700 18px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.28em;
+    text-transform:uppercase;box-shadow:0 16px 30px rgba(0,0,0,0.34)}
+  #rat-city-panel{position:fixed;top:78px;left:50%;transform:translateX(-50%);z-index:16;
+    width:min(360px,calc(100vw - 28px));padding:16px 18px;border-radius:18px;display:none;
+    border:1px solid rgba(255,244,192,0.45);background:rgba(20,12,25,0.92);box-shadow:0 20px 42px rgba(0,0,0,0.45)}
+  #rat-city-panel.show{display:block}
+  #rat-city-panel h3{margin:0 0 6px;font:700 17px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.18em;color:#fff1c2}
+  #rat-city-panel p{margin:0 0 12px;font:11px/1.5 "Courier New",monospace;color:#dbcaa3;text-transform:uppercase}
+  .rat-city-row{display:flex;gap:8px;align-items:center}
+  #rat-city-name{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,244,192,0.28);
+    background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em}
+  #rat-city-save,#rat-city-close{appearance:none;border:none;border-radius:10px;padding:10px 12px;cursor:pointer;
+    font:700 11px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.14em;text-transform:uppercase}
+  #rat-city-save{background:#ffd166;color:#2a1320}
+  #rat-city-close{background:#ff8fb8;color:#351320}
+  #rat-city-score{margin:10px 0 12px;font:12px/1.4 "Courier New",monospace;color:#fff1c2;letter-spacing:0.08em}
+  #rat-city-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  #rat-city-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;
+    background:rgba(255,255,255,0.04);font:11px/1.3 "Courier New",monospace;color:#fff7d3}
+  #rat-city-list .rank-name{max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:rgba(8,5,14,0.92);z-index:30}
@@ -138,9 +161,12 @@
   #hint.show{opacity:1}
 
   body.intro-active #hud,
+  body.intro-active #rat-city-btn,
+  body.intro-active #rat-city-panel,
   body.intro-active #game-controls,
   body.game-won #hud,
   body.game-won #game-controls{display:none !important}
+  body.rat-city-mode #game-controls{display:none !important}
 
   #rats-win{position:fixed;inset:0;display:none;flex-direction:column;
     align-items:center;justify-content:center;background:rgba(8,5,14,0.94);z-index:50;
@@ -195,6 +221,8 @@
     #mode-badge{left:18%;top:7.2%}
     #chaos-box{left:72%;top:7.2%}
     #rats-box{left:72%;top:14%}
+    #rat-city-btn{top:7.4%;padding:9px 14px;font-size:14px;letter-spacing:0.18em}
+    #rat-city-panel{top:66px}
     .intro-card h1{font-size:16px}
     .intro-copy{font-size:11px}
     .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
@@ -214,8 +242,20 @@
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
   <div class="hud-box meter" id="chaos-box">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
-  <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span> / <span id="rat-goal">30</span>
+  <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span>
     <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
+</div>
+<button id="rat-city-btn" type="button">RAT CITY</button>
+<div id="rat-city-panel">
+  <h3>RAT CITY</h3>
+  <p>Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.</p>
+  <div class="rat-city-row">
+    <input id="rat-city-name" type="text" maxlength="18" placeholder="ENTER NAME" />
+    <button id="rat-city-save" type="button">Save</button>
+    <button id="rat-city-close" type="button">Back</button>
+  </div>
+  <div id="rat-city-score">CHAOS 0 · SCORE 0</div>
+  <ol id="rat-city-list"></ol>
 </div>
 <div id="hint"></div>
 
@@ -225,8 +265,8 @@
     <div class="tag">— PS1-STYLE PROTOTYPE —</div>
     <div class="intro-copy">
       <p>You are a rat with a human head. <em>Your</em> human head.</p>
-      <p>The alley stretches forever. Crawl, charge, knock things over. The more <strong>chaos</strong>, the more rats arrive.</p>
-      <p>Get to a human's neck and bite — <strong>take over the body</strong>. Fill the rat bar to win.</p>
+      <p>The alley stretches forever. Crawl, bite, and steal a human body to make real damage. The more <strong>chaos</strong>, the more rats arrive.</p>
+      <p>Get to a human's neck and bite — <strong>take over the body</strong>. Use the host to smash the market apart.</p>
     </div>
     <button id="start-btn" disabled>READY</button>
     <div id="intro-progress">
@@ -427,7 +467,6 @@ const RAT_FOOT_OFFSET=0.0;
 const NECK_BITE_RADIUS=1.50;    // horizontal — bite when the rat is at the host's feet
 const CHAOS_PER_TIP=0.040;
 const CHAOS_DECAY=0.012;
-const WIN_RAT_COUNT=30;
 const BREED_MIN_CHAOS=0.20;
 const SOUP_SPILL_RAT_MIN=2;
 const SOUP_SPILL_RAT_MAX=5;
@@ -438,10 +477,12 @@ const CLEANER_CHAOS_RESTORE=0.070;
 const HOST_ATTACK_RADIUS=1.55;
 const HOST_PICKUP_RADIUS=1.65;
 const HOST_THROW_CHARGE_MAX=1.35;
+const STALL_FIRE_CHANCE=0.30;
+const STALL_SOUP_CHANCE=0.30;
+const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-9.5, ALLEY_Z_MAX=9.5;
-document.getElementById('rat-goal').textContent=WIN_RAT_COUNT;
 
 let gameState='intro';
 let gameTime=0;
@@ -451,7 +492,11 @@ const game={
   controlled:null,
   parasitisedHost:null,
   chaos:0,chaosDisplay:0,
-  rats:[],humans:[],props:[]
+  rats:[],humans:[],props:[],
+  fx:[],
+  ratCityMode:false,
+  ratCityAngle:0,
+  leaderboard:[]
 };
 let player=null;
 
@@ -873,9 +918,20 @@ function makeStringBulbSprite(){
   cx.fillStyle='rgba(255,255,255,0.9)';cx.fillRect(7,7,2,2);
   return pixelate(new THREE.CanvasTexture(c));
 }
+function makeFXBlobTexture(inner,outer){
+  const c=document.createElement('canvas');c.width=c.height=64;
+  const cx=c.getContext('2d');
+  const g=cx.createRadialGradient(32,32,6,32,32,26);
+  g.addColorStop(0,inner);
+  g.addColorStop(0.55,outer);
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  cx.fillStyle=g;
+  cx.beginPath();cx.arc(32,32,26,0,Math.PI*2);cx.fill();
+  return pixelate(new THREE.CanvasTexture(c));
+}
 
 // Cached textures and sprite materials.
-const TEX={},SPRITE_MAT={};
+const TEX={},SPRITE_MAT={},FX_TEX={};
 const STALL_TEX={tarp:new Map(),wood:null,metal:null};
 // Filled in by loadGraffitiTextures() — random panels stuck on building walls.
 const GRAFFITI_TEX=[];
@@ -911,6 +967,10 @@ function initSharedTextures(){
   SPRITE_MAT.lampGlow       =new THREE.SpriteMaterial({map:makeLampGlowSprite(),    transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
   SPRITE_MAT.ratSilhouette  =new THREE.SpriteMaterial({map:makeRatSilhouetteSprite(),transparent:true,alphaTest:0.5,fog:true});
   SPRITE_MAT.stringBulb     =new THREE.SpriteMaterial({map:makeStringBulbSprite(),  transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
+  FX_TEX.blood=makeFXBlobTexture('#d81f41','#5d0016');
+  FX_TEX.fire =makeFXBlobTexture('#ffd84f','#ff5a1f');
+  FX_TEX.ember=makeFXBlobTexture('#fff2a0','#ff8b22');
+  FX_TEX.broth=makeFXBlobTexture('#ffe071','#e8a62f');
 }
 
 // Graffiti textures loaded from the user-supplied asset/photos folder.
@@ -1244,6 +1304,7 @@ function buildMarketStall({x,z,facing=1,shape='rect',style='tarp',hasSoup=false}
   const prop=registerProp(root,Math.max(width,depth)*0.52,2.6+width*0.25);
   prop.kind='stall';
   prop.tipOffset=0.12;
+  prop.hasSoup=!!hasSoup;
   if(hasSoup){
     const soupPot=buildSoupPot(x+rand(-width*0.18,width*0.18),z+rand(-depth*0.12,depth*0.12),rand(0.9,1.15));
     if(soupPot){
@@ -2013,6 +2074,166 @@ function tickRatBillboard(rat,dt){
   rat.legs[2].position.y=0.06+Math.max(0,-swing);
   rat.legs[3].position.y=0.06+Math.max(0, swing);
 }
+function getHumanHeadWorldPos(host){
+  const v=new THREE.Vector3();
+  if(host?.inst?.headBone){
+    host.inst.headBone.getWorldPosition(v);
+  }else if(host?.root){
+    v.set(host.root.position.x,host.root.position.y+1.45,host.root.position.z);
+  }
+  return v;
+}
+function spawnBiteBlood(host){
+  const base=getHumanHeadWorldPos(host);
+  for(let i=0;i<18;i++){
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:FX_TEX.blood,transparent:true,depthWrite:false,fog:false,
+      color:new THREE.Color(i%3===0?'#ffb2b2':'#d81f41')
+    }));
+    sprite.scale.setScalar(rand(0.10,0.18));
+    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.05,0.05),rand(-0.03,0.08),rand(-0.05,0.05)));
+    scene.add(sprite);
+    game.fx.push({
+      kind:'blood',sprite,
+      vel:new THREE.Vector3(rand(-0.9,0.9),rand(0.4,1.8),rand(-0.9,0.9)),
+      gravity:3.8,life:0.55,maxLife:0.55,spin:rand(-8,8)
+    });
+  }
+}
+function ensureBrothFX(prop){
+  if(prop.brothFX) return prop.brothFX;
+  const group=new THREE.Group();
+  group.visible=false;
+  prop.root.add(group);
+  const blobs=[];
+  for(let i=0;i<18;i++){
+    const mesh=new THREE.Mesh(
+      new THREE.CircleGeometry(rand(0.04,0.11),10),
+      new THREE.MeshBasicMaterial({
+        map:FX_TEX.broth,transparent:true,opacity:0.92,depthWrite:false,
+        color:i%4===0?'#fff1a4':'#f0bd34'
+      })
+    );
+    mesh.rotation.x=-Math.PI/2;
+    mesh.position.y=-prop.root.userData.baseY+0.03;
+    mesh.userData={
+      along:rand(0.18,0.85),
+      side:rand(-0.34,0.34),
+      size:rand(0.35,1.15)
+    };
+    group.add(mesh);
+    blobs.push(mesh);
+  }
+  prop.brothFX={group,blobs,active:false,progress:0,angle:0,intensity:1};
+  return prop.brothFX;
+}
+function activateBrothFX(prop,angle,intensity=1){
+  const fx=ensureBrothFX(prop);
+  fx.active=true;
+  fx.progress=0;
+  fx.angle=angle;
+  fx.intensity=intensity;
+  fx.group.visible=true;
+}
+function ensureFireFX(prop){
+  if(prop.fireFX) return prop.fireFX;
+  const group=new THREE.Group();
+  group.visible=false;
+  prop.root.add(group);
+  const flames=[],embers=[];
+  for(let i=0;i<7;i++){
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:FX_TEX.fire,transparent:true,depthWrite:false,fog:false,
+      blending:THREE.AdditiveBlending,color:i%2===0?'#ffef95':'#ff9a22',opacity:0.9
+    }));
+    sprite.userData={phase:Math.random()*Math.PI*2,radius:rand(0.05,0.18),height:rand(0.24,0.62)};
+    group.add(sprite);flames.push(sprite);
+  }
+  for(let i=0;i<10;i++){
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:FX_TEX.ember,transparent:true,depthWrite:false,fog:false,
+      blending:THREE.AdditiveBlending,color:'#ffd769',opacity:0.65
+    }));
+    sprite.userData={phase:Math.random()*Math.PI*2,offset:rand(0,0.4)};
+    group.add(sprite);embers.push(sprite);
+  }
+  prop.fireFX={group,flames,embers,active:false,time:0};
+  return prop.fireFX;
+}
+function activateFireFX(prop){
+  const fx=ensureFireFX(prop);
+  fx.active=true;
+  fx.time=0;
+  fx.group.visible=true;
+}
+function clearPropFX(prop){
+  if(prop.brothFX){
+    prop.brothFX.active=false;
+    prop.brothFX.group.visible=false;
+  }
+  if(prop.fireFX){
+    prop.fireFX.active=false;
+    prop.fireFX.group.visible=false;
+  }
+}
+function tickPropFX(prop,dt){
+  if(prop.brothFX?.active){
+    const fx=prop.brothFX;
+    fx.progress=Math.min(1,fx.progress+dt*1.8);
+    const dirX=Math.cos(fx.angle),dirZ=Math.sin(fx.angle);
+    const sideX=-dirZ,sideZ=dirX;
+    for(const blob of fx.blobs){
+      const spread=fx.progress*fx.intensity;
+      blob.scale.setScalar(blob.userData.size*(0.55+spread*1.45));
+      blob.position.x=dirX*blob.userData.along*spread + sideX*blob.userData.side*spread*0.8;
+      blob.position.z=dirZ*blob.userData.along*spread + sideZ*blob.userData.side*spread*0.8;
+      blob.material.opacity=0.95-Math.max(0,fx.progress-0.55)*0.38;
+    }
+  }
+  if(prop.fireFX?.active){
+    const fx=prop.fireFX;
+    fx.time+=dt;
+    for(const flame of fx.flames){
+      const t=fx.time*3.2+flame.userData.phase;
+      flame.position.set(Math.sin(t)*flame.userData.radius,-prop.root.userData.baseY+0.18+flame.userData.height*0.5,Math.cos(t*0.7)*flame.userData.radius);
+      flame.scale.set(0.26+Math.sin(t)*0.05,0.48+Math.abs(Math.cos(t))*0.42,1);
+      flame.material.opacity=0.6+Math.abs(Math.sin(t))*0.28;
+    }
+    for(const ember of fx.embers){
+      const t=fx.time*1.7+ember.userData.phase;
+      ember.position.set(Math.sin(t*1.6)*0.22,-prop.root.userData.baseY+0.28+((t+ember.userData.offset)%0.9),Math.cos(t*1.3)*0.18);
+      ember.scale.setScalar(0.08+Math.abs(Math.sin(t))*0.04);
+      ember.material.opacity=0.28+Math.abs(Math.cos(t))*0.25;
+    }
+  }
+}
+function tickTransientFX(dt){
+  for(let i=game.fx.length-1;i>=0;i--){
+    const fx=game.fx[i];
+    fx.life-=dt;
+    if(fx.life<=0){
+      scene.remove(fx.sprite);
+      fx.sprite.material.dispose();
+      game.fx.splice(i,1);
+      continue;
+    }
+    fx.vel.y-=fx.gravity*dt;
+    fx.sprite.position.addScaledVector(fx.vel,dt);
+    fx.sprite.material.opacity=fx.life/fx.maxLife;
+    fx.sprite.material.rotation=(fx.sprite.material.rotation||0)+fx.spin*dt;
+  }
+}
+function loadRatCityLeaderboard(){
+  try{
+    const raw=localStorage.getItem(RAT_CITY_STORAGE_KEY);
+    game.leaderboard=raw?JSON.parse(raw):[];
+  }catch(_){
+    game.leaderboard=[];
+  }
+}
+function saveRatCityLeaderboard(){
+  localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,8)));
+}
 
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
 // ===== UI layout admin (Shift+C) =====
@@ -2405,20 +2626,37 @@ window.addEventListener('keyup',e=>{
 let camYaw=Math.PI,camPitch=0.18,camDist=1.8;
 let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
 canvas.addEventListener('pointerdown',e=>{
+  if(game.ratCityMode)return;
   if(e.target!==canvas)return;
   dragging=true;dragPId=e.pointerId;
   dx0=e.clientX;dy0=e.clientY;yaw0=camYaw;pitch0=camPitch;
 });
 canvas.addEventListener('pointermove',e=>{
+  if(game.ratCityMode)return;
   if(!dragging||e.pointerId!==dragPId)return;
   camYaw=yaw0-(e.clientX-dx0)/W()*4;
   camPitch=clamp(pitch0+(e.clientY-dy0)/H()*3,-0.10,1.10);
 });
 const endDrag=e=>{if(e.pointerId===dragPId){dragging=false;dragPId=null}};
 canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
-canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,1.0,6)},{passive:false});
+canvas.addEventListener('wheel',e=>{
+  if(game.ratCityMode)return;
+  e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,1.0,6);
+},{passive:false});
 
 function updateCam(){
+  if(game.ratCityMode){
+    const tx=player?player.root.position.x:12;
+    const ty=1.2;
+    const tz=0;
+    const radius=26;
+    const cx=tx+Math.sin(game.ratCityAngle)*radius;
+    const cy=22;
+    const cz=tz+Math.cos(game.ratCityAngle)*radius*0.55;
+    camera.position.set(cx,cy,cz);
+    camera.lookAt(tx,ty,tz);
+    return;
+  }
   const ent=game.controlled;if(!ent)return;
   const isHost=(game.controlMode==='host');
   const focusH=isHost?1.55:0.22;
@@ -2494,6 +2732,13 @@ btnSkip.addEventListener('click',()=>closeSelfieAnd(null));
 
 // ===== Parasitism =====
 const modeBadge=document.getElementById('mode-badge');
+const ratCityBtn=document.getElementById('rat-city-btn');
+const ratCityPanel=document.getElementById('rat-city-panel');
+const ratCityName=document.getElementById('rat-city-name');
+const ratCitySave=document.getElementById('rat-city-save');
+const ratCityClose=document.getElementById('rat-city-close');
+const ratCityScore=document.getElementById('rat-city-score');
+const ratCityList=document.getElementById('rat-city-list');
 const hintEl=document.getElementById('hint');
 let hintTimer=0;
 function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
@@ -2534,6 +2779,7 @@ function nearestBiteableHuman(rat){
   return best;
 }
 function enterHost(rat,host){
+  spawnBiteBlood(host);
   rat.root.visible=false;rat.controllable=false;
   if(host.targetProp){host.targetProp.reservedBy=null;host.targetProp=null}
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=true;
@@ -2558,11 +2804,60 @@ function exitHost(){
   console.log('[parasitism] host released');
 }
 function handleActionPress(){
+  if(game.ratCityMode)return;
   if(game.controlMode==='rat'){
     const host=nearestBiteableHuman(player);
     if(host) enterHost(player,host);
     else showHint('Get closer to a human’s neck.');
   }else exitHost();
+}
+function getRatCityScore(){
+  return Math.round(game.chaos*1000);
+}
+function renderRatCityLeaderboard(){
+  ratCityScore.textContent=`CHAOS ${Math.round(game.chaos*100)} · SCORE ${getRatCityScore()}`;
+  ratCityList.innerHTML='';
+  if(!game.leaderboard.length){
+    const li=document.createElement('li');
+    li.textContent='No rankings logged yet.';
+    ratCityList.appendChild(li);
+    return;
+  }
+  game.leaderboard.slice(0,8).forEach((entry,idx)=>{
+    const li=document.createElement('li');
+    const left=document.createElement('span');
+    left.className='rank-name';
+    left.textContent=`#${idx+1} ${entry.name}`;
+    const right=document.createElement('span');
+    right.textContent=`CHAOS ${entry.chaos}% · ${entry.score}`;
+    li.append(left,right);
+    ratCityList.appendChild(li);
+  });
+}
+function setRatCityMode(enabled){
+  game.ratCityMode=enabled;
+  document.body.classList.toggle('rat-city-mode',enabled);
+  ratCityPanel.classList.toggle('show',enabled);
+  ratCityBtn.textContent=enabled?'BACK TO CHAOS':'RAT CITY';
+  if(enabled){
+    game.ratCityAngle=camYaw;
+    renderRatCityLeaderboard();
+  }
+}
+function submitRatCityScore(){
+  const name=(ratCityName.value||'ANON RAT').trim().slice(0,18)||'ANON RAT';
+  game.leaderboard.push({
+    name,
+    chaos:Math.round(game.chaos*100),
+    score:getRatCityScore(),
+    rats:game.rats.length,
+    date:new Date().toISOString()
+  });
+  game.leaderboard.sort((a,b)=>b.score-a.score||b.chaos-a.chaos);
+  game.leaderboard=game.leaderboard.slice(0,8);
+  saveRatCityLeaderboard();
+  renderRatCityLeaderboard();
+  showHint('RAT CITY ranking updated.',0.8);
 }
 
 modeBadge.style.cursor='pointer';
@@ -2570,6 +2865,25 @@ modeBadge.addEventListener('pointerdown',e=>{
   if(game.controlMode!=='host')return;
   e.preventDefault();
   exitHost();
+});
+ratCityBtn.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  if(gameState!=='playing')return;
+  setRatCityMode(!game.ratCityMode);
+});
+ratCityClose.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  setRatCityMode(false);
+});
+ratCitySave.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  submitRatCityScore();
+});
+ratCityName.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    submitRatCityScore();
+  }
 });
 function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
@@ -2631,6 +2945,7 @@ function throwHeldProp(host,chargeRatio=0){
   return true;
 }
 function doHostPickupPress(){
+  if(game.ratCityMode)return;
   const host=game.parasitisedHost;
   if(!host)return;
   if(host.heldProp){
@@ -2644,6 +2959,7 @@ function doHostPickupPress(){
   if(liftProp(host,prop)) showHint('Picked up. Tap or hold throw to launch it.',1.1);
 }
 function doHostPickupRelease(){
+  if(game.ratCityMode)return;
   const host=game.parasitisedHost;
   if(!host||!host.throwCharging)return;
   const ratio=clamp(host.throwCharge/HOST_THROW_CHARGE_MAX,0,1);
@@ -2665,7 +2981,7 @@ function doHostAttack(){
     if(d>HOST_ATTACK_RADIUS)continue;
     const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
     if(dot<0.05)continue;
-    triggerPropTip(p,Math.atan2(dz,dx),1.2);
+    triggerPropTip(p,Math.atan2(dz,dx),1.2,'host');
     p.root.rotation.z=lerp(p.root.rotation.z,-fx*Math.PI*0.36,0.9);
     p.root.rotation.x=lerp(p.root.rotation.x, fz*Math.PI*0.36,0.9);
     p.throwVel=new THREE.Vector3(fx*5.8,2.0+Math.max(0,1.1-d),fz*5.8);
@@ -2727,6 +3043,7 @@ function softClampZ(p){
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function updatePlayer(dt){
+  if(game.ratCityMode)return;
   const ent=game.controlled;if(!ent||!ent.controllable)return;
   const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
   const rightX=Math.cos(camYaw),rightZ=-Math.sin(camYaw);
@@ -2789,10 +3106,9 @@ function summonSpillRats(x,z,count=2){
     rat.root.position.set(x+rand(-0.8,0.8),RAT_FOOT_OFFSET,z+rand(-0.8,0.8));
     rat.yaw=Math.random()*Math.PI*2;
     game.rats.push(rat);
-    if(game.rats.length>=WIN_RAT_COUNT) triggerRatsWin();
   }
 }
-function triggerPropTip(p,angle,chaosGain=1){
+function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   if(!p||p.tipTriggered)return;
   p.tipTriggered=true;
   p.tipped=true;
@@ -2806,10 +3122,13 @@ function triggerPropTip(p,angle,chaosGain=1){
   if(p.steamSprite) p.steamSprite.visible=false;
   if(p.spillMesh){
     p.spillMesh.visible=true;
-    p.spillMesh.scale.set(1,1,1);
-    p.spillMesh.position.x=Math.cos(angle)*0.34;
-    p.spillMesh.position.z=Math.sin(angle)*0.34;
+    p.spillMesh.scale.set(1.9,1.3,1.9);
+    p.spillMesh.position.x=Math.cos(angle)*0.48;
+    p.spillMesh.position.z=Math.sin(angle)*0.48;
   }
+  if(p.kind==='soup-pot') activateBrothFX(p,angle,1.05);
+  if(p.kind==='stall' && p.hasSoup && Math.random()<STALL_SOUP_CHANCE) activateBrothFX(p,angle,1.35);
+  if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE) activateFireFX(p);
   if(p.spawnRatsOnTip>0){
     summonSpillRats(p.root.position.x,p.root.position.z,p.spawnRatsOnTip);
     game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.8*p.spawnRatsOnTip);
@@ -2820,8 +3139,10 @@ function tickProps(dt){
   const ent=game.controlled;if(!ent)return;
   const ex=ent.root.position.x,ez=ent.root.position.z;
   const speed=ent.curSpeed;
-  const hostMul=(game.controlMode==='host')?1.4:1.0;
+  const isHostControl=(game.controlMode==='host'&&ent.kind==='human');
+  const hostMul=isHostControl?1.4:1.0;
   for(const p of game.props){
+    tickPropFX(p,dt);
     if(p.heldBy)continue;
     if(p.throwVel){
       p.root.position.addScaledVector(p.throwVel,dt);
@@ -2845,16 +3166,17 @@ function tickProps(dt){
         p.throwOwner=null;
         p.tipped=true;
         if(!p.tipTriggered){
-          triggerPropTip(p,landAngle,0.7);
+          triggerPropTip(p,landAngle,0.7,'throw');
         }
       }
       continue;
     }
     if(p.tipped)continue;
+    if(!isHostControl)continue;
     const dx=p.root.position.x-ex,dz=p.root.position.z-ez;
     if(dx*dx+dz*dz<p.radius*p.radius && speed>0.5){
       const a=Math.atan2(dz,dx);
-      triggerPropTip(p,a,hostMul);
+      triggerPropTip(p,a,hostMul,'host');
     }
   }
 }
@@ -2888,6 +3210,7 @@ function restorePropFromCleaner(prop){
     prop.spillMesh.scale.set(0.01,0.01,0.01);
   }
   if(prop.steamSprite) prop.steamSprite.visible=true;
+  clearPropFX(prop);
   if(prop.reservedBy) prop.reservedBy.targetProp=null;
   prop.reservedBy=null;
   game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
@@ -2989,7 +3312,6 @@ function tickBreeding(dt){
   rat.yaw=Math.atan2(player.root.position.x-x,player.root.position.z-z);
   rat.root.rotation.y=rat.yaw;
   game.rats.push(rat);
-  if(game.rats.length>=WIN_RAT_COUNT)triggerRatsWin();
 }
 function tickFollowerRats(dt){
   for(const r of game.rats){
@@ -3016,7 +3338,8 @@ function updateHUD(dt){
   game.chaos=Math.max(0,game.chaos-CHAOS_DECAY*dt);
   chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
   ratCountEl.textContent=String(game.rats.length);
-  ratFill.style.width=Math.min(100,(game.rats.length/WIN_RAT_COUNT)*100).toFixed(0)+'%';
+  ratFill.style.width=Math.min(100,game.rats.length*5).toFixed(0)+'%';
+  if(game.ratCityMode) renderRatCityLeaderboard();
   if(game.controlMode==='rat'&&player){
     const ratPos=player.root.position;
     let nearest=Infinity;
@@ -3055,14 +3378,13 @@ startBtn.addEventListener('click',()=>{
 function startGame(){
   gameState='playing';gameTime=0;
   game.chaos=0;game.chaosDisplay=0;
+  setRatCityMode(false);
   updateActionButtons();
   setIntroProgress(100,'READY');
   console.log('[boot] startGame');
 }
 function triggerRatsWin(){
-  if(gameState==='won')return;
-  gameState='won';document.body.classList.add('game-won');
-  ratsWinEl.classList.add('show');
+  return;
 }
 ratsWinReplay.addEventListener('click',()=>location.reload());
 
@@ -3107,6 +3429,7 @@ let last=performance.now();
 function stepFrame(dt){
   if(gameState==='playing'){
     gameTime+=dt;
+    if(game.ratCityMode) game.ratCityAngle+=dt*0.22;
     if(inputFlags.action){handleActionPress();inputFlags.action=false}
     updatePlayer(dt);
     if(game.controlMode==='host') tickControllableHostState(dt);
@@ -3114,6 +3437,7 @@ function stepFrame(dt){
     tickHumans(dt);
     tickBreeding(dt);
     tickFollowerRats(dt);
+    tickTransientFX(dt);
     if(game.controlMode==='rat'){tickActor(player,dt);tickRatBillboard(player,dt)}
     updateHUD(dt);
     ensureChunksAroundX(player.root.position.x);
@@ -3150,6 +3474,7 @@ function tick(){
 // ===== Init =====
 async function init(){
   setIntroProgress(2,'BOOT');
+  loadRatCityLeaderboard();
   initSharedTextures();
   setIntroProgress(6,'TEXTURES');
 
