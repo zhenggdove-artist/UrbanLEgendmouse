@@ -33,7 +33,7 @@
   input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
-  #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none}
+  #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none;display:none}
   #viewport-frame .viewport-edge{position:fixed;background-position:center;background-repeat:no-repeat;pointer-events:none}
   #viewport-frame-top{left:50%;top:8.4%;transform:translate(-50%,-50%);width:100%;height:34%;
     background-image:url("./ui/img/viewport_frame_top_edge.png");background-size:100% 100%}
@@ -49,7 +49,7 @@
     border-radius:18px;padding:6px 14px;font:700 13px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.10em;
     color:#7a746d;box-shadow:0 10px 20px rgba(0,0,0,0.28);text-transform:uppercase;
     position:fixed;transform:translate(-50%,-50%);text-align:center;min-width:128px}
-  .hud-box::before{content:'';position:absolute;left:50%;top:50%;
+  .hud-box::before{content:none;position:absolute;left:50%;top:50%;
     width:calc(100% + 28px);height:calc(100% + 24px);transform:translate(-50%,-50%);
     background:url("./ui/img/hud_small_frame_overlay.png") center/100% 100% no-repeat;
     pointer-events:none;z-index:0}
@@ -145,7 +145,7 @@
     color:#fff;font:700 12px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.08em;
     cursor:pointer;touch-action:none;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,0.45),0 8px 18px rgba(0,0,0,0.35);overflow:visible;isolation:isolate}
-  .action-btn::before{content:'';position:absolute;left:50%;top:50%;
+  .action-btn::before{content:none;position:absolute;left:50%;top:50%;
     width:192%;height:192%;transform:translate(calc(-50% + 4px),calc(-50% + 4px));
     background:url("./ui/img/action_frame_overlay.png") center/contain no-repeat;
     pointer-events:none;z-index:2;filter:drop-shadow(0 0 8px rgba(244,238,92,0.18))}
@@ -495,6 +495,7 @@ const game={
   chaos:0,chaosDisplay:0,
   rats:[],humans:[],props:[],
   fx:[],
+  chaosSpots:[],
   ratCityMode:false,
   ratCityAngle:0,
   leaderboard:[]
@@ -1866,7 +1867,7 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
    tracks the crawling head every frame.
    ============================================================ */
 function buildRat({isPlayer=false}={}){
-  if(isPlayer && PLAYER_RAT_FRAMES.idle.length){
+  if(PLAYER_RAT_FRAMES.idle.length){
     const root=new THREE.Group();
     root.position.y=RAT_FOOT_OFFSET;
     const material=new THREE.SpriteMaterial({
@@ -1882,11 +1883,12 @@ function buildRat({isPlayer=false}={}){
     root.add(sprite);
     scene.add(root);
     return {
-      kind:'rat',root,isPlayer:true,inst:null,sprite,
+      kind:'rat',root,isPlayer,inst:null,sprite,
       ratAnim:{state:'idle',frame:0,timer:0,tilt:0},
       moveIntent:{x:0,y:0},
       vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
-      controllable:true,baseY:0,height:0.32
+      targetPos:new THREE.Vector3(),
+      controllable:!!isPlayer,baseY:0,height:0.32
     };
   }
   const ratRoot=new THREE.Group();
@@ -2244,14 +2246,19 @@ function ensureFireFX(prop){
     sprite.userData={phase:Math.random()*Math.PI*2,offset:rand(0,0.4)};
     group.add(sprite);embers.push(sprite);
   }
-  prop.fireFX={group,flames,cores,embers,active:false,time:0,origin:new THREE.Vector3()};
+  prop.fireFX={group,flames,cores,embers,active:false,time:0,origin:new THREE.Vector3(),angle:0,shape:'column',stretch:1,lean:0};
   return prop.fireFX;
 }
-function activateFireFX(prop){
+function activateFireFX(prop,angle=0,source='impact'){
   const fx=ensureFireFX(prop);
   fx.active=true;
   fx.time=0;
   fx.origin.copy(prop.root.position);
+  fx.angle=angle;
+  const dirBias=Math.abs(Math.cos(angle))>Math.abs(Math.sin(angle))?'line':'fan';
+  fx.shape=source==='throw'?'spray':dirBias;
+  fx.stretch=source==='throw'?1.9:(dirBias==='fan'?1.35:1.7);
+  fx.lean=angle;
   fx.group.visible=true;
 }
 function clearPropFX(prop){
@@ -2285,19 +2292,28 @@ function tickPropFX(prop,dt){
     fx.group.position.copy(fx.origin);
     for(const flame of fx.flames){
       const t=fx.time*3.6+flame.userData.phase;
-      flame.position.set(Math.sin(t)*flame.userData.radius,0.25+flame.userData.height*0.55,Math.cos(t*0.7)*flame.userData.radius);
-      flame.scale.set(0.55+Math.sin(t)*flame.userData.wobble,1.8+Math.abs(Math.cos(t))*flame.userData.height,1);
+      const along=Math.cos(fx.lean),side=Math.sin(fx.lean);
+      const sway=Math.sin(t)*flame.userData.radius;
+      const drift=Math.cos(t*0.7)*flame.userData.radius*fx.stretch;
+      const px=fx.shape==='fan' ? sway*1.8 : along*drift + side*sway;
+      const pz=fx.shape==='fan' ? drift*0.7 : side*drift - along*sway;
+      flame.position.set(px,0.25+flame.userData.height*0.55,pz);
+      flame.scale.set(0.55+Math.sin(t)*flame.userData.wobble*fx.stretch,1.8+Math.abs(Math.cos(t))*flame.userData.height*(fx.shape==='spray'?0.9:1.15),1);
       flame.material.opacity=0.72+Math.abs(Math.sin(t))*0.22;
     }
     for(const core of fx.cores){
       const t=fx.time*4.2+core.userData.phase;
-      core.position.set(Math.sin(t)*core.userData.radius,0.45+core.userData.height*0.55,Math.cos(t*0.8)*core.userData.radius);
-      core.scale.set(0.32,1.8+Math.abs(Math.sin(t))*core.userData.height,1);
+      const px=Math.sin(t)*core.userData.radius*(fx.shape==='fan'?2.1:0.8);
+      const pz=Math.cos(t*0.8)*core.userData.radius*fx.stretch;
+      core.position.set(px,0.45+core.userData.height*0.55,pz);
+      core.scale.set(0.32*(fx.shape==='fan'?1.2:1),1.8+Math.abs(Math.sin(t))*core.userData.height*(fx.shape==='line'?1.35:1),1);
       core.material.opacity=0.78+Math.abs(Math.cos(t))*0.16;
     }
     for(const ember of fx.embers){
       const t=fx.time*1.7+ember.userData.phase;
-      ember.position.set(Math.sin(t*1.6)*0.42,0.45+((t+ember.userData.offset)%2.6),Math.cos(t*1.3)*0.34);
+      const px=Math.sin(t*1.6)*0.42*(fx.shape==='fan'?1.8:1);
+      const pz=Math.cos(t*1.3)*0.34*fx.stretch;
+      ember.position.set(px,0.45+((t+ember.userData.offset)%2.6),pz);
       ember.scale.setScalar(0.09+Math.abs(Math.sin(t))*0.05);
       ember.material.opacity=0.28+Math.abs(Math.cos(t))*0.25;
     }
@@ -2329,6 +2345,26 @@ function loadRatCityLeaderboard(){
 }
 function saveRatCityLeaderboard(){
   localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,8)));
+}
+function registerChaosSpot(x,z,strength=1,life=6){
+  game.chaosSpots.push({x,z,strength,life});
+  if(game.chaosSpots.length>18) game.chaosSpots.shift();
+}
+function tickChaosSpots(dt){
+  for(let i=game.chaosSpots.length-1;i>=0;i--){
+    const s=game.chaosSpots[i];
+    s.life-=dt;
+    if(s.life<=0) game.chaosSpots.splice(i,1);
+  }
+}
+function nearestChaosSpot(pos){
+  let best=null,bestScore=Infinity;
+  for(const s of game.chaosSpots){
+    const dx=s.x-pos.x,dz=s.z-pos.z;
+    const score=(dx*dx+dz*dz)/Math.max(0.2,s.strength);
+    if(score<bestScore){bestScore=score;best=s;}
+  }
+  return best;
 }
 
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
@@ -3204,9 +3240,13 @@ function summonSpillRats(x,z,count=2){
   for(let i=0;i<count;i++){
     const rat=buildRat();
     rat.root.position.set(x+rand(-0.8,0.8),RAT_FOOT_OFFSET,z+rand(-0.8,0.8));
-    rat.yaw=Math.random()*Math.PI*2;
+    rat.targetPos.set(x,0,z);
+    rat.moveIntent.y=-1;
+    rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
+    rat.root.rotation.y=rat.yaw;
     game.rats.push(rat);
   }
+  registerChaosSpot(x,z,1.8,7.5);
 }
 function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   if(!p||p.tipTriggered)return;
@@ -3230,7 +3270,8 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   }
   if(p.kind==='soup-pot') activateBrothFX(p,angle,1.05);
   if(p.kind==='stall' && p.hasSoup && Math.random()<STALL_SOUP_CHANCE) activateBrothFX(p,angle,1.35);
-  if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE) activateFireFX(p);
+  if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE) activateFireFX(p,angle,source);
+  registerChaosSpot(p.root.position.x,p.root.position.z,1.2+(p.kind==='stall'?0.8:0.3),6.5);
   if(p.spawnRatsOnTip>0){
     summonSpillRats(p.root.position.x,p.root.position.z,p.spawnRatsOnTip);
     game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.8*p.spawnRatsOnTip);
@@ -3396,25 +3437,38 @@ function tickBreeding(dt){
   breedTimer-=dt;
   if(breedTimer>0)return;
   breedTimer=Math.max(0.55,3.2-game.chaos*2.6);
-  const x=player.root.position.x+rand(-14,14);
-  const z=rand(ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
+  const hotspot=nearestChaosSpot(player.root.position) || {x:player.root.position.x,z:player.root.position.z};
+  const side=Math.random()<0.5?-1:1;
+  const x=hotspot.x + side*rand(10,16);
+  const z=clamp(hotspot.z+rand(-4,4),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
   const rat=buildRat({isPlayer:false});
   rat.root.position.set(x,RAT_FOOT_OFFSET,z);
-  rat.yaw=Math.atan2(player.root.position.x-x,player.root.position.z-z);
+  rat.targetPos.set(hotspot.x,0,hotspot.z);
+  rat.moveIntent.y=-1;
+  rat.yaw=Math.atan2(hotspot.x-x,hotspot.z-z);
   rat.root.rotation.y=rat.yaw;
   game.rats.push(rat);
 }
 function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
-    const dx=player.root.position.x-r.root.position.x;
-    const dz=player.root.position.z-r.root.position.z;
+    const target=nearestChaosSpot(r.root.position) || player.root.position;
+    if(target.x!==undefined) r.targetPos?.set(target.x,0,target.z);
+    const tx=r.targetPos?.x ?? player.root.position.x;
+    const tz=r.targetPos?.z ?? player.root.position.z;
+    const dx=tx-r.root.position.x;
+    const dz=tz-r.root.position.z;
     const a=Math.atan2(dx,dz);
-    const spd=1.0+game.chaos*1.4;
+    const dist=Math.hypot(dx,dz);
+    const spd=(dist>0.35)?(1.2+game.chaos*1.5):0;
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
     r.root.rotation.y=a;
     r.curSpeed=spd;
+    if(r.moveIntent){
+      r.moveIntent.x=0;
+      r.moveIntent.y=spd>0.01?-1:0;
+    }
     tickActor(r,dt);
     tickRatBillboard(r,dt);
   }
@@ -3521,6 +3575,7 @@ function stepFrame(dt){
   if(gameState==='playing'){
     gameTime+=dt;
     if(game.ratCityMode) game.ratCityAngle+=dt*0.22;
+    tickChaosSpots(dt);
     if(inputFlags.action){handleActionPress();inputFlags.action=false}
     updatePlayer(dt);
     if(game.controlMode==='host') tickControllableHostState(dt);
