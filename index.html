@@ -2767,6 +2767,34 @@ function getHumanHeadWorldPos(host){
   }
   return v;
 }
+function releaseRatFromHost(host,{dropSpeed=-0.85,hint='Back in the rat.',startPos=null}={}){
+  if(!host||game.parasitisedHost!==host)return;
+  const headPos=startPos?startPos.clone():getHumanHeadWorldPos(host);
+  player.root.position.set(headPos.x,headPos.y,headPos.z);
+  player.vy=dropSpeed;
+  player.isAir=true;
+  player.curSpeed=0;
+  player.yaw=host.yaw;
+  player.root.rotation.y=host.yaw;
+  player.root.visible=true;
+  player.controllable=true;
+  if(player.moveIntent){
+    player.moveIntent.x=0;
+    player.moveIntent.y=0;
+  }
+  if(player.ratAnim){
+    player.ratAnim.pendingHost=null;
+    player.ratAnim.biteTimer=0;
+    player.ratAnim.bloodPulseTimer=0;
+  }
+  game.controlMode='rat';
+  game.controlled=player;
+  game.parasitisedHost=null;
+  modeBadge.textContent='CONTROL · RAT';
+  modeBadge.classList.remove('mode-host');
+  updateActionButtons();
+  showHint(hint);
+}
 function spawnBiteBlood(host,multiplier=1){
   const base=getHumanHeadWorldPos(host);
   const count=Math.round(90*multiplier);
@@ -2832,6 +2860,8 @@ function spawnImpactDebris(pos,count=14,color='#d6c2a4'){
 function killHost(host){
   if(!host||host.dead)return;
   if(host.heldProp) throwHeldProp(host,0.15);
+  const shouldReleasePlayer=game.parasitisedHost===host;
+  const releaseHeadPos=shouldReleasePlayer?getHumanHeadWorldPos(host):null;
   host.dead=true;
   host.controllable=false;
   host.parasitised=false;
@@ -2859,19 +2889,7 @@ function killHost(host){
   spawnImpactDebris(host.root.position,120,'#b11428');
   spawnComicImpact(host.root.position,'SPLAT!','#ff95a3');
   game.deathSpots.push({x:host.root.position.x,z:host.root.position.z,ttl:45});
-  if(game.parasitisedHost===host){
-    const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
-    player.root.position.set(host.root.position.x+fx*0.9,(player.baseY||0),host.root.position.z+fz*0.9);
-    player.root.visible=true;
-    player.controllable=true;
-    game.controlMode='rat';
-    game.controlled=player;
-    game.parasitisedHost=null;
-    modeBadge.classList.remove('mode-host');
-    modeBadge.textContent='CONTROL · RAT';
-    updateActionButtons();
-    showHint('Host expired. Find another body.',1.4);
-  }
+  if(shouldReleasePlayer) releaseRatFromHost(host,{dropSpeed:-1.2,hint:'Host expired. Find another body.',startPos:releaseHeadPos});
 }
 function ensureBrothFX(prop){
   if(prop.brothFX) return prop.brothFX;
@@ -3799,15 +3817,8 @@ function enterHost(rat,host){
 function exitHost(){
   const host=game.parasitisedHost;if(!host)return;
   if(host.heldProp) throwHeldProp(host,0.35);
-  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
-  player.root.position.set(host.root.position.x+fx*0.7,(player.baseY||0),host.root.position.z+fz*0.7);
-  player.yaw=host.yaw;player.root.rotation.y=host.yaw;
-  player.root.visible=true;player.controllable=true;
   host.controllable=false;host.parasitised=false;host.shoulderRat.visible=false;if(host.parasiteOverlay) host.parasiteOverlay.visible=false;host.wanderTimer=rand(0.5,2);host.throwCharging=false;host.throwCharge=0;host.actionTimer=0;host.actionName=null;
-  game.controlMode='rat';game.controlled=player;game.parasitisedHost=null;
-  modeBadge.textContent='CONTROL · RAT';modeBadge.classList.remove('mode-host');
-  updateActionButtons();
-  showHint('Back in the rat.');
+  releaseRatFromHost(host,{dropSpeed:-0.7,hint:'Back in the rat.'});
   console.log('[parasitism] host released');
 }
 function handleActionPress(){
