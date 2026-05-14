@@ -1194,6 +1194,10 @@ function registerBlocker(root,radius=0.6){
   const bbox=new THREE.Box3().setFromObject(root);
   const blocker={
     root,radius,topY:bbox.max.y,baseY:bbox.min.y,
+    minXOffset:bbox.min.x-root.position.x,
+    maxXOffset:bbox.max.x-root.position.x,
+    minZOffset:bbox.min.z-root.position.z,
+    maxZOffset:bbox.max.z-root.position.z,
     halfX:Math.max(0.08,Math.max(Math.abs(bbox.max.x-root.position.x),Math.abs(bbox.min.x-root.position.x))),
     halfZ:Math.max(0.08,Math.max(Math.abs(bbox.max.z-root.position.z),Math.abs(bbox.min.z-root.position.z)))
   };
@@ -1206,7 +1210,7 @@ function registerBlocker(root,radius=0.6){
 }
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
-  scene.add(root);
+  if(root.parent!==scene) scene.add(root);
   const bbox=new THREE.Box3().setFromObject(root);
   const p={
     root,radius,chaosWeight,tipped:false,
@@ -1216,11 +1220,18 @@ function registerProp(root,radius=0.45,chaosWeight=1){
     heldBy:null,throwVel:null,throwSpin:0,throwOwner:null,tipTriggered:false,
     kind:'prop',spillMesh:null,steamSprite:null,spawnRatsOnTip:0,tipOffset:0.22,
     topY:bbox.max.y,baseY:bbox.min.y,
+    minXOffset:bbox.min.x-root.position.x,
+    maxXOffset:bbox.max.x-root.position.x,
+    minZOffset:bbox.min.z-root.position.z,
+    maxZOffset:bbox.max.z-root.position.z,
     halfX:Math.max(0.08,Math.max(Math.abs(bbox.max.x-root.position.x),Math.abs(bbox.min.x-root.position.x))),
     halfZ:Math.max(0.08,Math.max(Math.abs(bbox.max.z-root.position.z),Math.abs(bbox.min.z-root.position.z)))
   };
   game.props.push(p);
-  if(_activeChunk){_activeChunk.props.push(p);_activeChunk.meshes.push(root)}
+  if(_activeChunk){
+    _activeChunk.props.push(p);
+    if(!_activeChunk.meshes.includes(root)) _activeChunk.meshes.push(root);
+  }
   return p;
 }
 
@@ -1715,19 +1726,23 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   }
   // Display table running the length of the stall.
   const stallBaseCol=pick(['#d7c2aa','#6c95c8','#d77272','#75a86a','#b78fd1','#d0a64c']);
+  const tableRoot=new THREE.Group();
+  tableRoot.position.set((xStart+xEnd)/2,0.45,zInner+facing*0.6);
   const table=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.85,0.85,0.85),
     new THREE.MeshBasicMaterial({map:STALL_TEX.wood,color:stallBaseCol})
   );
-  table.position.set((xStart+xEnd)/2,0.45,zInner+facing*0.6);
-  scene.add(table);if(_activeChunk)_activeChunk.meshes.push(table);
-  registerBlocker(table,Math.max(0.8,len*0.35));
+  tableRoot.add(table);
   const topSkin=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.83,0.04,0.88),
     new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#9d8c7d'})
   );
-  topSkin.position.set((xStart+xEnd)/2,0.88,zInner+facing*0.6);
-  scene.add(topSkin);if(_activeChunk)_activeChunk.meshes.push(topSkin);
+  topSkin.position.y=0.43;
+  tableRoot.add(topSkin);
+  scene.add(tableRoot);if(_activeChunk)_activeChunk.meshes.push(tableRoot);
+  const tableProp=registerProp(tableRoot,Math.max(0.8,len*0.35),2.4+len*0.14);
+  tableProp.kind='stall';
+  tableProp.tipOffset=0.12;
   // Goods piled on the table — chunky merch boxes in random colours.
   const goodCols=['#d23a3a','#3a8ad2','#d2a83a','#8ad23a','#a83ad2','#3ad28a','#f0e060','#ffffff'];
   const goodCount=Math.max(3,Math.floor(len*1.4));
@@ -2206,7 +2221,7 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
-const HUMAN_WORLD_Y_OFFSET=-0.85;
+const HUMAN_WORLD_Y_OFFSET=-0.70;
 function buildHuman({position,role='wanderer'}={}){
   if(!HUMAN_VARIANTS.length){
     // FBX placeholder — capsule body so we never silently skip a spawn.
@@ -2224,7 +2239,7 @@ function buildHuman({position,role='wanderer'}={}){
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
       behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -2256,7 +2271,7 @@ function buildHuman({position,role='wanderer'}={}){
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -3398,6 +3413,7 @@ function enterHost(rat,host){
   host.root.position.y=(host.baseY||HUMAN_WORLD_Y_OFFSET)+GROUND_Y_OFFSET;
   host.vy=0;
   host.isAir=false;
+  host.attackQueued=false;
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=false;
   if(host.parasiteOverlay){
     host.parasiteOverlay.material.map=PLAYER_RAT_FRAMES.idle[0]||rat.sprite?.material?.map||null;
@@ -3599,10 +3615,16 @@ function doHostPickupRelease(){
 }
 function doHostAttack(){
   const host=game.parasitisedHost;
-  if(!host||host.attackCooldown>0||host.downTimer>0)return;
-  host.attackCooldown=0.42;
+  if(!host||host.downTimer>0)return;
+  if(host.actionName==='kick'&&host.actionTimer>0){
+    host.attackQueued=true;
+    return;
+  }
+  if(host.attackCooldown>0)return;
+  host.attackCooldown=0.16;
   host.actionName='kick';
   host.actionStamp=(host.actionStamp||0)+1;
+  host.attackQueued=false;
   host.actionTimer=Math.max(0.72,host.inst?.actions?.kick?.getClip?.().duration||0.72);
   const kickAct=host.inst?.actions?.kick;
   if(kickAct){
@@ -3613,15 +3635,23 @@ function doHostAttack(){
     kickAct.fadeIn(0.05).play();
   }
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+  const attackOriginX=host.root.position.x+fx*0.98;
+  const attackOriginZ=host.root.position.z+fz*0.98;
   let struck=false;
   for(const p of game.props){
     if(p.heldBy||p.throwVel)continue;
     const dx=p.root.position.x-host.root.position.x;
     const dz=p.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
-    if(d>HOST_ATTACK_RADIUS)continue;
     const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
-    if(dot<0.05)continue;
+    if(dot<0.0)continue;
+    const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-0.18;
+    const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+0.18;
+    const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-0.18;
+    const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+0.18;
+    const hitDx=Math.max(minX-attackOriginX,0,attackOriginX-maxX);
+    const hitDz=Math.max(minZ-attackOriginZ,0,attackOriginZ-maxZ);
+    if(Math.hypot(hitDx,hitDz)>HOST_ATTACK_RADIUS)continue;
     triggerPropTip(p,Math.atan2(dz,dx),1.2,'host');
     p.root.rotation.z=lerp(p.root.rotation.z,-fx*Math.PI*0.36,0.9);
     p.root.rotation.x=lerp(p.root.rotation.x, fz*Math.PI*0.36,0.9);
@@ -3635,9 +3665,11 @@ function doHostAttack(){
     const dx=h.root.position.x-host.root.position.x;
     const dz=h.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
-    if(d>1.35)continue;
     const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
-    if(dot<0.1)continue;
+    if(dot<0.0)continue;
+    const hitDx=Math.max(0,Math.abs(h.root.position.x-attackOriginX)-0.52);
+    const hitDz=Math.max(0,Math.abs(h.root.position.z-attackOriginZ)-0.40);
+    if(Math.hypot(hitDx,hitDz)>0.72)continue;
     knockHumanDown(h,host.yaw);
     struck=true;
   }
@@ -3658,6 +3690,9 @@ function tickControllableHostState(dt){
     if(host.actionTimer<=0){
       host.actionName=null;
       host.lastActionStamp=-1;
+      if(host.attackQueued && host.controllable && !host.dead){
+        doHostAttack();
+      }
     }
   }
   syncParasiteOverlay(host,dt,host.moveInputX||0,host.moveInputY||0);
@@ -3698,19 +3733,21 @@ function sampleSupportHeight(ent,x,z,currentY){
   const probeRadius=ent.kind==='human'?0.42:0.26;
   for(const blocker of game.blockers){
     if(!blocker?.root || blocker.root===ent.root)continue;
-    const dx=x-blocker.root.position.x;
-    const dz=z-blocker.root.position.z;
-    const minDist=probeRadius+(blocker.radius||0.6)*0.92;
-    if(dx*dx+dz*dz>minDist*minDist)continue;
+    const minX=(blocker.root.position.x+(blocker.minXOffset??-(blocker.halfX||blocker.radius||0.6)))-probeRadius;
+    const maxX=(blocker.root.position.x+(blocker.maxXOffset?? (blocker.halfX||blocker.radius||0.6)))+probeRadius;
+    const minZ=(blocker.root.position.z+(blocker.minZOffset??-(blocker.halfZ||blocker.radius||0.6)))-probeRadius;
+    const maxZ=(blocker.root.position.z+(blocker.maxZOffset?? (blocker.halfZ||blocker.radius||0.6)))+probeRadius;
+    if(x<minX||x>maxX||z<minZ||z>maxZ)continue;
     const topY=(blocker.topY??0)+GROUND_Y_OFFSET;
     if(currentY>=topY-0.42 && currentY<=topY+0.95) support=Math.max(support,topY);
   }
   for(const p of game.props){
     if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
-    const dx=x-p.root.position.x;
-    const dz=z-p.root.position.z;
-    const minDist=probeRadius+(p.radius||0.45)*0.95;
-    if(dx*dx+dz*dz>minDist*minDist)continue;
+    const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-probeRadius;
+    const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+probeRadius;
+    const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-probeRadius;
+    const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+probeRadius;
+    if(x<minX||x>maxX||z<minZ||z>maxZ)continue;
     const topY=(p.topY??p.root.position.y)+GROUND_Y_OFFSET;
     if(currentY>=topY-0.42 && currentY<=topY+0.95) support=Math.max(support,topY);
   }
@@ -3718,12 +3755,15 @@ function sampleSupportHeight(ent,x,z,currentY){
 }
 function resolveWorldCollisions(ent,prevX,prevZ,radius){
   const pos=ent.root.position;
+  const footY=pos.y-GROUND_Y_OFFSET;
+  const headY=footY+(ent.height||1.6);
   for(const blocker of game.blockers){
     if(!blocker?.root || blocker.root===ent.root)continue;
-    const minX=blocker.root.position.x-(blocker.halfX||blocker.radius||0.6)-radius;
-    const maxX=blocker.root.position.x+(blocker.halfX||blocker.radius||0.6)+radius;
-    const minZ=blocker.root.position.z-(blocker.halfZ||blocker.radius||0.6)-radius;
-    const maxZ=blocker.root.position.z+(blocker.halfZ||blocker.radius||0.6)+radius;
+    if(headY<=((blocker.baseY??-Infinity)+0.03) || footY>=((blocker.topY??Infinity)-0.03))continue;
+    const minX=(blocker.root.position.x+(blocker.minXOffset??-(blocker.halfX||blocker.radius||0.6)))-radius;
+    const maxX=(blocker.root.position.x+(blocker.maxXOffset?? (blocker.halfX||blocker.radius||0.6)))+radius;
+    const minZ=(blocker.root.position.z+(blocker.minZOffset??-(blocker.halfZ||blocker.radius||0.6)))-radius;
+    const maxZ=(blocker.root.position.z+(blocker.maxZOffset?? (blocker.halfZ||blocker.radius||0.6)))+radius;
     if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ)continue;
     const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
@@ -3735,10 +3775,11 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
   }
   for(const p of game.props){
     if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
-    const minX=p.root.position.x-(p.halfX||p.radius||0.45)-radius;
-    const maxX=p.root.position.x+(p.halfX||p.radius||0.45)+radius;
-    const minZ=p.root.position.z-(p.halfZ||p.radius||0.45)-radius;
-    const maxZ=p.root.position.z+(p.halfZ||p.radius||0.45)+radius;
+    if(headY<=((p.baseY??-Infinity)+0.03) || footY>=((p.topY??Infinity)-0.03))continue;
+    const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-radius;
+    const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+radius;
+    const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-radius;
+    const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+radius;
     if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ)continue;
     const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
@@ -3821,6 +3862,8 @@ function updatePlayer(dt){
       ent.ratAnim.bloodPulseTimer=0;
       if(!host.dead && !host.parasitised) enterHost(ent,host);
     }
+    ent.curSpeed=0;
+    return;
   }
   if(hasInput){
     ent.curSpeed=Math.min(targetSpeed,ent.curSpeed+accel*dt);
