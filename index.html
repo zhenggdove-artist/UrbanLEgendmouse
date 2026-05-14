@@ -656,7 +656,7 @@ const PLAYER_RAT_FRAME_PATHS={
   back:Array.from({length:8},(_,i)=>`asset/mouse/mousebackword/mousebackword_${String(i+1).padStart(4,'0')}.png`)
 };
 const PLAYER_RAT_FRAMES={idle:[],bite:[],forward:[],forwardRight:[],forwardLeft:[],left:[],right:[],back:[]};
-const HOST_HEAD_WORLD_Y_OFFSET=2.12;
+const HOST_HEAD_WORLD_Y_OFFSET=2.16;
 const HOST_HEAD_OVERLAY_Y=2.16;
 const RAT_BITE_Y_OFFSET=2.16;
 
@@ -1192,7 +1192,11 @@ function addChunkObject(root){
 }
 function registerBlocker(root,radius=0.6){
   const bbox=new THREE.Box3().setFromObject(root);
-  const blocker={root,radius,topY:bbox.max.y,baseY:bbox.min.y};
+  const blocker={
+    root,radius,topY:bbox.max.y,baseY:bbox.min.y,
+    halfX:Math.max(0.08,Math.max(Math.abs(bbox.max.x-root.position.x),Math.abs(bbox.min.x-root.position.x))),
+    halfZ:Math.max(0.08,Math.max(Math.abs(bbox.max.z-root.position.z),Math.abs(bbox.min.z-root.position.z)))
+  };
   game.blockers.push(blocker);
   if(_activeChunk){
     if(!_activeChunk.blockers)_activeChunk.blockers=[];
@@ -1211,7 +1215,9 @@ function registerProp(root,radius=0.45,chaosWeight=1){
     baseRotation:root.rotation.clone(),
     heldBy:null,throwVel:null,throwSpin:0,throwOwner:null,tipTriggered:false,
     kind:'prop',spillMesh:null,steamSprite:null,spawnRatsOnTip:0,tipOffset:0.22,
-    topY:bbox.max.y,baseY:bbox.min.y
+    topY:bbox.max.y,baseY:bbox.min.y,
+    halfX:Math.max(0.08,Math.max(Math.abs(bbox.max.x-root.position.x),Math.abs(bbox.min.x-root.position.x))),
+    halfZ:Math.max(0.08,Math.max(Math.abs(bbox.max.z-root.position.z),Math.abs(bbox.min.z-root.position.z)))
   };
   game.props.push(p);
   if(_activeChunk){_activeChunk.props.push(p);_activeChunk.meshes.push(root)}
@@ -2200,7 +2206,7 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
-const HUMAN_WORLD_Y_OFFSET=-1;
+const HUMAN_WORLD_Y_OFFSET=-0.85;
 function buildHuman({position,role='wanderer'}={}){
   if(!HUMAN_VARIANTS.length){
     // FBX placeholder — capsule body so we never silently skip a spawn.
@@ -2218,7 +2224,7 @@ function buildHuman({position,role='wanderer'}={}){
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
       behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-      actionName:null,actionTimer:0,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -2250,7 +2256,7 @@ function buildHuman({position,role='wanderer'}={}){
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-    actionName:null,actionTimer:0,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -2267,12 +2273,18 @@ function tickActor(ent,dt){
       else if(ent.controllable && ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
       else if(ent.curSpeed>0.08 && ent.inst.actions.walk) next='walk';
     }
-    if(ent.animState!==next){
+    const shouldRestartAction=ent.kind==='human'
+      && ent.actionTimer>0
+      && ent.actionName===next
+      && ent.actionStamp!==undefined
+      && ent.actionStamp!==ent.lastActionStamp;
+    if(ent.animState!==next || shouldRestartAction){
       for(const [name,act] of Object.entries(ent.inst.actions)){
         if(name===next){act.reset().fadeIn(0.12).play();}
         else act.fadeOut(0.12);
       }
       ent.animState=next;
+      if(shouldRestartAction) ent.lastActionStamp=ent.actionStamp;
     }
   }
   let scale;
@@ -2380,7 +2392,7 @@ function syncParasiteOverlay(host,dt,mx=0,my=0){
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
   if(host?.root){
-    const topY=host.root.position.y+HOST_HEAD_WORLD_Y_OFFSET;
+    const topY=(host.baseY||host.root.position.y)+HOST_HEAD_WORLD_Y_OFFSET;
     if(host?.inst?.headBone){
       host.inst.headBone.getWorldPosition(v);
       v.y=topY;
@@ -3383,6 +3395,9 @@ function enterHost(rat,host){
   spawnBiteBlood(host);
   rat.root.visible=false;rat.controllable=false;
   if(host.targetProp){host.targetProp.reservedBy=null;host.targetProp=null}
+  host.root.position.y=(host.baseY||HUMAN_WORLD_Y_OFFSET)+GROUND_Y_OFFSET;
+  host.vy=0;
+  host.isAir=false;
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=false;
   if(host.parasiteOverlay){
     host.parasiteOverlay.material.map=PLAYER_RAT_FRAMES.idle[0]||rat.sprite?.material?.map||null;
@@ -3587,7 +3602,16 @@ function doHostAttack(){
   if(!host||host.attackCooldown>0||host.downTimer>0)return;
   host.attackCooldown=0.42;
   host.actionName='kick';
+  host.actionStamp=(host.actionStamp||0)+1;
   host.actionTimer=Math.max(0.72,host.inst?.actions?.kick?.getClip?.().duration||0.72);
+  const kickAct=host.inst?.actions?.kick;
+  if(kickAct){
+    kickAct.enabled=true;
+    kickAct.paused=false;
+    kickAct.reset();
+    kickAct.setEffectiveWeight(1);
+    kickAct.fadeIn(0.05).play();
+  }
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
   let struck=false;
   for(const p of game.props){
@@ -3631,7 +3655,10 @@ function tickControllableHostState(dt){
   if(host.attackCooldown>0) host.attackCooldown=Math.max(0,host.attackCooldown-dt);
   if(host.actionTimer>0){
     host.actionTimer=Math.max(0,host.actionTimer-dt);
-    if(host.actionTimer<=0) host.actionName=null;
+    if(host.actionTimer<=0){
+      host.actionName=null;
+      host.lastActionStamp=-1;
+    }
   }
   syncParasiteOverlay(host,dt,host.moveInputX||0,host.moveInputY||0);
   if(host.throwCharging){
@@ -3693,34 +3720,32 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
   const pos=ent.root.position;
   for(const blocker of game.blockers){
     if(!blocker?.root || blocker.root===ent.root)continue;
-    const dx=pos.x-blocker.root.position.x;
-    const dz=pos.z-blocker.root.position.z;
-    const minDist=radius+(blocker.radius||0.6);
-    const d2=dx*dx+dz*dz;
-    if(d2>0 && d2<minDist*minDist){
-      const d=Math.sqrt(d2);
-      const push=(minDist-d)+0.001;
-      pos.x+=dx/d*push;
-      pos.z+=dz/d*push;
-    }else if(d2===0){
-      pos.x=prevX;
-      pos.z=prevZ;
+    const minX=blocker.root.position.x-(blocker.halfX||blocker.radius||0.6)-radius;
+    const maxX=blocker.root.position.x+(blocker.halfX||blocker.radius||0.6)+radius;
+    const minZ=blocker.root.position.z-(blocker.halfZ||blocker.radius||0.6)-radius;
+    const maxZ=blocker.root.position.z+(blocker.halfZ||blocker.radius||0.6)+radius;
+    if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ)continue;
+    const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
+    const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
+    if(pushX<pushZ){
+      pos.x=(Math.abs(maxX-pos.x)<Math.abs(pos.x-minX))?maxX:minX;
+    }else{
+      pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
     }
   }
   for(const p of game.props){
     if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
-    const dx=pos.x-p.root.position.x;
-    const dz=pos.z-p.root.position.z;
-    const minDist=radius+(p.radius||0.45);
-    const d2=dx*dx+dz*dz;
-    if(d2>0 && d2<minDist*minDist){
-      const d=Math.sqrt(d2);
-      const push=(minDist-d)+0.001;
-      pos.x+=dx/d*push;
-      pos.z+=dz/d*push;
-    }else if(d2===0){
-      pos.x=prevX;
-      pos.z=prevZ;
+    const minX=p.root.position.x-(p.halfX||p.radius||0.45)-radius;
+    const maxX=p.root.position.x+(p.halfX||p.radius||0.45)+radius;
+    const minZ=p.root.position.z-(p.halfZ||p.radius||0.45)-radius;
+    const maxZ=p.root.position.z+(p.halfZ||p.radius||0.45)+radius;
+    if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ)continue;
+    const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
+    const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
+    if(pushX<pushZ){
+      pos.x=(Math.abs(maxX-pos.x)<Math.abs(pos.x-minX))?maxX:minX;
+    }else{
+      pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
     }
   }
   softClampZ(pos);
@@ -3775,7 +3800,7 @@ function updatePlayer(dt){
         camera.position.z-headPos.z
       ).normalize().multiplyScalar(0.16);
       const biteTarget=headPos.clone().add(lungeDir);
-      biteTarget.y=(host.baseY||host.root.position.y)+RAT_BITE_Y_OFFSET;
+      biteTarget.y=headPos.y;
       ent.root.position.lerp(biteTarget,Math.min(1,dt*12));
       ent.root.position.y=biteTarget.y;
       ent.vy=0;
