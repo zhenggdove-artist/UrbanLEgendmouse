@@ -460,7 +460,7 @@ const PLAYER_MAX_SPEED=4.6;
 const PLAYER_ACCEL=22;
 const HOST_MAX_SPEED=4.4;
 const HOST_ACCEL=18;
-const JUMP_VEL=4.4;
+const JUMP_VEL=8.8;
 const GRAVITY=22;
 const GROUND_Y_OFFSET=0.01;
 const RAT_FOOT_OFFSET=0.0;
@@ -537,9 +537,14 @@ function loadTextureSequence(paths){
 
 const PLAYER_RAT_FRAME_PATHS={
   idle:Array.from({length:14},(_,i)=>`asset/mouse/mouseidle/mouseidle_${String(i+1).padStart(4,'0')}.png`),
-  move:Array.from({length:5},(_,i)=>`asset/mouse/mousemovefast/mousemove_${String(i+1).padStart(4,'0')}.png`)
+  forward:[],
+  forwardRight:Array.from({length:10},(_,i)=>`asset/mouse/mouseforwordright/mouseforwordright_${String(i+1).padStart(4,'0')}.png`),
+  forwardLeft:Array.from({length:10},(_,i)=>`asset/mouse/mouseforwordleft/mouseforwordright_${String(i+1).padStart(4,'0')}.png`),
+  left:Array.from({length:5},(_,i)=>`asset/mouse/mousemovefastleft/mousemove_${String(i+1).padStart(4,'0')}.png`),
+  right:Array.from({length:5},(_,i)=>`asset/mouse/mousemovefastright/mousemove_${String(i+1).padStart(4,'0')}.png`),
+  back:Array.from({length:8},(_,i)=>`asset/mouse/mousebackword/mousebackword_${String(i+1).padStart(4,'0')}.png`)
 };
-const PLAYER_RAT_FRAMES={idle:[],move:[]};
+const PLAYER_RAT_FRAMES={idle:[],forward:[],forwardRight:[],forwardLeft:[],left:[],right:[],back:[]};
 
 // Apply PS1 treatment to a cloned skinned actor. We still keep dynamic
 // characters lit, but the material stack follows the reference project:
@@ -1861,7 +1866,7 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
    tracks the crawling head every frame.
    ============================================================ */
 function buildRat({isPlayer=false}={}){
-  if(isPlayer && PLAYER_RAT_FRAMES.idle.length && PLAYER_RAT_FRAMES.move.length){
+  if(isPlayer && PLAYER_RAT_FRAMES.idle.length){
     const root=new THREE.Group();
     root.position.y=RAT_FOOT_OFFSET;
     const material=new THREE.SpriteMaterial({
@@ -1878,7 +1883,8 @@ function buildRat({isPlayer=false}={}){
     scene.add(root);
     return {
       kind:'rat',root,isPlayer:true,inst:null,sprite,
-      ratAnim:{state:'idle',frame:0,timer:0},
+      ratAnim:{state:'idle',frame:0,timer:0,tilt:0},
+      moveIntent:{x:0,y:0},
       vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
       controllable:true,baseY:0,height:0.32
     };
@@ -2045,10 +2051,34 @@ function tickActor(ent,dt){
 }
 function tickRatBillboard(rat,dt){
   if(rat.sprite && rat.ratAnim){
-    const moving=rat.curSpeed>0.18;
-    const state=moving?'move':'idle';
-    const frames=PLAYER_RAT_FRAMES[state];
-    const frameDuration=moving?0.065:0.09;
+    const mx=rat.moveIntent?.x||0;
+    const my=rat.moveIntent?.y||0;
+    let state='idle';
+    let tilt=0;
+    if(rat.isAir){
+      state='idle';
+    }else if(my<-0.35 && mx>0.2){
+      state='forwardRight';
+    }else if(my<-0.35 && mx<-0.2){
+      state='forwardLeft';
+    }else if(my<-0.35){
+      state='forward';
+    }else if(my>0.35){
+      state='back';
+      if(Math.abs(mx)>0.2) tilt=mx<0?-Math.PI/4:Math.PI/4;
+    }else if(mx<-0.2){
+      state='left';
+    }else if(mx>0.2){
+      state='right';
+    }
+    let frames=PLAYER_RAT_FRAMES[state];
+    if(!frames?.length){
+      if(state==='forward') frames=PLAYER_RAT_FRAMES.forwardRight;
+      else if(state==='right') frames=PLAYER_RAT_FRAMES.left;
+      else if(state==='forwardLeft') frames=PLAYER_RAT_FRAMES.forwardRight;
+      else frames=PLAYER_RAT_FRAMES.idle;
+    }
+    const frameDuration=rat.isAir?0.06:(state==='idle'?0.09:0.065);
     if(rat.ratAnim.state!==state){
       rat.ratAnim.state=state;
       rat.ratAnim.frame=0;
@@ -2062,6 +2092,8 @@ function tickRatBillboard(rat,dt){
         rat.sprite.material.map=frames[rat.ratAnim.frame];
       }
     }
+    rat.ratAnim.tilt=tilt;
+    rat.sprite.material.rotation=tilt;
     rat.sprite.material.needsUpdate=true;
     return;
   }
@@ -3122,6 +3154,10 @@ function updatePlayer(dt){
   }else{
     ix=0;iy=0;il=0;
   }
+  if(ent.kind==='rat'&&ent.moveIntent){
+    ent.moveIntent.x=ix;
+    ent.moveIntent.y=iy;
+  }
   const mdx=-iy*fwdX+ix*rightX;
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
@@ -3540,7 +3576,12 @@ async function init(){
     loadFloorTexture(),
     loadRatPortraitTexture(),
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.idle).then(frames=>{PLAYER_RAT_FRAMES.idle=frames}),
-    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.move).then(frames=>{PLAYER_RAT_FRAMES.move=frames})
+    (PLAYER_RAT_FRAME_PATHS.forward.length?loadTextureSequence(PLAYER_RAT_FRAME_PATHS.forward):Promise.resolve([])).then(frames=>{PLAYER_RAT_FRAMES.forward=frames}),
+    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.forwardRight).then(frames=>{PLAYER_RAT_FRAMES.forwardRight=frames}),
+    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.forwardLeft).then(frames=>{PLAYER_RAT_FRAMES.forwardLeft=frames}),
+    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.left).then(frames=>{PLAYER_RAT_FRAMES.left=frames}),
+    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.right).then(frames=>{PLAYER_RAT_FRAMES.right=frames}),
+    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.back).then(frames=>{PLAYER_RAT_FRAMES.back=frames})
   ]);
   setIntroProgress(8,'TEXTURES');
 
