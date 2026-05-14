@@ -602,6 +602,14 @@ function loadTextureAsync(path){
     res(pixelate(tex));
   },undefined,rej));
 }
+function loadHumanTextureAsync(path){
+  return new Promise((res,rej)=>imageLoader.load(path,tex=>{
+    tex.flipY=true;
+    tex.colorSpace=THREE.SRGBColorSpace;
+    tex.needsUpdate=true;
+    res(pixelate(tex));
+  },undefined,rej));
+}
 function loadTextureSequence(paths){
   return Promise.all(paths.map(path=>loadTextureAsync(path).then(tex=>{
     tex.flipY=true;
@@ -659,12 +667,30 @@ function ps1ifyCharacterMaterials(root,tint){
       if(HUMAN_SKIN.normal) m.normalMap=HUMAN_SKIN.normal;
       if(HUMAN_SKIN.roughness) m.roughnessMap=HUMAN_SKIN.roughness;
       if(HUMAN_SKIN.metal) m.metalnessMap=HUMAN_SKIN.metal;
+      if(m.map) m.map.flipY=true;
+      if(m.normalMap) m.normalMap.flipY=true;
+      if(m.roughnessMap) m.roughnessMap.flipY=true;
+      if(m.metalnessMap) m.metalnessMap.flipY=true;
       m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
       m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
-      m.color.multiplyScalar(1.8);
-      m.emissive.setRGB(0.36,0.36,0.36);
-      m.emissiveIntensity=1;
-      if(tint && m.color) m.color.multiply(tint);
+      if(HUMAN_SKIN.base){
+        m.color.setRGB(1.08,1.08,1.08);
+        m.emissive.setRGB(0.12,0.12,0.12);
+        m.emissiveIntensity=0.9;
+      }else{
+        m.color.multiplyScalar(1.8);
+        m.emissive.setRGB(0.36,0.36,0.36);
+        m.emissiveIntensity=1;
+      }
+      m.normalScale.set(0.6,0.6);
+      m.needsUpdate=true;
+      if(tint && m.color){
+        if(HUMAN_SKIN.base){
+          m.emissive.add(tint.clone().multiplyScalar(0.08));
+        }else{
+          m.color.multiply(tint);
+        }
+      }
       return m;
     });
     o.material=Array.isArray(o.material)?replaced:replaced[0];
@@ -1940,12 +1966,17 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
   // Find the head bone — the face plate (player rat) or shoulder-rat
   // indicator (parasitised host) attaches here.
   let headBone=null;
+  const headCandidates=[];
   root.traverse(o=>{
-    if(o.isBone && !headBone){
+    if(o.isBone){
       const n=(o.name||'').toLowerCase();
-      if(n.includes('head')) headBone=o;
+      if(n.includes('head')) headCandidates.push(o);
     }
   });
+  headBone=headCandidates.find(o=>/mixamorighead$|(^|[:_])head$/.test((o.name||'').toLowerCase()))
+    || headCandidates.find(o=>!((o.name||'').toLowerCase().includes('end')))
+    || headCandidates[0]
+    || null;
   const mixer=new THREE.AnimationMixer(root);
   const actions={};
   if(clips){
@@ -1962,7 +1993,8 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null}){
       }
       actions[name]=act;
     }
-    if(actions.idle){actions.idle.play();actions.idle.weight=1}
+    const bootAction=actions.idle||actions.walk||actions.run||null;
+    if(bootAction){bootAction.play();bootAction.weight=1}
   }
   const action=clip?mixer.clipAction(clip):null;
   if(action){action.setEffectiveTimeScale(1);action.play()}
@@ -2122,15 +2154,8 @@ function buildHuman({position,role='wanderer'}={}){
     root.add(shoulderRat);
   }
   const status=attachHumanStatusProps(root);
-  if(inst.headBone){
-    root.remove(status.parasiteOverlay);
-    status.parasiteOverlay.position.set(0,9,16);
-    status.parasiteOverlay.scale.setScalar(1.18/(root.scale.x||1));
-    inst.headBone.add(status.parasiteOverlay);
-  }else{
-    status.parasiteOverlay.position.set(0.02,1.42,0.06);
-    status.parasiteOverlay.scale.set(0.92,0.92,1);
-  }
+  status.parasiteOverlay.position.set(0.02,1.56,0.08);
+  status.parasiteOverlay.scale.set(1.02,1.02,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
@@ -2151,7 +2176,7 @@ function tickActor(ent,dt){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
-      else if(ent.curSpeed>0.35 && ent.inst.actions.run) next='run';
+      else if(ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
       else if(ent.curSpeed>0.08 && ent.inst.actions.walk) next='walk';
     }
     if(ent.animState!==next){
@@ -2233,10 +2258,14 @@ function tickRatBillboard(rat,dt){
 }
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
-  if(host?.inst?.headBone){
-    host.inst.headBone.getWorldPosition(v);
-  }else if(host?.root){
-    v.set(host.root.position.x,host.root.position.y+1.45,host.root.position.z);
+  if(host?.root){
+    const topY=host.root.position.y+1.52;
+    if(host?.inst?.headBone){
+      host.inst.headBone.getWorldPosition(v);
+      v.y=topY;
+    }else{
+      v.set(host.root.position.x,topY,host.root.position.z);
+    }
   }
   return v;
 }
@@ -2493,6 +2522,10 @@ function tickTransientFX(dt){
     fx.sprite.position.addScaledVector(fx.vel,dt);
     fx.sprite.material.opacity=fx.life/fx.maxLife;
     fx.sprite.material.rotation=(fx.sprite.material.rotation||0)+fx.spin*dt;
+    if(fx.grow){
+      fx.sprite.scale.x+=fx.grow*dt;
+      fx.sprite.scale.y+=fx.grow*dt*0.48;
+    }
   }
 }
 function loadRatCityLeaderboard(){
@@ -2542,33 +2575,34 @@ function attachHumanStatusProps(root){
   root.add(parasiteOverlay);
   return {bloodPool,cleanBar,parasiteOverlay};
 }
-function makeComicTextTexture(text,fill='#fff7c2',stroke='#310c16'){
+function makeComicTextTexture(text,fill='#fff7c2',stroke='#310c16',fontSize=44){
   const c=document.createElement('canvas');c.width=192;c.height=96;
   const cx=c.getContext('2d');
   cx.clearRect(0,0,c.width,c.height);
   cx.translate(c.width/2,c.height/2);
   cx.rotate((-8+Math.random()*16)*Math.PI/180);
-  cx.font='bold 44px Arial';
+  cx.font=`bold ${fontSize}px Arial`;
   cx.textAlign='center';
   cx.textBaseline='middle';
-  cx.lineWidth=14;
+  cx.lineWidth=Math.max(12,Math.round(fontSize*0.3));
   cx.strokeStyle=stroke;
   cx.strokeText(text,0,4);
   cx.fillStyle=fill;
   cx.fillText(text,0,4);
   return pixelate(new THREE.CanvasTexture(c));
 }
-function spawnComicImpact(pos,text='BAM!',fill='#fff7c2'){
+function spawnComicImpact(pos,text='BAM!',fill='#fff7c2',opts={}){
   const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-    map:makeComicTextTexture(text,fill),transparent:true,depthWrite:false,fog:false
+    map:makeComicTextTexture(text,fill,opts.stroke||'#310c16',opts.fontSize||44),transparent:true,depthWrite:false,fog:false
   }));
-  sprite.position.copy(pos).y+=0.9;
-  sprite.scale.set(1.25,0.62,1);
+  sprite.position.copy(pos).y+=(opts.yOffset??0.9);
+  sprite.scale.set(opts.scaleX??1.25,opts.scaleY??0.62,1);
   scene.add(sprite);
   game.fx.push({
-    kind:'comic',sprite,
-    vel:new THREE.Vector3(rand(-0.2,0.2),1.15,rand(-0.2,0.2)),
-    gravity:1.8,life:0.46,maxLife:0.46,spin:rand(-2,2)
+    kind:opts.kind||'comic',sprite,
+    vel:opts.vel ? opts.vel.clone() : new THREE.Vector3(rand(-0.2,0.2),1.15,rand(-0.2,0.2)),
+    gravity:opts.gravity??1.8,life:opts.life??0.46,maxLife:opts.life??0.46,spin:opts.spin??rand(-2,2),
+    grow:opts.grow??0
   });
 }
 function awardChaosScore(pos,baseGain,clusterRadius=4.2){
@@ -2584,7 +2618,17 @@ function awardChaosScore(pos,baseGain,clusterRadius=4.2){
   game.chaos=Math.min(1,game.chaos+gain);
   const points=Math.round(gain*1000);
   game.chaosScore+=points;
-  spawnComicImpact(pos,`+${points} CHAOS`,cluster>3?'#ffe970':'#fff7c2');
+  spawnComicImpact(pos,`+${points} CHAOS`,cluster>3?'#59fff4':'#6fffd2',{
+    stroke:'#082126',
+    fontSize:62,
+    scaleX:2.2,
+    scaleY:1.04,
+    yOffset:1.55,
+    life:1.35,
+    gravity:0.28,
+    vel:new THREE.Vector3(rand(-0.06,0.06),0.66,rand(-0.06,0.06)),
+    grow:0.38
+  });
   return gain;
 }
 function clearStartZone(center,radius=3.1){
@@ -3501,11 +3545,11 @@ function updatePlayer(dt){
       const headPos=getHumanHeadWorldPos(host);
       const lungeDir=new THREE.Vector3(
         camera.position.x-headPos.x,
-        Math.max(0.08,camera.position.y-headPos.y)*0.18,
+        0,
         camera.position.z-headPos.z
       ).normalize().multiplyScalar(0.16);
       const biteTarget=headPos.clone().add(lungeDir);
-      biteTarget.y-=0.18;
+      biteTarget.y=headPos.y-0.22;
       ent.root.position.lerp(biteTarget,Math.min(1,dt*12));
       ent.yaw=Math.atan2(host.root.position.x-ent.root.position.x,host.root.position.z-ent.root.position.z);
       ent.root.rotation.y=ent.yaw;
@@ -4041,17 +4085,19 @@ async function init(){
       loadFBXAsync('asset/都市傳說鼠王_中年男子/踢ATTACK.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子/清潔姿勢.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子/拿起物件.fbx'),
-      loadTextureAsync('asset/都市傳說鼠王_中年男子/basecolor_1024.jpg'),
-      loadTextureAsync('asset/都市傳說鼠王_中年男子/tripo_node_b5e5cc99-b457-4676-9c3b-106dfc15829b_Normal_Bake.jpg'),
-      loadTextureAsync('asset/都市傳說鼠王_中年男子/tripo_model_roughness.JPEG'),
-      loadTextureAsync('asset/都市傳說鼠王_中年男子/tripo_model_metallic.JPEG')
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/tripo_node_b5e5cc99-b457-4676-9c3b-106dfc15829b_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/tripo_model_metallic.JPEG')
     ]);
     HUMAN_SKIN.base=baseColourTex;
     HUMAN_SKIN.normal=normalTex;
     HUMAN_SKIN.roughness=roughTex;
     HUMAN_SKIN.metal=metalTex;
     characterSource=walkHumanFBX;
-    HUMAN_CLIPS.idle=null;
+    HUMAN_CLIPS.idle=walkHumanFBX.animations[0]
+      ? THREE.AnimationUtils.subclip(walkHumanFBX.animations[0],'human_idle',0,2,30)
+      : null;
     HUMAN_CLIPS.walk=walkHumanFBX.animations[0]||null;
     HUMAN_CLIPS.run=runHumanFBX.animations[0]||null;
     HUMAN_CLIPS.jump=null;
