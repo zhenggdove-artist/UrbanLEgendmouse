@@ -60,6 +60,7 @@
   .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos)}
   .hud-box.rats .fill{background:var(--accent-soft)}
   #mode-badge{left:11%;top:9.8%}
+  #host-life-box{left:11%;top:18.1%;display:none}
   #chaos-box{left:82%;top:9.8%}
   #rats-box{left:82%;top:17.2%}
   #rat-city-btn{position:fixed;left:50%;top:8.4%;transform:translate(-50%,-50%);z-index:15;
@@ -226,6 +227,7 @@
     .hud-box{font-size:10px;padding:5px 8px}
     .hud-box.meter{min-width:124px}
     #mode-badge{left:18%;top:7.2%}
+    #host-life-box{left:18%;top:13.8%;width:22%}
     #chaos-box{left:72%;top:7.2%}
     #rats-box{left:72%;top:14%}
     #rat-city-btn{top:7.4%;padding:9px 14px;font-size:14px;letter-spacing:0.18em}
@@ -248,6 +250,7 @@
 
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
+  <div class="hud-box meter" id="host-life-box">HOST LIFE<div class="bar"><div class="fill" id="host-life-fill"></div></div></div>
   <div class="hud-box meter" id="chaos-box">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
   <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span>
     <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
@@ -403,16 +406,16 @@ const screenQuad=new THREE.Mesh(
       }
       void main(){
         vec2 uv=vUv;
-        float wobble=sin(uv.y*18.0+time*3.6)*0.0025;
-        float glitch=step(0.92,sin(time*0.8+uv.y*14.0))*0.004;
+        float wobble=sin(uv.y*18.0+time*3.6)*0.00175;
+        float glitch=step(0.92,sin(time*0.8+uv.y*14.0))*0.0028;
         vec2 shift=vec2(wobble+glitch,0.0);
         float r=texture2D(map,uv+shift*1.8).r;
         float g=texture2D(map,uv+shift*0.6).g;
         float b=texture2D(map,uv-shift*1.2).b;
         vec3 colour=vec3(r,g,b);
-        float scanline=sin(uv.y*resolution.y*1.35)*0.055;
-        float noise=(hash(vec2(floor(uv.y*resolution.y*0.45),floor(time*48.0)))-0.5)*0.08;
-        float band=step(0.985,sin(time*1.7+uv.y*9.0))*0.08;
+        float scanline=sin(uv.y*resolution.y*1.35)*0.0385;
+        float noise=(hash(vec2(floor(uv.y*resolution.y*0.45),floor(time*48.0)))-0.5)*0.056;
+        float band=step(0.985,sin(time*1.7+uv.y*9.0))*0.056;
         colour-=scanline;
         colour+=noise;
         colour=colour*(1.0-band);
@@ -444,6 +447,56 @@ scene.add(new THREE.AmbientLight('#9a86b8',0.85));
 const sun=new THREE.DirectionalLight('#ffd4a0',0.7);
 sun.position.set(6,12,-2);
 scene.add(sun);
+
+function buildTaipeiSkyline(){
+  const skyline=new THREE.Group();
+  const baseZ=-34;
+  const baseX=54;
+  const mountain=new THREE.Mesh(
+    new THREE.PlaneGeometry(180,26),
+    new THREE.MeshBasicMaterial({color:'#544e69',transparent:true,opacity:0.6,fog:false})
+  );
+  mountain.position.set(baseX,7,baseZ-10);
+  scene.add(mountain);
+  for(let i=0;i<18;i++){
+    const w=rand(1.6,4.8),h=rand(4,14),d=rand(1.2,2.8);
+    const b=new THREE.Mesh(
+      new THREE.BoxGeometry(w,h,d),
+      new THREE.MeshBasicMaterial({color:pick(['#2a3145','#3f485d','#46536a','#5e6678'])})
+    );
+    b.position.set(baseX-42+i*4.8+rand(-0.8,0.8),h*0.5-0.5,baseZ+rand(-2,3));
+    skyline.add(b);
+  }
+  const tower=new THREE.Group();
+  let y=0.5;
+  const tiers=[
+    [5.4,2.2],[5.1,2.2],[4.8,2.2],[4.5,2.2],[4.2,2.2],[3.9,2.2],[3.6,2.2],[3.3,2.2]
+  ];
+  for(const [w,h] of tiers){
+    const tier=new THREE.Mesh(
+      new THREE.BoxGeometry(w,h,3.4),
+      new THREE.MeshBasicMaterial({color:'#5b8c8f'})
+    );
+    tier.position.y=y+h*0.5;
+    tower.add(tier);
+    const lip=new THREE.Mesh(
+      new THREE.BoxGeometry(w+0.45,0.16,3.7),
+      new THREE.MeshBasicMaterial({color:'#94c5b5'})
+    );
+    lip.position.y=y+h;
+    tower.add(lip);
+    y+=h;
+  }
+  const crown=new THREE.Mesh(new THREE.BoxGeometry(2.3,2.6,2.2),new THREE.MeshBasicMaterial({color:'#7fb2aa'}));
+  crown.position.y=y+1.3;tower.add(crown);
+  const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.22,4.8,6),new THREE.MeshBasicMaterial({color:'#b8cdc9'}));
+  mast.position.y=y+4.8;tower.add(mast);
+  const spine=new THREE.Mesh(new THREE.BoxGeometry(0.34,y+5.6,0.3),new THREE.MeshBasicMaterial({color:'#243947'}));
+  spine.position.y=(y+5.6)*0.5;tower.add(spine);
+  tower.position.set(baseX,0,baseZ);
+  skyline.add(tower);
+  scene.add(skyline);
+}
 
 /* Low-angle camera — rat-eye view of a 1.7 m human world. */
 const camera=new THREE.PerspectiveCamera(70,LOW_W/LOW_H,0.05,80);
@@ -547,6 +600,7 @@ function loadTextureSequence(paths){
 
 const PLAYER_RAT_FRAME_PATHS={
   idle:Array.from({length:14},(_,i)=>`asset/mouse/mouseidle/mouseidle_${String(i+1).padStart(4,'0')}.png`),
+  bite:Array.from({length:7},(_,i)=>`asset/mouse/mousebite/BITE_${String(i+1).padStart(4,'0')}.png`),
   forward:[],
   forwardRight:Array.from({length:10},(_,i)=>`asset/mouse/mouseforwordright/mouseforwordright_${String(i+1).padStart(4,'0')}.png`),
   forwardLeft:Array.from({length:10},(_,i)=>`asset/mouse/mouseforwordleft/mouseforwordright_${String(i+1).padStart(4,'0')}.png`),
@@ -554,7 +608,7 @@ const PLAYER_RAT_FRAME_PATHS={
   right:Array.from({length:5},(_,i)=>`asset/mouse/mousemovefastright/mousemove_${String(i+1).padStart(4,'0')}.png`),
   back:Array.from({length:8},(_,i)=>`asset/mouse/mousebackword/mousebackword_${String(i+1).padStart(4,'0')}.png`)
 };
-const PLAYER_RAT_FRAMES={idle:[],forward:[],forwardRight:[],forwardLeft:[],left:[],right:[],back:[]};
+const PLAYER_RAT_FRAMES={idle:[],bite:[],forward:[],forwardRight:[],forwardLeft:[],left:[],right:[],back:[]};
 
 // Apply PS1 treatment to a cloned skinned actor. We still keep dynamic
 // characters lit, but the material stack follows the reference project:
@@ -1893,7 +1947,7 @@ function buildRat({isPlayer=false}={}){
     scene.add(root);
     return {
       kind:'rat',root,isPlayer,inst:null,sprite,
-      ratAnim:{state:'idle',frame:0,timer:0,tilt:0},
+      ratAnim:{state:'idle',frame:0,timer:0,tilt:0,biteTimer:0,pendingHost:null},
       moveIntent:{x:0,y:0},
       vel:new THREE.Vector3(),curSpeed:0,yaw:0,vy:0,isAir:false,
       targetPos:new THREE.Vector3(),
@@ -2068,7 +2122,9 @@ function tickRatBillboard(rat,dt){
     const my=rat.moveIntent?.y||0;
     let state='idle';
     let tilt=0;
-    if(rat.isAir){
+    if(rat.ratAnim.biteTimer>0){
+      state='bite';
+    }else if(rat.isAir){
       state='idle';
     }else if(my<-0.35 && mx>0.2){
       state='forwardRight';
@@ -2091,7 +2147,7 @@ function tickRatBillboard(rat,dt){
       else if(state==='forwardLeft') frames=PLAYER_RAT_FRAMES.forwardRight;
       else frames=PLAYER_RAT_FRAMES.idle;
     }
-    const frameDuration=rat.isAir?0.06:(state==='idle'?0.09:0.065);
+    const frameDuration=state==='bite'?0.032:(rat.isAir?0.06:(state==='idle'?0.09:0.065));
     if(rat.ratAnim.state!==state){
       rat.ratAnim.state=state;
       rat.ratAnim.frame=0;
@@ -3018,6 +3074,14 @@ function nearestBiteableHuman(rat){
   }
   return best;
 }
+function startRatBite(host){
+  if(!player||!host||player.ratAnim?.biteTimer>0)return;
+  player.ratAnim.biteTimer=0.22;
+  player.ratAnim.pendingHost=host;
+  player.vy=Math.max(player.vy,5.2);
+  player.isAir=true;
+  player.curSpeed=Math.max(player.curSpeed,3.1);
+}
 function enterHost(rat,host){
   spawnBiteBlood(host);
   rat.root.visible=false;rat.controllable=false;
@@ -3048,7 +3112,7 @@ function handleActionPress(){
   if(game.ratCityMode)return;
   if(game.controlMode==='rat'){
     const host=nearestBiteableHuman(player);
-    if(host) enterHost(player,host);
+    if(host) startRatBite(host);
     else showHint('Get closer to a human’s neck.');
   }else exitHost();
 }
@@ -3280,7 +3344,7 @@ function tickControllableHostState(dt){
 handleActionPress=()=>{
   if(game.controlMode!=='rat')return;
   const host=nearestBiteableHuman(player);
-  if(host) enterHost(player,host);
+  if(host) startRatBite(host);
   else showHint('Get closer to a human neck.');
 };
 
@@ -3316,6 +3380,14 @@ function updatePlayer(dt){
   const isHost=(ent.kind==='human');
   const targetSpeed=isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
+  if(ent.kind==='rat'&&ent.ratAnim?.biteTimer>0){
+    ent.ratAnim.biteTimer=Math.max(0,ent.ratAnim.biteTimer-dt);
+    if(ent.ratAnim.biteTimer<=0 && ent.ratAnim.pendingHost){
+      const host=ent.ratAnim.pendingHost;
+      ent.ratAnim.pendingHost=null;
+      if(!host.dead && !host.parasitised) enterHost(ent,host);
+    }
+  }
   if(hasInput){
     ent.curSpeed=Math.min(targetSpeed,ent.curSpeed+accel*dt);
     ent.yaw=Math.atan2(mdx,mdz);
@@ -3616,12 +3688,20 @@ function tickFollowerRats(dt){
 const chaosFill=document.getElementById('chaos-fill');
 const ratFill=document.getElementById('rat-fill');
 const ratCountEl=document.getElementById('rat-count');
+const hostLifeBox=document.getElementById('host-life-box');
+const hostLifeFill=document.getElementById('host-life-fill');
 function updateHUD(dt){
   game.chaosDisplay+=(game.chaos-game.chaosDisplay)*Math.min(1,dt*3);
   game.chaos=Math.max(0,game.chaos-CHAOS_DECAY*dt);
   chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
   ratCountEl.textContent=String(game.rats.length);
   ratFill.style.width=Math.min(100,game.rats.length*5).toFixed(0)+'%';
+  if(game.controlMode==='host'&&game.parasitisedHost){
+    hostLifeBox.style.display='block';
+    hostLifeFill.style.width=(clamp(game.parasitisedHost.parasiteTimer/HOST_PARASITE_TIME,0,1)*100).toFixed(1)+'%';
+  }else{
+    hostLifeBox.style.display='none';
+  }
   if(game.ratCityMode) renderRatCityLeaderboard();
   if(game.controlMode==='rat'&&player){
     const ratPos=player.root.position;
@@ -3773,6 +3853,7 @@ async function init(){
   setIntroProgress(2,'BOOT');
   loadRatCityLeaderboard();
   initSharedTextures();
+  buildTaipeiSkyline();
   setIntroProgress(6,'TEXTURES');
 
   // Graffiti load is fire-and-forget — chunks generated before it
@@ -3782,6 +3863,7 @@ async function init(){
     loadFloorTexture(),
     loadRatPortraitTexture(),
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.idle).then(frames=>{PLAYER_RAT_FRAMES.idle=frames}),
+    loadTextureSequence(PLAYER_RAT_FRAME_PATHS.bite).then(frames=>{PLAYER_RAT_FRAMES.bite=frames}),
     (PLAYER_RAT_FRAME_PATHS.forward.length?loadTextureSequence(PLAYER_RAT_FRAME_PATHS.forward):Promise.resolve([])).then(frames=>{PLAYER_RAT_FRAMES.forward=frames}),
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.forwardRight).then(frames=>{PLAYER_RAT_FRAMES.forwardRight=frames}),
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.forwardLeft).then(frames=>{PLAYER_RAT_FRAMES.forwardLeft=frames}),
