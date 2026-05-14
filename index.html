@@ -2182,7 +2182,7 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
-const HUMAN_WORLD_Y_OFFSET=0;
+const HUMAN_WORLD_Y_OFFSET=-1;
 function buildHuman({position,role='wanderer'}={}){
   if(!characterSource||!HUMAN_CLIPS.run){
     // FBX placeholder — capsule body so we never silently skip a spawn.
