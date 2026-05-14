@@ -169,15 +169,21 @@
     color:var(--ink-soft);pointer-events:none;z-index:14;opacity:0;transition:opacity .15s linear;
     white-space:nowrap;max-width:80vw;text-align:center;text-transform:uppercase}
   #hint.show{opacity:1}
-  #bite-lock{position:fixed;left:0;top:0;width:110px;height:132px;display:none;pointer-events:none;z-index:17;
-    border:4px solid rgba(255,90,120,0.98);box-shadow:0 0 0 4px rgba(255,245,208,0.5) inset,0 0 24px rgba(255,65,110,0.45);
-    transform:translate(-50%,-50%)}
-  #bite-lock::before,#bite-lock::after{content:'';position:absolute;width:18px;height:18px;border-color:#fff1c2;border-style:solid}
-  #bite-lock::before{left:-3px;top:-3px;border-width:3px 0 0 3px}
-  #bite-lock::after{right:-3px;bottom:-3px;border-width:0 3px 3px 0}
+  #bite-lock{position:fixed;left:0;top:0;width:112px;height:112px;display:none;pointer-events:none;z-index:17;
+    border:4px solid rgba(255,90,120,0.98);border-radius:50%;
+    box-shadow:0 0 0 4px rgba(255,245,208,0.5) inset,0 0 24px rgba(255,65,110,0.45);
+    transform:translate(-50%,-50%);animation:bite-lock-pulse .72s ease-in-out infinite}
+  #bite-lock::before,#bite-lock::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    background:rgba(255,241,194,0.98);box-shadow:0 0 12px rgba(255,117,158,0.38)}
+  #bite-lock::before{width:56px;height:4px;border-radius:999px}
+  #bite-lock::after{width:4px;height:56px;border-radius:999px}
   #bite-lock span{position:absolute;left:50%;top:-28px;transform:translateX(-50%) rotate(-7deg);
     background:#ffef77;color:#260812;border:3px solid #260812;padding:3px 10px;font:700 14px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;
     letter-spacing:0.14em;white-space:nowrap}
+  @keyframes bite-lock-pulse{
+    0%,100%{transform:translate(-50%,-50%) scale(0.88)}
+    50%{transform:translate(-50%,-50%) scale(1.08)}
+  }
 
   body.intro-active #hud,
   body.intro-active #rat-city-btn,
@@ -2241,7 +2247,7 @@ function buildHuman({position,role='wanderer'}={}){
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
       behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -2266,14 +2272,14 @@ function buildHuman({position,role='wanderer'}={}){
   }
   const status=attachHumanStatusProps(root);
   status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
-  status.parasiteOverlay.scale.set(2.3,2.3,1);
+  status.parasiteOverlay.scale.set(1.61,1.61,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -2287,6 +2293,7 @@ function tickActor(ent,dt){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
+      else if(ent.panicTimer>0 && ent.inst.actions.run) next='run';
       else if(ent.controllable && ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
       else if(ent.curSpeed>0.08 && ent.inst.actions.walk) next='walk';
     }
@@ -3409,6 +3416,11 @@ function startRatBite(host){
   player.ratAnim.biteTimer=3.0;
   player.ratAnim.bloodPulseTimer=0;
   player.ratAnim.pendingHost=host;
+  host.panicTimer=3.0;
+  host.panicTurnTimer=0;
+  host.targetProp=null;
+  host.actionName=null;
+  host.actionTimer=0;
   player.vy=Math.max(player.vy,5.2);
   player.isAir=true;
   player.curSpeed=Math.max(player.curSpeed,3.1);
@@ -3421,6 +3433,8 @@ function enterHost(rat,host){
   host.root.position.y=(host.baseY||HUMAN_WORLD_Y_OFFSET)+GROUND_Y_OFFSET;
   host.vy=0;
   host.isAir=false;
+  host.panicTimer=0;
+  host.panicTurnTimer=0;
   host.attackQueued=false;
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=false;
   if(host.parasiteOverlay){
@@ -3917,7 +3931,7 @@ function updatePlayer(dt){
 function summonSpillRats(x,z,count=2){
   for(let i=0;i<count;i++){
     const rat=buildRat();
-    rat.root.position.set(x+rand(-0.8,0.8),RAT_FOOT_OFFSET,z+rand(-0.8,0.8));
+    rat.root.position.set(x+rand(-0.8,0.8),(rat.baseY??0)+GROUND_Y_OFFSET,z+rand(-0.8,0.8));
     rat.targetPos.set(x,0,z);
     rat.moveIntent.y=-1;
     rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
@@ -4108,6 +4122,31 @@ function tickHumans(dt){
       tickActor(h,dt);
       continue;
     }
+    if(h.panicTimer>0 && !h.controllable){
+      h.panicTimer=Math.max(0,h.panicTimer-dt);
+      h.cleanBar.root.visible=false;
+      if(h.targetProp && h.targetProp.reservedBy===h) h.targetProp.reservedBy=null;
+      h.targetProp=null;
+      h.behaviour='panic';
+      h.panicTurnTimer-=dt;
+      if(h.panicTurnTimer<=0){
+        h.panicTurnTimer=rand(0.06,0.18);
+        h.yaw+=(Math.random()-0.5)*Math.PI*1.65;
+      }
+      const turnDiff=rotateTowardYaw(h,h.yaw,dt,12.5);
+      const moveScale=Math.abs(turnDiff)>1.1?0.18:(Math.abs(turnDiff)>0.42?0.72:1);
+      h.curSpeed=2.08*moveScale;
+      const prevX=h.root.position.x, prevZ=h.root.position.z;
+      h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
+      h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
+      resolveWorldCollisions(h,prevX,prevZ,0.38);
+      if(h.root.position.z<ALLEY_Z_MIN+0.4||h.root.position.z>ALLEY_Z_MAX-0.4){
+        h.yaw+=Math.PI*(Math.random()<0.5?0.8:1.2);
+        softClampZ(h.root.position);
+      }
+      tickActor(h,dt);
+      continue;
+    }
     if(h.role==='cleaner'){
       tickCleaner(h,dt);
     }else if(!h.controllable){
@@ -4156,7 +4195,7 @@ function tickBreeding(dt){
   const x=hotspot.x + side*rand(10,16);
   const z=clamp(hotspot.z+rand(-4,4),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
   const rat=buildRat({isPlayer:false});
-  rat.root.position.set(x,RAT_FOOT_OFFSET,z);
+  rat.root.position.set(x,(rat.baseY??0)+GROUND_Y_OFFSET,z);
   rat.targetPos.set(hotspot.x,0,hotspot.z);
   rat.moveIntent.y=-1;
   rat.yaw=Math.atan2(hotspot.x-x,hotspot.z-z);
@@ -4188,8 +4227,8 @@ function tickFollowerRats(dt){
     r.root.position.z+=Math.cos(a)*spd*dt;
     resolveWorldCollisions(r,prevX,prevZ,0.22);
     const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
-    const baseGroundY=RAT_FOOT_OFFSET;
-    const targetY=supportY>GROUND_Y_OFFSET+0.001 ? supportY+(RAT_FOOT_OFFSET-GROUND_Y_OFFSET) : baseGroundY;
+    const baseGroundY=(r.baseY??0)+GROUND_Y_OFFSET;
+    const targetY=supportY>baseGroundY+0.001 ? supportY : baseGroundY;
     r.root.position.y=targetY;
     r.root.rotation.y=a;
     r.curSpeed=spd;
