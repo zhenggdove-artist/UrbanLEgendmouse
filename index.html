@@ -2283,6 +2283,7 @@ function tickActor(ent,dt){
     let next='idle';
     if(ent.kind==='human'){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
+      else if(ent.heldProp && ent.inst.actions.pickup) next='pickup';
       else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
       else if(ent.controllable && ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
@@ -3570,7 +3571,7 @@ function liftProp(host,prop){
   host.throwCharge=0;
   host.throwCharging=false;
   host.actionName='pickup';
-  host.actionTimer=0.42;
+  host.actionTimer=0;
   prop.root.rotation.set(0,host.yaw,0);
   updateActionButtons();
   return true;
@@ -3588,6 +3589,8 @@ function throwHeldProp(host,chargeRatio=0){
   host.heldProp=null;
   host.throwCharge=0;
   host.throwCharging=false;
+  host.actionName=null;
+  host.actionTimer=0;
   game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.35*prop.chaosWeight);
   updateActionButtons();
   return true;
@@ -3729,7 +3732,7 @@ function softClampZ(p){
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function sampleSupportHeight(ent,x,z,currentY){
-  let support=GROUND_Y_OFFSET;
+  let support=(ent.baseY??0)+GROUND_Y_OFFSET;
   const probeRadius=ent.kind==='human'?0.42:0.26;
   for(const blocker of game.blockers){
     if(!blocker?.root || blocker.root===ent.root)continue;
@@ -3880,7 +3883,10 @@ function updatePlayer(dt){
   // the air. baseY is whatever buildSkinnedActor measured so the feet
   // touch world y=0; for fallback / sprite actors it's just 0.
   const supportY=sampleSupportHeight(ent,ent.root.position.x,ent.root.position.z,ent.root.position.y);
-  const baseY=Math.max(ent.baseY||0,supportY-GROUND_Y_OFFSET);
+  const baseGroundY=(ent.baseY??0)+GROUND_Y_OFFSET;
+  const baseY=supportY>baseGroundY+0.001
+    ? Math.max(ent.baseY??0,supportY-GROUND_Y_OFFSET)
+    : (ent.baseY??0);
   if(inputFlags.jump){
     if(!ent.isAir){
       ent.vy=isHost?JUMP_VEL*0.92:JUMP_VEL;
