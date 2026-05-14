@@ -569,7 +569,7 @@ const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
 const BROTH_POOL_GROWTH=2.8;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
-const ALLEY_Z_MIN=-9.5, ALLEY_Z_MAX=9.5;
+const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
 
 let gameState='intro';
 let gameTime=0;
@@ -1673,8 +1673,132 @@ function scatterBillboards(xBase,xEnd){
   }
 }
 
+function buildRoofWaterTank(x,y,z,scale=1){
+  const root=new THREE.Group();
+  root.position.set(x,y,z);
+  const tank=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.48*scale,0.56*scale,1.06*scale,10),
+    new THREE.MeshBasicMaterial({color:pick(['#5f7688','#728596','#8b989f'])})
+  );
+  tank.position.y=0.53*scale;root.add(tank);
+  const lid=new THREE.Mesh(
+    new THREE.CylinderGeometry(0.20*scale,0.22*scale,0.10*scale,8),
+    new THREE.MeshBasicMaterial({color:'#c8d0d8'})
+  );
+  lid.position.y=1.10*scale;root.add(lid);
+  const legs=[[-0.26,-0.26],[0.26,-0.26],[-0.26,0.26],[0.26,0.26]];
+  for(const [lx,lz] of legs){
+    const leg=new THREE.Mesh(
+      new THREE.BoxGeometry(0.08*scale,0.42*scale,0.08*scale),
+      new THREE.MeshBasicMaterial({color:'#43454b'})
+    );
+    leg.position.set(lx*scale,0.18*scale,lz*scale);root.add(leg);
+  }
+  const prop=registerProp(root,0.68*scale,2.8);
+  prop.kind='tank';
+  prop.tipOffset=0.18*scale;
+  return prop;
+}
+
+function buildLaundryRack(x,y,z,sign=1,scale=1){
+  const root=new THREE.Group();
+  root.position.set(x,y,z);
+  const frameMat=new THREE.MeshBasicMaterial({color:'#8f9399'});
+  for(const lx of [-0.48,0.48]){
+    const post=new THREE.Mesh(new THREE.BoxGeometry(0.06*scale,1.24*scale,0.06*scale),frameMat);
+    post.position.set(lx*scale,0.62*scale,0);root.add(post);
+  }
+  for(const ly of [1.18,0.88]){
+    const rail=new THREE.Mesh(new THREE.BoxGeometry(1.08*scale,0.04*scale,0.04*scale),frameMat);
+    rail.position.set(0,ly*scale,0);root.add(rail);
+  }
+  for(let i=0;i<4;i++){
+    const cloth=new THREE.Mesh(
+      new THREE.PlaneGeometry(0.22*scale,0.34*scale),
+      new THREE.MeshBasicMaterial({color:pick(['#f3f0e6','#d85b6d','#6fa7d8','#f0d25e','#7acb9d']),side:THREE.DoubleSide})
+    );
+    cloth.position.set(-0.33*scale+i*0.22*scale,0.92*scale,sign*0.03);
+    cloth.rotation.y=sign>0?Math.PI:0;
+    root.add(cloth);
+  }
+  const prop=registerProp(root,0.72*scale,2.2);
+  prop.kind='laundry';
+  prop.tipOffset=0.16*scale;
+  return prop;
+}
+
+function buildFireEscapeStair(x,zBase,sign=1,levels=3){
+  const width=1.18;
+  const depth=1.12;
+  const stepDepth=0.20;
+  const rise=1.36;
+  const offsetZ=zBase-sign*0.96;
+  const frameMat=new THREE.MeshBasicMaterial({color:'#585d66'});
+  const treadMat=new THREE.MeshBasicMaterial({color:'#7a7f87'});
+  for(let level=0;level<levels;level++){
+    const y=rise*level+0.38;
+    const landing=new THREE.Mesh(new THREE.BoxGeometry(width,0.10,depth),treadMat);
+    landing.position.set(x,y,offsetZ-sign*(level%2===0?0.0:0.84));
+    addChunkObject(landing);
+    registerBlocker(landing,0.72);
+    for(const sx of [-0.48,0.48]){
+      const pole=new THREE.Mesh(new THREE.BoxGeometry(0.06,rise+0.20,0.06),frameMat);
+      pole.position.set(landing.position.x+sx,y+(rise+0.20)*0.5-0.05,landing.position.z+(sign*0.44));
+      addChunkObject(pole);
+    }
+    if(level<levels-1){
+      const dir=(level%2===0)?1:-1;
+      for(let step=0;step<6;step++){
+        const tread=new THREE.Mesh(new THREE.BoxGeometry(width*0.78,0.08,stepDepth),treadMat);
+        tread.position.set(
+          x,
+          y+0.20+step*(rise/6),
+          landing.position.z-sign*(dir*(0.22+step*0.16))
+        );
+        tread.rotation.x=sign*dir*0.16;
+        addChunkObject(tread);
+        registerBlocker(tread,0.50);
+      }
+    }
+  }
+}
+
+function buildBackBuildingRows(xBase){
+  const backTints=['#403d43','#58535d','#6d6962','#7d7064','#5b646f','#8e877a'];
+  for(const sign of [-1,1]){
+    for(let row=0;row<2;row++){
+      let cursor=xBase-rand(0.8,1.8);
+      const rowBase=Math.abs(sign)*(12.8+row*4.9);
+      while(cursor<xBase+CHUNK_SIZE+1.1){
+        const width=rand(4.6,9.8);
+        const height=row===0?rand(8.5,18.5):rand(5.8,12.5);
+        const depth=rand(2.2,4.2);
+        const centerX=cursor+width*0.5;
+        const z=sign*(rowBase+rand(-0.6,0.8));
+        const body=new THREE.Mesh(
+          new THREE.BoxGeometry(width,height,depth),
+          new THREE.MeshBasicMaterial({map:TEX.facade[(row+Math.abs(Math.floor(centerX)))%TEX.facade.length],color:pick(backTints)})
+        );
+        body.position.set(centerX,height*0.5,z+sign*depth*0.5);
+        addChunkObject(body);
+        registerBlocker(body,Math.max(width*0.36,depth*0.72));
+        if(Math.random()<0.22){
+          const roofCap=new THREE.Mesh(
+            new THREE.BoxGeometry(width*rand(0.38,0.74),0.28,depth*rand(0.48,0.92)),
+            new THREE.MeshBasicMaterial({color:pick(['#6b4e46','#6a6761','#4e5964'])})
+          );
+          roofCap.position.set(centerX+rand(-width*0.12,width*0.12),height+0.14,z+sign*depth*0.18);
+          addChunkObject(roofCap);
+          registerBlocker(roofCap,Math.max(width*0.24,depth*0.34));
+        }
+        cursor+=width*rand(0.88,1.08);
+      }
+    }
+  }
+}
+
 // ===== Chunk system — infinite alley along the X axis =====
-const CHUNK_SIZE=24, CHUNK_WINDOW=4;
+const CHUNK_SIZE=24, CHUNK_WINDOW=5;
 const chunks=new Map();
 let lastChunkIdx=null;
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
@@ -1808,9 +1932,9 @@ function generateChunk(idx){
 
   // --- Floor: a single asphalt strip running the whole alley width.
   const floorTex=TEX.asphalt.clone();floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;
-  floorTex.repeat.set(2,4);pixelate(floorTex);
+  floorTex.repeat.set(2,7);pixelate(floorTex);
   const floor=new THREE.Mesh(
-    new THREE.PlaneGeometry(CHUNK_SIZE,22),
+    new THREE.PlaneGeometry(CHUNK_SIZE,46),
     new THREE.MeshBasicMaterial({map:floorTex,color:'#8b8b86'})
   );
   floor.rotation.x=-Math.PI/2;
@@ -1831,9 +1955,9 @@ function generateChunk(idx){
       const remain=xBase+CHUNK_SIZE-cursor;
       if(remain<4.6) width=remain;
       else width=Math.min(width,remain);
-      const height=rand(6.8,13.8);
+      const height=rand(6.2,17.8);
       const depth=rand(1.3,2.8);
-      const frontZ=sign*(9.0+rand(0.2,1.7));
+      const frontZ=sign*(10.8+rand(0.3,2.2));
       const tex=TEX.facade[((idx*5+partIdx+(sign>0?2:0))%4+4)%4].clone();
       tex.wrapS=THREE.RepeatWrapping;tex.wrapT=THREE.RepeatWrapping;
       tex.repeat.set(Math.max(1.5,width/2.6),Math.max(2.2,height/2.4));pixelate(tex);
@@ -1862,10 +1986,33 @@ function generateChunk(idx){
         addChunkObject(ledge);
       }
       buildingFaces.push({sign,xMin:cursor,xMax:cursor+width,frontZ,height});
+      if(Math.random()<0.34 && width>4.8){
+        const stairX=clamp(centreX+rand(-width*0.18,width*0.18),cursor+0.9,cursor+width-0.9);
+        buildFireEscapeStair(stairX,frontZ,sign,Math.max(3,Math.min(5,Math.round(height/3.8))));
+      }
+      if(Math.random()<0.52){
+        buildRoofWaterTank(
+          centreX+rand(-width*0.22,width*0.22),
+          height+0.02,
+          frontZ+sign*rand(depth*0.08,depth*0.34),
+          rand(0.9,1.2)
+        );
+      }
+      if(Math.random()<0.46){
+        buildLaundryRack(
+          centreX+rand(-width*0.28,width*0.28),
+          height+0.02,
+          frontZ-sign*rand(0.12,0.32),
+          sign,
+          rand(0.9,1.15)
+        );
+      }
       cursor+=width;
       partIdx++;
     }
   }
+
+  buildBackBuildingRows(xBase);
 
   // --- Graffiti panels — random photos from asset/photos layered over
   // tiled façades, including true mural-scale pieces.
@@ -2272,7 +2419,7 @@ function buildHuman({position,role='wanderer'}={}){
     root.add(shoulderRat);
   }
   const status=attachHumanStatusProps(root);
-  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
+  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.5,0.08);
   status.parasiteOverlay.scale.set(1.93,1.93,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
@@ -2415,7 +2562,7 @@ function syncParasiteOverlay(host,dt,mx=0,my=0){
   if(host.inst?.headBone){
     const headWorld=new THREE.Vector3();
     host.inst.headBone.getWorldPosition(headWorld);
-    headWorld.y-=0.06;
+    headWorld.y-=0.36;
     const localPos=host.root.worldToLocal(headWorld);
     host.parasiteOverlay.position.copy(localPos);
   }
