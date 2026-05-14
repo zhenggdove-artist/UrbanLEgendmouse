@@ -45,9 +45,10 @@
     background-image:url("./ui/img/viewport_frame_right_edge.png");background-size:100% 100%}
 
   #hud{position:fixed;inset:0;pointer-events:none;z-index:12}
-  .hud-box{background:linear-gradient(180deg,#fff7d3 0%,#fff1c2 100%);border:1px solid rgba(255,255,255,0.6);
+  .hud-box{background:linear-gradient(180deg,rgba(255,247,211,0.30) 0%,rgba(255,241,194,0.30) 100%);border:1px solid rgba(255,255,255,0.36);
     border-radius:18px;padding:6px 14px;font:700 13px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.10em;
-    color:#7a746d;box-shadow:0 10px 20px rgba(0,0,0,0.28);text-transform:uppercase;
+    color:#fff7d6;box-shadow:0 10px 20px rgba(0,0,0,0.22),0 0 18px rgba(255,236,164,0.18);text-transform:uppercase;
+    text-shadow:0 0 6px rgba(255,245,208,0.85),0 0 12px rgba(255,208,92,0.55),0 0 22px rgba(255,170,72,0.42);
     position:fixed;transform:translate(-50%,-50%);text-align:center;min-width:128px}
   .hud-box::before{content:none;position:absolute;left:50%;top:50%;
     width:calc(100% + 28px);height:calc(100% + 24px);transform:translate(-50%,-50%);
@@ -59,13 +60,13 @@
   .hud-box .bar{position:relative;height:5px;margin-top:5px;background:#000;border-radius:2px;overflow:hidden}
   .hud-box .fill{position:absolute;inset:0;width:0;background:var(--chaos)}
   .hud-box.rats .fill{background:var(--accent-soft)}
-  #mode-badge{left:11%;top:9.8%}
+  #mode-badge{left:11%;top:9.8%;display:none !important}
   #host-life-box{left:5.5%;top:51%;display:none;min-width:auto;width:74px;padding:10px 8px 12px}
   #host-life-box .label{display:block;font-size:10px;letter-spacing:0.16em;margin-bottom:8px}
   #host-life-box .bar{width:20px;height:220px;margin:0 auto;border-radius:14px;background:linear-gradient(180deg,#10080f,#26161a)}
   #host-life-box .fill{top:auto;bottom:0;left:0;right:0;width:100%;height:0;background:linear-gradient(180deg,#fff3c9,#ffe071 45%,#ffb95f 78%,#ff7c7c 100%)}
-  #chaos-box{left:82%;top:9.8%}
-  #rats-box{left:82%;top:17.2%}
+  #chaos-box{left:84%;top:10.2%}
+  #rats-box{left:84%;top:18%}
   #rat-city-btn{position:fixed;left:50%;top:8.4%;transform:translate(-50%,-50%);z-index:15;
     appearance:none;border:none;border-radius:999px;padding:10px 22px;cursor:pointer;
     background:linear-gradient(180deg,rgba(255,244,192,0.96),rgba(255,180,120,0.94));
@@ -163,7 +164,7 @@
   #jump-btn{right:6%;bottom:39%;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#a8d8ff 55%,#5a8fcf 100%);color:#fff}
   #bite-btn{right:6%;bottom:24%;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#ff8fb8 55%,#c03870 100%);color:#fff}
   #pickup-btn{right:6%;bottom:9%;background:radial-gradient(circle at 30% 20%,#fffdd1 0%,#ffe45a 50%,#d99400 100%);color:#4a2d00;display:none}
-  #hint{position:fixed;top:64px;left:50%;transform:translateX(-50%);
+  #hint{position:fixed;top:64px;left:50%;transform:translateX(-50%);display:none !important;
     background:rgba(20,16,32,0.86);border:1px solid var(--panel-edge);border-radius:4px;
     padding:6px 12px;font:11px/1 "Courier New",monospace;letter-spacing:0.10em;
     color:var(--ink-soft);pointer-events:none;z-index:14;opacity:0;transition:opacity .15s linear;
@@ -242,14 +243,14 @@
     font:12px/1 "Courier New",monospace;letter-spacing:0.08em;box-shadow:0 14px 26px rgba(0,0,0,0.35)}
 
   @media (max-width:640px){
-    .hud-box{font-size:10px;padding:5px 8px}
-    .hud-box.meter{min-width:124px}
-    #mode-badge{left:18%;top:7.2%}
+    .hud-box{font-size:10px;padding:6px 9px;min-width:112px}
+    .hud-box.meter{min-width:112px}
+    #mode-badge{display:none !important}
     #host-life-box{left:9%;top:52%;width:68px}
     #host-life-box .bar{height:176px}
-    #chaos-box{left:72%;top:7.2%}
-    #rats-box{left:72%;top:14%}
-    #rat-city-btn{top:7.4%;padding:9px 14px;font-size:14px;letter-spacing:0.18em}
+    #chaos-box{left:26%;top:14.2%;transform:translate(-50%,-50%) scale(0.96)}
+    #rats-box{left:74%;top:14.2%;transform:translate(-50%,-50%) scale(0.96)}
+    #rat-city-btn{top:6.5%;padding:8px 14px;font-size:13px;letter-spacing:0.16em;max-width:48vw;white-space:nowrap}
     #rat-city-panel{top:66px}
     .intro-card h1{font-size:16px}
     .intro-copy{font-size:11px}
@@ -2470,6 +2471,7 @@ function buildRat({isPlayer=false}={}){
     const sprite=new THREE.Sprite(material);
     sprite.scale.set(0.62,0.62,1);
     sprite.position.set(0,0.22,0);
+    sprite.renderOrder=80;
     root.add(sprite);
     scene.add(root);
     return {
@@ -2701,6 +2703,8 @@ function tickRatBillboard(rat,dt){
     }
     rat.ratAnim.tilt=tilt;
     rat.sprite.material.rotation=tilt;
+    const biteScale=state==='bite'?0.93:0.62;
+    rat.sprite.scale.set(biteScale,biteScale,1);
     rat.sprite.material.needsUpdate=true;
     return;
   }
@@ -3734,7 +3738,7 @@ const ratCityList=document.getElementById('rat-city-list');
 const hintEl=document.getElementById('hint');
 const biteLockEl=document.getElementById('bite-lock');
 let hintTimer=0;
-function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
+function showHint(t,sec=2.2){return;}
 function updateActionButtons(){
   const isHost=game.controlMode==='host';
   jumpBtn.textContent='JUMP';
@@ -4642,9 +4646,10 @@ function updateHUD(dt){
       const p=getHumanHeadWorldPos(lockTarget).project(camera);
       const sx=(p.x*0.5+0.5)*window.innerWidth;
       const sy=(-p.y*0.5+0.5)*window.innerHeight;
+      const lockOffsetY=player?.ratAnim?.biteTimer>0?-92:0;
       biteLockEl.style.display='block';
       biteLockEl.style.left=`${sx}px`;
-      biteLockEl.style.top=`${sy}px`;
+      biteLockEl.style.top=`${sy+lockOffsetY}px`;
     }else{
       biteLockEl.style.display='none';
     }
