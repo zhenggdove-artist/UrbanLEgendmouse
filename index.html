@@ -482,7 +482,11 @@ function loadTextureAsync(path){
   },undefined,rej));
 }
 function loadTextureSequence(paths){
-  return Promise.all(paths.map(loadTextureAsync));
+  return Promise.all(paths.map(path=>loadTextureAsync(path).then(tex=>{
+    tex.flipY=true;
+    tex.needsUpdate=true;
+    return tex;
+  })));
 }
 
 const PLAYER_RAT_FRAME_PATHS={
@@ -530,6 +534,9 @@ function ps1ifyCharacterMaterials(root,tint){
       if(HUMAN_SKIN.metal) m.metalnessMap=HUMAN_SKIN.metal;
       m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
       m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
+      m.color.multiplyScalar(1.8);
+      m.emissive.setRGB(0.36,0.36,0.36);
+      m.emissiveIntensity=1;
       if(tint && m.color) m.color.multiply(tint);
       return m;
     });
