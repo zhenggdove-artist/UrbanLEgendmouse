@@ -248,9 +248,9 @@
     #mode-badge{display:none !important}
     #host-life-box{left:9%;top:52%;width:68px}
     #host-life-box .bar{height:176px}
-    #chaos-box{left:26%;top:14.2%;transform:translate(-50%,-50%) scale(0.96)}
-    #rats-box{left:74%;top:14.2%;transform:translate(-50%,-50%) scale(0.96)}
-    #rat-city-btn{top:6.5%;padding:8px 14px;font-size:13px;letter-spacing:0.16em;max-width:48vw;white-space:nowrap}
+    #rat-city-btn{left:50%;top:6.5%;transform:translate(-50%,-50%);padding:8px 14px;font-size:13px;letter-spacing:0.16em;max-width:44vw;white-space:nowrap}
+    #chaos-box{left:auto;right:10px;top:58px;transform:none;min-width:132px}
+    #rats-box{left:auto;right:10px;top:114px;transform:none;min-width:132px}
     #rat-city-panel{top:66px}
     .intro-card h1{font-size:16px}
     .intro-copy{font-size:11px}
@@ -4642,14 +4642,13 @@ function updateHUD(dt){
       const dz=h.root.position.z-ratPos.z;
       nearest=Math.min(nearest,Math.hypot(dx,dz));
     }
-    if(lockTarget){
+    if(lockTarget && !(player?.ratAnim?.biteTimer>0)){
       const p=getHumanHeadWorldPos(lockTarget).project(camera);
       const sx=(p.x*0.5+0.5)*window.innerWidth;
       const sy=(-p.y*0.5+0.5)*window.innerHeight;
-      const lockOffsetY=player?.ratAnim?.biteTimer>0?-92:0;
       biteLockEl.style.display='block';
       biteLockEl.style.left=`${sx}px`;
-      biteLockEl.style.top=`${sy+lockOffsetY}px`;
+      biteLockEl.style.top=`${sy}px`;
     }else{
       biteLockEl.style.display='none';
     }
