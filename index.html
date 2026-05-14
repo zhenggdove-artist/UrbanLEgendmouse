@@ -1169,7 +1169,8 @@ function addChunkObject(root){
   return root;
 }
 function registerBlocker(root,radius=0.6){
-  const blocker={root,radius};
+  const bbox=new THREE.Box3().setFromObject(root);
+  const blocker={root,radius,topY:bbox.max.y,baseY:bbox.min.y};
   game.blockers.push(blocker);
   if(_activeChunk){
     if(!_activeChunk.blockers)_activeChunk.blockers=[];
@@ -1180,13 +1181,15 @@ function registerBlocker(root,radius=0.6){
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
   scene.add(root);
+  const bbox=new THREE.Box3().setFromObject(root);
   const p={
     root,radius,chaosWeight,tipped:false,
     reservedBy:null,tidyProgress:0,
     basePosition:root.position.clone(),
     baseRotation:root.rotation.clone(),
     heldBy:null,throwVel:null,throwSpin:0,throwOwner:null,tipTriggered:false,
-    kind:'prop',spillMesh:null,steamSprite:null,spawnRatsOnTip:0,tipOffset:0.22
+    kind:'prop',spillMesh:null,steamSprite:null,spawnRatsOnTip:0,tipOffset:0.22,
+    topY:bbox.max.y,baseY:bbox.min.y
   };
   game.props.push(p);
   if(_activeChunk){_activeChunk.props.push(p);_activeChunk.meshes.push(root)}
@@ -1346,6 +1349,10 @@ function buildUtilityCabinet(x,z,sign=1){
   }));
   glass.position.set(0,0.12,sign*0.255);glass.rotation.y=sign>0?Math.PI:0;
   root.add(glass);
+  const sideStripe=new THREE.Mesh(new THREE.BoxGeometry(0.10,1.82,0.52),new THREE.MeshBasicMaterial({color:pick(['#ffffff','#ffd54c','#7cf0ff','#ff9fc0'])}));
+  sideStripe.position.set(0.46,0,0);root.add(sideStripe);
+  const marquee=new THREE.Mesh(new THREE.BoxGeometry(0.82,0.22,0.08),new THREE.MeshBasicMaterial({color:'#fff4a8'}));
+  marquee.position.set(0,0.78,sign*0.26);root.add(marquee);
   const rackCols=['#fffbcc','#ffe06a','#8ce3ff','#ff9eb7','#c3ff7a','#ffffff'];
   for(let r=0;r<4;r++){
     for(let c=0;c<3;c++){
@@ -1353,6 +1360,12 @@ function buildUtilityCabinet(x,z,sign=1){
       can.position.set(-0.24+c*0.24,-0.34+r*0.28,sign*0.22);
       root.add(can);
     }
+  }
+  const coinPanel=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.46,0.06),new THREE.MeshBasicMaterial({color:'#22252b'}));
+  coinPanel.position.set(0.35,-0.42,sign*0.26);root.add(coinPanel);
+  for(let i=0;i<3;i++){
+    const btn=new THREE.Mesh(new THREE.BoxGeometry(0.03,0.03,0.03),new THREE.MeshBasicMaterial({color:pick(['#ff6a6a','#7cf0ff','#ffe071'])}));
+    btn.position.set(0.35,-0.28+i*0.12,sign*0.295);root.add(btn);
   }
   const panel=new THREE.Mesh(new THREE.PlaneGeometry(0.86,0.34),new THREE.MeshBasicMaterial({
     map:GRAFFITI_TEX.length?pick(GRAFFITI_TEX):TEX.signYellow,transparent:true
@@ -3629,6 +3642,29 @@ function softClampZ(p){
   if(p.z<ALLEY_Z_MIN)p.z=ALLEY_Z_MIN;
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
+function sampleSupportHeight(ent,x,z,currentY){
+  let support=GROUND_Y_OFFSET;
+  const probeRadius=ent.kind==='human'?0.42:0.26;
+  for(const blocker of game.blockers){
+    if(!blocker?.root || blocker.root===ent.root)continue;
+    const dx=x-blocker.root.position.x;
+    const dz=z-blocker.root.position.z;
+    const minDist=probeRadius+(blocker.radius||0.6)*0.92;
+    if(dx*dx+dz*dz>minDist*minDist)continue;
+    const topY=(blocker.topY??0)+GROUND_Y_OFFSET;
+    if(currentY>=topY-0.42 && currentY<=topY+0.95) support=Math.max(support,topY);
+  }
+  for(const p of game.props){
+    if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
+    const dx=x-p.root.position.x;
+    const dz=z-p.root.position.z;
+    const minDist=probeRadius+(p.radius||0.45)*0.95;
+    if(dx*dx+dz*dz>minDist*minDist)continue;
+    const topY=(p.topY??p.root.position.y)+GROUND_Y_OFFSET;
+    if(currentY>=topY-0.42 && currentY<=topY+0.95) support=Math.max(support,topY);
+  }
+  return support;
+}
 function resolveWorldCollisions(ent,prevX,prevZ,radius){
   const pos=ent.root.position;
   for(const blocker of game.blockers){
@@ -3742,7 +3778,8 @@ function updatePlayer(dt){
   // Vertical — restore the entity's standing Y (its baseY) when not in
   // the air. baseY is whatever buildSkinnedActor measured so the feet
   // touch world y=0; for fallback / sprite actors it's just 0.
-  const baseY=ent.baseY||0;
+  const supportY=sampleSupportHeight(ent,ent.root.position.x,ent.root.position.z,ent.root.position.y);
+  const baseY=Math.max(ent.baseY||0,supportY-GROUND_Y_OFFSET);
   if(inputFlags.jump){
     if(!ent.isAir){
       ent.vy=isHost?JUMP_VEL*0.92:JUMP_VEL;
@@ -4249,27 +4286,26 @@ async function init(){
 
   try{
     const [
-      walkHumanFBX,runHumanFBX,kickHumanFBX,cleanHumanFBX,pickupHumanFBX,
+      idleHumanFBX,walkHumanFBX,runHumanFBX,kickHumanFBX,cleanHumanFBX,pickupHumanFBX,
       baseColourTex,normalTex,roughTex,metalTex
     ]=await Promise.all([
-      loadFBXAsync('asset/都市傳說鼠王_中年男子/走路.fbx',onRunProgress),
-      loadFBXAsync('asset/都市傳說鼠王_中年男子/跑步.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_中年男子/踢ATTACK.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_中年男子/清潔姿勢.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_中年男子/拿起物件.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/basecolor_1024.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/tripo_node_b5e5cc99-b457-4676-9c3b-106dfc15829b_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子/tripo_model_metallic.JPEG')
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/跑步.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/清潔姿勢.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/拿起物件.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_metallic.JPEG')
     ]);
     HUMAN_SKIN.base=baseColourTex;
     HUMAN_SKIN.normal=normalTex;
     HUMAN_SKIN.roughness=roughTex;
     HUMAN_SKIN.metal=metalTex;
-    characterSource=walkHumanFBX;
-    HUMAN_CLIPS.idle=walkHumanFBX.animations[0]
-      ? THREE.AnimationUtils.subclip(walkHumanFBX.animations[0],'human_idle',0,2,30)
-      : null;
+    characterSource=idleHumanFBX;
+    HUMAN_CLIPS.idle=idleHumanFBX.animations[0]||null;
     HUMAN_CLIPS.walk=walkHumanFBX.animations[0]||null;
     HUMAN_CLIPS.run=runHumanFBX.animations[0]||null;
     HUMAN_CLIPS.jump=null;
