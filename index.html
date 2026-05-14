@@ -1500,6 +1500,7 @@ function buildMarketStall({x,z,facing=1,shape='rect',style='tarp',hasSoup=false}
   const prop=registerProp(root,Math.max(width,depth)*0.52,2.6+width*0.25);
   prop.kind='stall';
   prop.tipOffset=0.12;
+  prop.spawnRatsOnTip=2+Math.floor(Math.random()*3);
   prop.hasSoup=!!hasSoup;
   if(hasSoup){
     const soupPot=buildSoupPot(x+rand(-width*0.18,width*0.18),z+rand(-depth*0.12,depth*0.12),rand(0.9,1.15));
@@ -1743,6 +1744,7 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   const tableProp=registerProp(tableRoot,Math.max(0.8,len*0.35),2.4+len*0.14);
   tableProp.kind='stall';
   tableProp.tipOffset=0.12;
+  tableProp.spawnRatsOnTip=2+Math.floor(Math.random()*3);
   // Goods piled on the table — chunky merch boxes in random colours.
   const goodCols=['#d23a3a','#3a8ad2','#d2a83a','#8ad23a','#a83ad2','#3ad28a','#f0e060','#ffffff'];
   const goodCount=Math.max(3,Math.floor(len*1.4));
@@ -2264,7 +2266,7 @@ function buildHuman({position,role='wanderer'}={}){
   }
   const status=attachHumanStatusProps(root);
   status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y,0.08);
-  status.parasiteOverlay.scale.set(1.02,1.02,1);
+  status.parasiteOverlay.scale.set(1.53,1.53,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
@@ -2283,7 +2285,6 @@ function tickActor(ent,dt){
     let next='idle';
     if(ent.kind==='human'){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
-      else if(ent.heldProp && ent.inst.actions.pickup) next='pickup';
       else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
       else if(ent.controllable && ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
@@ -2781,6 +2782,7 @@ function awardChaosScore(pos,baseGain,clusterRadius=4.2){
   }
   const bonus=Math.max(0,cluster-1)*0.018;
   const gain=baseGain+bonus;
+  const prevChaos=game.chaos;
   game.chaos=Math.min(1,game.chaos+gain);
   const points=Math.round(gain*1000);
   game.chaosScore+=points;
@@ -2795,6 +2797,11 @@ function awardChaosScore(pos,baseGain,clusterRadius=4.2){
     vel:new THREE.Vector3(rand(-0.06,0.06),0.66,rand(-0.06,0.06)),
     grow:0.38
   });
+  const chaosRise=Math.max(0,game.chaos-prevChaos);
+  if(chaosRise>0.009){
+    const ratCount=Math.max(1,Math.min(4,Math.floor(chaosRise/0.03)+1));
+    summonSpillRats(pos.x,pos.z,ratCount);
+  }
   return gain;
 }
 function clearStartZone(center,radius=3.1){
@@ -3571,7 +3578,7 @@ function liftProp(host,prop){
   host.throwCharge=0;
   host.throwCharging=false;
   host.actionName='pickup';
-  host.actionTimer=0;
+  host.actionTimer=0.42;
   prop.root.rotation.set(0,host.yaw,0);
   updateActionButtons();
   return true;
@@ -3589,8 +3596,6 @@ function throwHeldProp(host,chargeRatio=0){
   host.heldProp=null;
   host.throwCharge=0;
   host.throwCharging=false;
-  host.actionName=null;
-  host.actionTimer=0;
   game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.35*prop.chaosWeight);
   updateActionButtons();
   return true;
@@ -4058,9 +4063,7 @@ function tickCleaner(cleaner,dt){
     cleaner.behaviour='seek';
     const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.24?0.28:1);
     cleaner.curSpeed=1.08*moveScale;
-    cleaner.cleanBar.root.visible=true;
-    cleaner.cleanBar.fill.scale.x=0.14;
-    cleaner.cleanBar.fill.position.x=-(cleaner.cleanBar.width*0.94)*0.43;
+    cleaner.cleanBar.root.visible=false;
     const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
     cleaner.root.position.x+=Math.sin(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
     cleaner.root.position.z+=Math.cos(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
@@ -4108,6 +4111,21 @@ function tickHumans(dt){
     if(h.role==='cleaner'){
       tickCleaner(h,dt);
     }else if(!h.controllable){
+      h.cleanBar.root.visible=false;
+      if(!h.targetProp){
+        const nearbyMess=findNearestMessForCleaner(h);
+        if(nearbyMess && Math.random()<0.30){
+          h.targetProp=nearbyMess;
+          h.behaviour='seek';
+          h.tidyTimer=CLEANER_TIDY_TIME;
+          tickCleaner(h,dt);
+          tickActor(h,dt);
+          continue;
+        }
+        if(nearbyMess && nearbyMess.reservedBy===h){
+          nearbyMess.reservedBy=null;
+        }
+      }
       h.wanderTimer-=dt;
       if(h.wanderTimer<=0){h.wanderTimer=1.6+Math.random()*2.6;h.yaw+=(Math.random()-0.5)*Math.PI*0.8}
       const turnDiff=rotateTowardYaw(h,h.yaw,dt,5.2);
