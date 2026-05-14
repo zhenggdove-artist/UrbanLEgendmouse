@@ -159,10 +159,17 @@
     color:var(--ink-soft);pointer-events:none;z-index:14;opacity:0;transition:opacity .15s linear;
     white-space:nowrap;max-width:80vw;text-align:center;text-transform:uppercase}
   #hint.show{opacity:1}
+  #bite-lock{position:fixed;left:0;top:0;width:72px;height:96px;display:none;pointer-events:none;z-index:17;
+    border:2px solid rgba(255,90,120,0.95);box-shadow:0 0 0 2px rgba(255,245,208,0.45) inset,0 0 18px rgba(255,65,110,0.35);
+    transform:translate(-50%,-50%)}
+  #bite-lock::before,#bite-lock::after{content:'';position:absolute;width:18px;height:18px;border-color:#fff1c2;border-style:solid}
+  #bite-lock::before{left:-3px;top:-3px;border-width:3px 0 0 3px}
+  #bite-lock::after{right:-3px;bottom:-3px;border-width:0 3px 3px 0}
 
   body.intro-active #hud,
   body.intro-active #rat-city-btn,
   body.intro-active #rat-city-panel,
+  body.intro-active #bite-lock,
   body.intro-active #game-controls,
   body.game-won #hud,
   body.game-won #game-controls{display:none !important}
@@ -258,6 +265,7 @@
   <ol id="rat-city-list"></ol>
 </div>
 <div id="hint"></div>
+<div id="bite-lock"></div>
 
 <div id="intro">
   <div class="intro-card">
@@ -472,11 +480,12 @@ const SOUP_SPILL_RAT_MIN=2;
 const SOUP_SPILL_RAT_MAX=5;
 const NECK_HINT_RADIUS=2.50;
 const CLEANER_TIDY_RADIUS=0.72;
-const CLEANER_TIDY_TIME=1.45;
+const CLEANER_TIDY_TIME=15;
 const CLEANER_CHAOS_RESTORE=0.070;
 const HOST_ATTACK_RADIUS=1.55;
 const HOST_PICKUP_RADIUS=1.65;
 const HOST_THROW_CHARGE_MAX=1.35;
+const HOST_PARASITE_TIME=30;
 const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
@@ -1981,14 +1990,15 @@ function buildHuman({position,role='wanderer'}={}){
     const ph=new THREE.Mesh(new THREE.CapsuleGeometry(0.30,1.10,4,8),
       new THREE.MeshLambertMaterial({color:role==='cleaner'?'#4a6b8c':'#6b7a52'}));
     ph.position.y=0.95;root.add(ph);
+    const status=attachHumanStatusProps(root);
     scene.add(root);
-    return {kind:'human',role,root,inst:null,shoulderRat:ph,
+    return {kind:'human',role,root,inst:null,shoulderRat:ph,bloodPool:status.bloodPool,cleanBar:status.cleanBar,
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
       behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-      actionName:null,actionTimer:0,downTimer:0,animState:'idle'};
+      actionName:null,actionTimer:0,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -2010,13 +2020,14 @@ function buildHuman({position,role='wanderer'}={}){
     shoulderRat.position.set(0.22,1.40,0);
     root.add(shoulderRat);
   }
-  return {kind:'human',role,root,inst,shoulderRat,
+  const status=attachHumanStatusProps(root);
+  return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-    actionName:null,actionTimer:0,downTimer:0,animState:'idle'};
+    actionName:null,actionTimer:0,downTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -2179,6 +2190,40 @@ function spawnImpactDebris(pos,count=14,color='#d6c2a4'){
     });
   }
 }
+function killHost(host){
+  if(!host||host.dead)return;
+  if(host.heldProp) throwHeldProp(host,0.15);
+  host.dead=true;
+  host.controllable=false;
+  host.parasitised=false;
+  host.shoulderRat.visible=false;
+  host.attackCooldown=0;
+  host.actionTimer=0;
+  host.actionName=null;
+  host.root.rotation.z=(Math.random()<0.5?-1:1)*1.42;
+  host.root.rotation.x=0;
+  host.root.position.y=host.baseY||0;
+  if(host.bloodPool){
+    host.bloodPool.visible=true;
+    host.bloodPool.scale.set(2.4,2.4,2.4);
+  }
+  spawnBiteBlood(host);
+  spawnImpactDebris(host.root.position,28,'#b11428');
+  spawnComicImpact(host.root.position,'SPLAT!','#ff95a3');
+  if(game.parasitisedHost===host){
+    const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+    player.root.position.set(host.root.position.x+fx*0.9,(player.baseY||0),host.root.position.z+fz*0.9);
+    player.root.visible=true;
+    player.controllable=true;
+    game.controlMode='rat';
+    game.controlled=player;
+    game.parasitisedHost=null;
+    modeBadge.classList.remove('mode-host');
+    modeBadge.textContent='CONTROL · RAT';
+    updateActionButtons();
+    showHint('Host expired. Find another body.',1.4);
+  }
+}
 function ensureBrothFX(prop){
   if(prop.brothFX) return prop.brothFX;
   const group=new THREE.Group();
@@ -2259,6 +2304,7 @@ function activateFireFX(prop,angle=0,source='impact'){
   fx.shape=source==='throw'?'spray':dirBias;
   fx.stretch=source==='throw'?1.9:(dirBias==='fan'?1.35:1.7);
   fx.lean=angle;
+  fx.growth=0;
   fx.group.visible=true;
 }
 function clearPropFX(prop){
@@ -2289,31 +2335,33 @@ function tickPropFX(prop,dt){
   if(prop.fireFX?.active){
     const fx=prop.fireFX;
     fx.time+=dt;
+    fx.growth=Math.min(1,fx.growth+dt*0.42);
     fx.group.position.copy(fx.origin);
+    const grow=0.25+fx.growth*0.75;
     for(const flame of fx.flames){
       const t=fx.time*3.6+flame.userData.phase;
       const along=Math.cos(fx.lean),side=Math.sin(fx.lean);
       const sway=Math.sin(t)*flame.userData.radius;
-      const drift=Math.cos(t*0.7)*flame.userData.radius*fx.stretch;
+      const drift=Math.cos(t*0.7)*flame.userData.radius*fx.stretch*grow;
       const px=fx.shape==='fan' ? sway*1.8 : along*drift + side*sway;
       const pz=fx.shape==='fan' ? drift*0.7 : side*drift - along*sway;
-      flame.position.set(px,0.25+flame.userData.height*0.55,pz);
-      flame.scale.set(0.55+Math.sin(t)*flame.userData.wobble*fx.stretch,1.8+Math.abs(Math.cos(t))*flame.userData.height*(fx.shape==='spray'?0.9:1.15),1);
+      flame.position.set(px,0.12+flame.userData.height*0.38*grow,pz);
+      flame.scale.set((0.42+Math.sin(t)*flame.userData.wobble*fx.stretch)*grow,((1.26+Math.abs(Math.cos(t))*flame.userData.height*(fx.shape==='spray'?0.9:1.15))*grow),1);
       flame.material.opacity=0.72+Math.abs(Math.sin(t))*0.22;
     }
     for(const core of fx.cores){
       const t=fx.time*4.2+core.userData.phase;
-      const px=Math.sin(t)*core.userData.radius*(fx.shape==='fan'?2.1:0.8);
-      const pz=Math.cos(t*0.8)*core.userData.radius*fx.stretch;
-      core.position.set(px,0.45+core.userData.height*0.55,pz);
-      core.scale.set(0.32*(fx.shape==='fan'?1.2:1),1.8+Math.abs(Math.sin(t))*core.userData.height*(fx.shape==='line'?1.35:1),1);
+      const px=Math.sin(t)*core.userData.radius*(fx.shape==='fan'?2.1:0.8)*grow;
+      const pz=Math.cos(t*0.8)*core.userData.radius*fx.stretch*grow;
+      core.position.set(px,0.22+core.userData.height*0.38*grow,pz);
+      core.scale.set(0.24*(fx.shape==='fan'?1.2:1)*grow,(1.26+Math.abs(Math.sin(t))*core.userData.height*(fx.shape==='line'?1.35:1))*grow,1);
       core.material.opacity=0.78+Math.abs(Math.cos(t))*0.16;
     }
     for(const ember of fx.embers){
       const t=fx.time*1.7+ember.userData.phase;
-      const px=Math.sin(t*1.6)*0.42*(fx.shape==='fan'?1.8:1);
-      const pz=Math.cos(t*1.3)*0.34*fx.stretch;
-      ember.position.set(px,0.45+((t+ember.userData.offset)%2.6),pz);
+      const px=Math.sin(t*1.6)*0.42*(fx.shape==='fan'?1.8:1)*grow;
+      const pz=Math.cos(t*1.3)*0.34*fx.stretch*grow;
+      ember.position.set(px,0.2+((t+ember.userData.offset)%1.8)*grow,pz);
       ember.scale.setScalar(0.09+Math.abs(Math.sin(t))*0.05);
       ember.material.opacity=0.28+Math.abs(Math.cos(t))*0.25;
     }
@@ -2345,6 +2393,65 @@ function loadRatCityLeaderboard(){
 }
 function saveRatCityLeaderboard(){
   localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,8)));
+}
+function makeProgressBar3D(width=0.9,height=0.12){
+  const root=new THREE.Group();
+  const bg=new THREE.Mesh(
+    new THREE.PlaneGeometry(width,height),
+    new THREE.MeshBasicMaterial({color:'#120914',transparent:true,opacity:0.78,depthWrite:false})
+  );
+  const fill=new THREE.Mesh(
+    new THREE.PlaneGeometry(width*0.94,height*0.66),
+    new THREE.MeshBasicMaterial({color:'#8cff7b',transparent:true,opacity:0.92,depthWrite:false})
+  );
+  fill.position.z=0.01;
+  root.add(bg,fill);
+  root.visible=false;
+  return {root,bg,fill,width};
+}
+function attachHumanStatusProps(root){
+  const bloodPool=new THREE.Mesh(
+    new THREE.CircleGeometry(0.85,18),
+    new THREE.MeshBasicMaterial({map:FX_TEX.blood,color:'#8d001d',transparent:true,opacity:0.88,depthWrite:false})
+  );
+  bloodPool.rotation.x=-Math.PI/2;
+  bloodPool.position.set(0,0.03,0);
+  bloodPool.scale.set(0.01,0.01,0.01);
+  bloodPool.visible=false;
+  root.add(bloodPool);
+  const cleanBar=makeProgressBar3D();
+  cleanBar.root.position.set(0,2.15,0);
+  root.add(cleanBar.root);
+  return {bloodPool,cleanBar};
+}
+function makeComicTextTexture(text,fill='#fff7c2',stroke='#310c16'){
+  const c=document.createElement('canvas');c.width=192;c.height=96;
+  const cx=c.getContext('2d');
+  cx.clearRect(0,0,c.width,c.height);
+  cx.translate(c.width/2,c.height/2);
+  cx.rotate((-8+Math.random()*16)*Math.PI/180);
+  cx.font='bold 44px Arial';
+  cx.textAlign='center';
+  cx.textBaseline='middle';
+  cx.lineWidth=14;
+  cx.strokeStyle=stroke;
+  cx.strokeText(text,0,4);
+  cx.fillStyle=fill;
+  cx.fillText(text,0,4);
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function spawnComicImpact(pos,text='BAM!',fill='#fff7c2'){
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+    map:makeComicTextTexture(text,fill),transparent:true,depthWrite:false,fog:false
+  }));
+  sprite.position.copy(pos).y+=0.9;
+  sprite.scale.set(1.25,0.62,1);
+  scene.add(sprite);
+  game.fx.push({
+    kind:'comic',sprite,
+    vel:new THREE.Vector3(rand(-0.2,0.2),1.15,rand(-0.2,0.2)),
+    gravity:1.8,life:0.46,maxLife:0.46,spin:rand(-2,2)
+  });
 }
 function registerChaosSpot(x,z,strength=1,life=6){
   game.chaosSpots.push({x,z,strength,life});
@@ -2872,6 +2979,7 @@ const ratCityClose=document.getElementById('rat-city-close');
 const ratCityScore=document.getElementById('rat-city-score');
 const ratCityList=document.getElementById('rat-city-list');
 const hintEl=document.getElementById('hint');
+const biteLockEl=document.getElementById('bite-lock');
 let hintTimer=0;
 function showHint(t,sec=2.2){hintEl.textContent=t;hintEl.classList.add('show');hintTimer=sec}
 function updateActionButtons(){
@@ -2902,7 +3010,7 @@ function nearestBiteableHuman(rat){
   const ratPos=rat.root.position;
   let best=null,bestD=1.9;
   for(const h of game.humans){
-    if(h.parasitised)continue;
+    if(h.parasitised||h.dead)continue;
     const dx=h.root.position.x-ratPos.x;
     const dz=h.root.position.z-ratPos.z;
     const d=Math.hypot(dx,dz);
@@ -2915,6 +3023,7 @@ function enterHost(rat,host){
   rat.root.visible=false;rat.controllable=false;
   if(host.targetProp){host.targetProp.reservedBy=null;host.targetProp=null}
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=true;
+  host.parasiteTimer=HOST_PARASITE_TIME;
   game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
   modeBadge.textContent='CONTROL · HOST';modeBadge.classList.add('mode-host');
   updateActionButtons();
@@ -3033,12 +3142,14 @@ function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   return best;
 }
 function knockHumanDown(target,sourceYaw=0){
-  if(!target||target.parasitised||target.controllable)return;
+  if(!target||target.parasitised||target.controllable||target.dead)return;
   if(target.targetProp && target.targetProp.reservedBy===target) target.targetProp.reservedBy=null;
   target.targetProp=null;
   target.behaviour='wander';
   target.curSpeed=0;
   target.downTimer=1.3;
+  spawnComicImpact(target.root.position,'KRAK!','#fff7a6');
+  spawnImpactDebris(target.root.position,18,'#f7d9b4');
   target.root.position.y=target.baseY||0;
   target.root.rotation.x=0;
   target.root.rotation.z=(Math.random()<0.5?-1:1)*1.08;
@@ -3122,7 +3233,7 @@ function doHostAttack(){
     struck=true;
   }
   for(const h of game.humans){
-    if(h===host||h.downTimer>0)continue;
+    if(h===host||h.downTimer>0||h.dead)continue;
     const dx=h.root.position.x-host.root.position.x;
     const dz=h.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
@@ -3137,6 +3248,12 @@ function doHostAttack(){
 function tickControllableHostState(dt){
   const host=game.parasitisedHost;
   if(!host)return;
+  host.parasiteTimer=Math.max(0,host.parasiteTimer-dt);
+  modeBadge.textContent=`CONTROL · HOST ${host.parasiteTimer.toFixed(0)}S`;
+  if(host.parasiteTimer<=0){
+    killHost(host);
+    return;
+  }
   if(host.attackCooldown>0) host.attackCooldown=Math.max(0,host.attackCooldown-dt);
   if(host.actionTimer>0){
     host.actionTimer=Math.max(0,host.actionTimer-dt);
@@ -3255,6 +3372,7 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   p.tidyProgress=0;
   spawnHitFlash(p.root.position);
   spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
+  spawnComicImpact(p.root.position,p.kind==='stall'?'WHAM!':'POW!',p.kind==='stall'?'#fff2a6':'#fff7c2');
   p.root.rotation.z=-Math.cos(angle)*Math.PI*0.40;
   p.root.rotation.x=Math.sin(angle)*Math.PI*0.40;
   p.root.position.y=Math.max(0.08,p.root.userData.baseY*0.45);
@@ -3348,7 +3466,7 @@ function restorePropFromCleaner(prop){
   game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
 }
 function tickCleaner(cleaner,dt){
-  if(cleaner.controllable||cleaner.parasitised)return;
+  if(cleaner.controllable||cleaner.parasitised||cleaner.dead)return;
   if(cleaner.downTimer>0)return;
   if(cleaner.targetProp && !cleaner.targetProp.tipped){
     if(cleaner.targetProp.reservedBy===cleaner) cleaner.targetProp.reservedBy=null;
@@ -3358,6 +3476,7 @@ function tickCleaner(cleaner,dt){
     cleaner.targetProp=findNearestMessForCleaner(cleaner);
     cleaner.behaviour=cleaner.targetProp?'seek':'wander';
   }
+  cleaner.cleanBar.root.visible=false;
   if(!cleaner.targetProp){
     cleaner.wanderTimer-=dt;
     if(cleaner.wanderTimer<=0){cleaner.wanderTimer=1.0+Math.random()*1.8;cleaner.yaw+=(Math.random()-0.5)*Math.PI*0.9}
@@ -3387,6 +3506,9 @@ function tickCleaner(cleaner,dt){
   cleaner.curSpeed=0.18;
   cleaner.tidyTimer-=dt;
   prop.tidyProgress=1-clamp(cleaner.tidyTimer/CLEANER_TIDY_TIME,0,1);
+  cleaner.cleanBar.root.visible=true;
+  cleaner.cleanBar.fill.scale.x=Math.max(0.001,prop.tidyProgress);
+  cleaner.cleanBar.fill.position.x=-(cleaner.cleanBar.width*0.94)*(1-prop.tidyProgress)*0.5;
   prop.root.rotation.x=lerp(prop.root.rotation.x,prop.baseRotation.x,Math.min(1,dt*4));
   prop.root.rotation.z=lerp(prop.root.rotation.z,prop.baseRotation.z,Math.min(1,dt*4));
   prop.root.position.x=lerp(prop.root.position.x,prop.basePosition.x,Math.min(1,dt*3.5));
@@ -3394,17 +3516,25 @@ function tickCleaner(cleaner,dt){
   prop.root.position.y=lerp(prop.root.position.y,prop.basePosition.y,Math.min(1,dt*4));
   if(cleaner.tidyTimer<=0){
     restorePropFromCleaner(prop);
+    cleaner.cleanBar.root.visible=false;
     cleaner.behaviour='seek';
     cleaner.tidyTimer=0;
   }
 }
 function tickHumans(dt){
   for(const h of game.humans){
+    if(h.dead){
+      if(h.bloodPool && h.bloodPool.visible) h.bloodPool.scale.lerp(new THREE.Vector3(3.8,3.8,3.8),Math.min(1,dt*0.45));
+      h.cleanBar.root.visible=false;
+      tickActor(h,dt);
+      continue;
+    }
     if(h.downTimer>0){
       h.downTimer=Math.max(0,h.downTimer-dt);
       h.curSpeed=0;
       h.root.position.y=(h.baseY||0)+GROUND_Y_OFFSET;
       if(h.downTimer<=0) h.root.rotation.z=0;
+      h.cleanBar.root.visible=false;
       tickActor(h,dt);
       continue;
     }
@@ -3453,7 +3583,15 @@ function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
     const target=nearestChaosSpot(r.root.position) || player.root.position;
-    if(target.x!==undefined) r.targetPos?.set(target.x,0,target.z);
+    if(target.x!==undefined){
+      r.roamTimer=(r.roamTimer||0)-dt;
+      if(r.roamTimer<=0 || !r.targetPos){
+        const jitterX=target.x+rand(-1.8,1.8);
+        const jitterZ=clamp(target.z+rand(-1.8,1.8),ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4);
+        r.targetPos?.set(jitterX,0,jitterZ);
+        r.roamTimer=rand(0.35,1.2);
+      }
+    }
     const tx=r.targetPos?.x ?? player.root.position.x;
     const tz=r.targetPos?.z ?? player.root.position.z;
     const dx=tx-r.root.position.x;
@@ -3488,15 +3626,28 @@ function updateHUD(dt){
   if(game.controlMode==='rat'&&player){
     const ratPos=player.root.position;
     let nearest=Infinity;
+    const lockTarget=nearestBiteableHuman(player);
     for(const h of game.humans){
-      if(h.parasitised)continue;
+      if(h.parasitised||h.dead)continue;
       const dx=h.root.position.x-ratPos.x;
       const dz=h.root.position.z-ratPos.z;
       nearest=Math.min(nearest,Math.hypot(dx,dz));
     }
+    if(lockTarget){
+      const p=getHumanHeadWorldPos(lockTarget).project(camera);
+      const sx=(p.x*0.5+0.5)*window.innerWidth;
+      const sy=(-p.y*0.5+0.5)*window.innerHeight;
+      biteLockEl.style.display='block';
+      biteLockEl.style.left=`${sx}px`;
+      biteLockEl.style.top=`${sy}px`;
+    }else{
+      biteLockEl.style.display='none';
+    }
     if(nearest<NECK_HINT_RADIUS){
       showHint(nearest<NECK_BITE_RADIUS?'BITE NOW â€” parasitise the host.':'Close in on the neck.',0.14);
     }
+  }else{
+    biteLockEl.style.display='none';
   }
   if(hintTimer>0){hintTimer-=dt;if(hintTimer<=0)hintEl.classList.remove('show')}
 }
