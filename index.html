@@ -2238,10 +2238,11 @@ function buildHuman({position,role='wanderer'}={}){
     const ph=new THREE.Mesh(new THREE.CapsuleGeometry(0.30,1.10,4,8),
       new THREE.MeshLambertMaterial({color:role==='cleaner'?'#4a6b8c':'#6b7a52'}));
     ph.position.y=0.95;root.add(ph);
-    const status=attachHumanStatusProps(root);
-    status.parasiteOverlay.position.set(0,1.45,0.05);
-    scene.add(root);
-    return {kind:'human',role,root,inst:null,shoulderRat:ph,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
+  const status=attachHumanStatusProps(root);
+  status.parasiteOverlay.position.set(0,1.45,0.05);
+  status.parasiteOverlay.scale.set(1.93,1.93,1);
+  scene.add(root);
+  return {kind:'human',role,root,inst:null,shoulderRat:ph,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
       vy:0,isAir:false,controllable:false,parasitised:false,
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
@@ -2271,8 +2272,14 @@ function buildHuman({position,role='wanderer'}={}){
     root.add(shoulderRat);
   }
   const status=attachHumanStatusProps(root);
-  status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
-  status.parasiteOverlay.scale.set(1.61,1.61,1);
+  if(inst.headBone){
+    status.parasiteOverlay.position.set(2,-10,7);
+    status.parasiteOverlay.scale.setScalar(1.93/(root.scale.x||1));
+    inst.headBone.add(status.parasiteOverlay);
+  }else{
+    status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.2,0.08);
+    status.parasiteOverlay.scale.set(1.93,1.93,1);
+  }
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
@@ -3931,9 +3938,13 @@ function updatePlayer(dt){
 function summonSpillRats(x,z,count=2){
   for(let i=0;i<count;i++){
     const rat=buildRat();
-    rat.root.position.set(x+rand(-0.8,0.8),(rat.baseY??0)+GROUND_Y_OFFSET,z+rand(-0.8,0.8));
+    const fromSide=Math.random()<0.5?-1:1;
+    const spawnX=x+fromSide*rand(8,16);
+    const spawnZ=clamp(z+rand(-5,5),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
+    rat.root.position.set(spawnX,(rat.baseY??0)+GROUND_Y_OFFSET,spawnZ);
     rat.targetPos.set(x,0,z);
     rat.moveIntent.y=-1;
+    rat.followPlayer=(i===0)||Math.random()<0.32;
     rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
     rat.root.rotation.y=rat.yaw;
     game.rats.push(rat);
@@ -4198,6 +4209,7 @@ function tickBreeding(dt){
   rat.root.position.set(x,(rat.baseY??0)+GROUND_Y_OFFSET,z);
   rat.targetPos.set(hotspot.x,0,hotspot.z);
   rat.moveIntent.y=-1;
+  rat.followPlayer=Math.random()<0.28;
   rat.yaw=Math.atan2(hotspot.x-x,hotspot.z-z);
   rat.root.rotation.y=rat.yaw;
   game.rats.push(rat);
@@ -4205,14 +4217,21 @@ function tickBreeding(dt){
 function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
-    const target=nearestChaosSpot(r.root.position) || player.root.position;
-    if(target.x!==undefined){
+    const chaosTarget=nearestChaosSpot(r.root.position);
+    let target=chaosTarget || player.root.position;
+    if(r.followPlayer && player){
+      const backX=player.root.position.x-Math.sin(player.yaw)*rand(0.9,1.8);
+      const backZ=player.root.position.z-Math.cos(player.yaw)*rand(0.9,1.8);
+      target={x:backX,z:clamp(backZ,ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4)};
+    }
+    if(target && target.x!==undefined){
       r.roamTimer=(r.roamTimer||0)-dt;
       if(r.roamTimer<=0 || !r.targetPos){
-        const jitterX=target.x+rand(-1.8,1.8);
-        const jitterZ=clamp(target.z+rand(-1.8,1.8),ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4);
+        const jitterAmount=r.followPlayer?0.55:1.8;
+        const jitterX=target.x+rand(-jitterAmount,jitterAmount);
+        const jitterZ=clamp(target.z+rand(-jitterAmount,jitterAmount),ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4);
         r.targetPos?.set(jitterX,0,jitterZ);
-        r.roamTimer=rand(0.35,1.2);
+        r.roamTimer=r.followPlayer?rand(0.18,0.42):rand(0.35,1.2);
       }
     }
     const tx=r.targetPos?.x ?? player.root.position.x;
@@ -4234,7 +4253,7 @@ function tickFollowerRats(dt){
     r.curSpeed=spd;
     if(r.moveIntent){
       r.moveIntent.x=0;
-      const chasingPlayer=target===player.root.position;
+      const chasingPlayer=!!r.followPlayer;
       r.moveIntent.y=spd>0.01?(chasingPlayer?1:-1):0;
     }
     tickActor(r,dt);
@@ -4460,7 +4479,9 @@ async function init(){
       idleWomanFBX,walkWomanFBX,runWomanFBX,jumpWomanFBX,kickWomanFBX,cleanWomanFBX,pickupWomanFBX,
       baseColourTexWoman,normalTexWoman,roughTexWoman,metalTexWoman,
       idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,cleanBoyFBX,
-      baseColourTexBoy,normalTexBoy,roughTexBoy,metalTexBoy
+      baseColourTexBoy,normalTexBoy,roughTexBoy,metalTexBoy,
+      idleSchoolgirlFBX,walkSchoolgirlFBX,runSchoolgirlFBX,jumpSchoolgirlFBX,kickSchoolgirlFBX,cleanSchoolgirlFBX,
+      baseColourTexSchoolgirl,normalTexSchoolgirl,roughTexSchoolgirl,metalTexSchoolgirl
     ]=await Promise.all([
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
@@ -4493,7 +4514,17 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/basecolor_1024.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_metallic.JPEG')
+      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/跑動.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/跳躍.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/清潔動作.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_metallic.JPEG')
     ]);
     HUMAN_VARIANTS.length=0;
     HUMAN_VARIANTS.push(makeHumanVariant({
@@ -4510,6 +4541,11 @@ async function init(){
       source:idleBoyFBX,
       idle:idleBoyFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
       skin:{base:baseColourTexBoy,normal:normalTexBoy,roughness:roughTexBoy,metal:metalTexBoy}
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleSchoolgirlFBX,
+      idle:idleSchoolgirlFBX,walk:walkSchoolgirlFBX,run:runSchoolgirlFBX,jump:jumpSchoolgirlFBX,kick:kickSchoolgirlFBX,pickup:null,clean:cleanSchoolgirlFBX,
+      skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
     }));
     characterSource=HUMAN_VARIANTS[0].source;
     HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
