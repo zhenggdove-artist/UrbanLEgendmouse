@@ -260,7 +260,7 @@
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
   <div class="hud-box meter" id="host-life-box">HOST LIFE<div class="bar"><div class="fill" id="host-life-fill"></div></div></div>
-  <div class="hud-box meter" id="chaos-box">CHAOS<div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
+  <div class="hud-box meter" id="chaos-box">CHAOS <span id="chaos-score">0</span><div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
   <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span>
     <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
 </div>
@@ -571,6 +571,7 @@ const game={
   chaos:0,chaosDisplay:0,
   chaosScore:0,
   rats:[],humans:[],props:[],
+  blockers:[],
   fx:[],
   chaosSpots:[],
   deathSpots:[],
@@ -1167,6 +1168,15 @@ function addChunkObject(root){
   if(_activeChunk)_activeChunk.meshes.push(root);
   return root;
 }
+function registerBlocker(root,radius=0.6){
+  const blocker={root,radius};
+  game.blockers.push(blocker);
+  if(_activeChunk){
+    if(!_activeChunk.blockers)_activeChunk.blockers=[];
+    _activeChunk.blockers.push(blocker);
+  }
+  return blocker;
+}
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
   scene.add(root);
@@ -1327,21 +1337,36 @@ function buildBin(x,z,colour='#2a3a44'){
   registerProp(root,0.32,0.9);
 }
 function buildUtilityCabinet(x,z,sign=1){
-  const root=new THREE.Group();root.position.set(x,0.9,z);
-  const box=new THREE.Mesh(new THREE.BoxGeometry(1.0,1.8,0.42),new THREE.MeshBasicMaterial({color:'#8d8f8d'}));
+  const root=new THREE.Group();root.position.set(x,0.94,z);
+  const vendCol=pick(['#d84b4b','#2f7be0','#f2d15b','#48a95d','#7f53d4','#f08cb4']);
+  const box=new THREE.Mesh(new THREE.BoxGeometry(1.02,1.88,0.50),new THREE.MeshBasicMaterial({color:vendCol}));
   root.add(box);
-  const door=new THREE.Mesh(new THREE.PlaneGeometry(0.84,1.52),new THREE.MeshBasicMaterial({
-    map:GRAFFITI_TEX.length?pick(GRAFFITI_TEX):TEX.stallFront,transparent:true
+  const glass=new THREE.Mesh(new THREE.PlaneGeometry(0.72,1.08),new THREE.MeshBasicMaterial({
+    color:'#d8f3ff',transparent:true,opacity:0.82
   }));
-  door.position.set(0,0,sign*0.215);door.rotation.y=sign>0?Math.PI:0;
-  root.add(door);
-  const sticker=new THREE.Mesh(new THREE.PlaneGeometry(0.28,0.42),new THREE.MeshBasicMaterial({
+  glass.position.set(0,0.12,sign*0.255);glass.rotation.y=sign>0?Math.PI:0;
+  root.add(glass);
+  const rackCols=['#fffbcc','#ffe06a','#8ce3ff','#ff9eb7','#c3ff7a','#ffffff'];
+  for(let r=0;r<4;r++){
+    for(let c=0;c<3;c++){
+      const can=basicBox(0.12,0.18,0.08,pick(rackCols));
+      can.position.set(-0.24+c*0.24,-0.34+r*0.28,sign*0.22);
+      root.add(can);
+    }
+  }
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(0.86,0.34),new THREE.MeshBasicMaterial({
     map:GRAFFITI_TEX.length?pick(GRAFFITI_TEX):TEX.signYellow,transparent:true
   }));
-  sticker.position.set(0.22,-0.42,sign*0.216);sticker.rotation.y=door.rotation.y;
+  panel.position.set(0,0.70,sign*0.256);panel.rotation.y=glass.rotation.y;
+  root.add(panel);
+  const sticker=new THREE.Mesh(new THREE.PlaneGeometry(0.22,0.30),new THREE.MeshBasicMaterial({
+    map:GRAFFITI_TEX.length?pick(GRAFFITI_TEX):TEX.signRed,transparent:true
+  }));
+  sticker.position.set(0.27,-0.54,sign*0.256);sticker.rotation.y=glass.rotation.y;
   root.add(sticker);
   scene.add(root);
   if(_activeChunk)_activeChunk.meshes.push(root);
+  registerBlocker(root,0.68);
 }
 
 function buildMarketStall({x,z,facing=1,shape='rect',style='tarp',hasSoup=false}={}){
@@ -1597,6 +1622,9 @@ function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeM
 function disposeMesh(o){scene.remove(o);o.traverse(n=>{if(n.isMesh){n.geometry?.dispose();disposeMaterials(n.material)}})}
 function disposeChunk(chunk){
   for(const m of chunk.meshes) disposeMesh(m);
+  for(const b of chunk.blockers||[]){
+    const i=game.blockers.indexOf(b);if(i>=0)game.blockers.splice(i,1);
+  }
   for(const p of chunk.props){
     if(p.reservedBy) p.reservedBy.targetProp=null;
     const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)
@@ -1645,12 +1673,14 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
     scene.add(post);if(_activeChunk)_activeChunk.meshes.push(post);
   }
   // Display table running the length of the stall.
+  const stallBaseCol=pick(['#d7c2aa','#6c95c8','#d77272','#75a86a','#b78fd1','#d0a64c']);
   const table=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.85,0.85,0.85),
-    new THREE.MeshBasicMaterial({map:STALL_TEX.wood,color:'#d7c2aa'})
+    new THREE.MeshBasicMaterial({map:STALL_TEX.wood,color:stallBaseCol})
   );
   table.position.set((xStart+xEnd)/2,0.45,zInner+facing*0.6);
   scene.add(table);if(_activeChunk)_activeChunk.meshes.push(table);
+  registerBlocker(table,Math.max(0.8,len*0.35));
   const topSkin=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.83,0.04,0.88),
     new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#9d8c7d'})
@@ -1690,6 +1720,7 @@ function buildSkyTunnel(xBase,width=CHUNK_SIZE){
       );
       box.position.set(xBase+3.5+i*7.0+rand(-0.8,0.8),3.4,side*4.4);
       addChunkObject(box);
+      registerBlocker(box,1.7);
     }
   }
 }
@@ -1750,6 +1781,7 @@ function generateChunk(idx){
       );
       body.position.set(centreX,height*0.5,frontZ+sign*depth*0.5);
       addChunkObject(body);
+      registerBlocker(body,Math.max(width*0.38,depth*0.75));
       const frontDepth=rand(0.16,0.30);
       const front=new THREE.Mesh(
         new THREE.BoxGeometry(width*rand(0.92,0.99),rand(2.3,2.9),frontDepth),
@@ -2133,7 +2165,7 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
-const HUMAN_WORLD_Y_OFFSET=-1;
+const HUMAN_WORLD_Y_OFFSET=0;
 function buildHuman({position,role='wanderer'}={}){
   if(!characterSource||!HUMAN_CLIPS.run){
     // FBX placeholder — capsule body so we never silently skip a spawn.
@@ -3597,6 +3629,42 @@ function softClampZ(p){
   if(p.z<ALLEY_Z_MIN)p.z=ALLEY_Z_MIN;
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
+function resolveWorldCollisions(ent,prevX,prevZ,radius){
+  const pos=ent.root.position;
+  for(const blocker of game.blockers){
+    if(!blocker?.root || blocker.root===ent.root)continue;
+    const dx=pos.x-blocker.root.position.x;
+    const dz=pos.z-blocker.root.position.z;
+    const minDist=radius+(blocker.radius||0.6);
+    const d2=dx*dx+dz*dz;
+    if(d2>0 && d2<minDist*minDist){
+      const d=Math.sqrt(d2);
+      const push=(minDist-d)+0.001;
+      pos.x+=dx/d*push;
+      pos.z+=dz/d*push;
+    }else if(d2===0){
+      pos.x=prevX;
+      pos.z=prevZ;
+    }
+  }
+  for(const p of game.props){
+    if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
+    const dx=pos.x-p.root.position.x;
+    const dz=pos.z-p.root.position.z;
+    const minDist=radius+(p.radius||0.45);
+    const d2=dx*dx+dz*dz;
+    if(d2>0 && d2<minDist*minDist){
+      const d=Math.sqrt(d2);
+      const push=(minDist-d)+0.001;
+      pos.x+=dx/d*push;
+      pos.z+=dz/d*push;
+    }else if(d2===0){
+      pos.x=prevX;
+      pos.z=prevZ;
+    }
+  }
+  softClampZ(pos);
+}
 function updatePlayer(dt){
   if(game.ratCityMode)return;
   const ent=game.controlled;if(!ent||!ent.controllable)return;
@@ -3626,6 +3694,7 @@ function updatePlayer(dt){
   const isHost=(ent.kind==='human');
   const targetSpeed=isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
+  const prevX=ent.root.position.x, prevZ=ent.root.position.z;
   if(ent.kind==='rat'&&ent.ratAnim?.biteTimer>0){
     ent.ratAnim.biteTimer=Math.max(0,ent.ratAnim.biteTimer-dt);
     if(ent.ratAnim.pendingHost && !ent.ratAnim.pendingHost.dead){
@@ -3668,7 +3737,7 @@ function updatePlayer(dt){
   if(ent.curSpeed>0.001){
     ent.root.position.x+=mdx*ent.curSpeed*dt;
     ent.root.position.z+=mdz*ent.curSpeed*dt;
-    softClampZ(ent.root.position);   // keep them out of building walls
+    resolveWorldCollisions(ent,prevX,prevZ,isHost?0.38:0.22);
   }
   // Vertical — restore the entity's standing Y (its baseY) when not in
   // the air. baseY is whatever buildSkinnedActor measured so the feet
@@ -3824,8 +3893,10 @@ function tickCleaner(cleaner,dt){
     cleaner.wanderTimer-=dt;
     if(cleaner.wanderTimer<=0){cleaner.wanderTimer=1.0+Math.random()*1.8;cleaner.yaw+=(Math.random()-0.5)*Math.PI*0.9}
     cleaner.curSpeed=1.05;
+    const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
     cleaner.root.position.x+=Math.sin(cleaner.yaw)*cleaner.curSpeed*dt;
     cleaner.root.position.z+=Math.cos(cleaner.yaw)*cleaner.curSpeed*dt;
+    resolveWorldCollisions(cleaner,prevX,prevZ,0.38);
     if(cleaner.root.position.z<ALLEY_Z_MIN+0.3||cleaner.root.position.z>ALLEY_Z_MAX-0.5){
       cleaner.yaw+=Math.PI;softClampZ(cleaner.root.position);
     }
@@ -3842,8 +3913,10 @@ function tickCleaner(cleaner,dt){
     cleaner.cleanBar.root.visible=true;
     cleaner.cleanBar.fill.scale.x=0.08;
     cleaner.cleanBar.fill.position.x=-(cleaner.cleanBar.width*0.94)*0.46;
+    const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
     cleaner.root.position.x+=Math.sin(cleaner.yaw)*cleaner.curSpeed*dt;
     cleaner.root.position.z+=Math.cos(cleaner.yaw)*cleaner.curSpeed*dt;
+    resolveWorldCollisions(cleaner,prevX,prevZ,0.38);
     softClampZ(cleaner.root.position);
     cleaner.tidyTimer=CLEANER_TIDY_TIME;
     return;
@@ -3891,8 +3964,10 @@ function tickHumans(dt){
       if(h.wanderTimer<=0){h.wanderTimer=1.6+Math.random()*2.6;h.yaw+=(Math.random()-0.5)*Math.PI*0.8}
       const spd=h.role==='cleaner'?1.6:1.05;
       h.curSpeed=spd;
+      const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.yaw)*spd*dt;
       h.root.position.z+=Math.cos(h.yaw)*spd*dt;
+      resolveWorldCollisions(h,prevX,prevZ,0.38);
       if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
         h.yaw+=Math.PI;softClampZ(h.root.position);
       }
@@ -3945,13 +4020,16 @@ function tickFollowerRats(dt){
     const a=Math.atan2(dx,dz);
     const dist=Math.hypot(dx,dz);
     const spd=(dist>0.35)?(1.2+game.chaos*1.5):0;
+    const prevX=r.root.position.x, prevZ=r.root.position.z;
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
+    resolveWorldCollisions(r,prevX,prevZ,0.22);
     r.root.rotation.y=a;
     r.curSpeed=spd;
     if(r.moveIntent){
       r.moveIntent.x=0;
-      r.moveIntent.y=spd>0.01?-1:0;
+      const chasingPlayer=target===player.root.position;
+      r.moveIntent.y=spd>0.01?(chasingPlayer?1:-1):0;
     }
     tickActor(r,dt);
     tickRatBillboard(r,dt);
@@ -3960,6 +4038,7 @@ function tickFollowerRats(dt){
 
 // ===== HUD =====
 const chaosFill=document.getElementById('chaos-fill');
+const chaosScoreEl=document.getElementById('chaos-score');
 const ratFill=document.getElementById('rat-fill');
 const ratCountEl=document.getElementById('rat-count');
 const hostLifeBox=document.getElementById('host-life-box');
@@ -3968,6 +4047,7 @@ function updateHUD(dt){
   game.chaosDisplay+=(game.chaos-game.chaosDisplay)*Math.min(1,dt*3);
   game.chaos=Math.max(0,game.chaos-CHAOS_DECAY*dt);
   chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
+  chaosScoreEl.textContent=String(Math.round(game.chaosScore));
   ratCountEl.textContent=String(game.rats.length);
   ratFill.style.width=Math.min(100,game.rats.length*5).toFixed(0)+'%';
   if(game.controlMode==='host'&&game.parasitisedHost){
