@@ -613,7 +613,7 @@ const game={
   testMode:false,
   templeEvent:{
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
-    altarTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
+    altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
     started:false,awakened:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
     glowCooldown:0,flashStrength:0
   },
@@ -636,9 +636,9 @@ const imageLoader=new THREE.TextureLoader();
 let crawlFBX=null,runFBX=null;
 let characterSource=null;
 const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
-const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null};
+const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 const HUMAN_VARIANTS=[];
-const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:false,materialKind:'standard'};
+const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:false,materialKind:'basic'};
 let templeIdolSource=null,templeIdolIdleSource=null,templeIdolWalkSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
 let templeIdolLoadPromise=null;
 
@@ -658,21 +658,6 @@ function loadHumanTextureAsync(path){
   return new Promise((res,rej)=>imageLoader.load(path,tex=>{
     tex.flipY=true;
     tex.colorSpace=THREE.SRGBColorSpace;
-    tex.needsUpdate=true;
-    res(pixelate(tex));
-  },undefined,rej));
-}
-function loadTempleIdolColorTextureAsync(path){
-  return new Promise((res,rej)=>imageLoader.load(path,tex=>{
-    tex.flipY=false;
-    tex.colorSpace=THREE.SRGBColorSpace;
-    tex.needsUpdate=true;
-    res(pixelate(tex));
-  },undefined,rej));
-}
-function loadTempleIdolDataTextureAsync(path){
-  return new Promise((res,rej)=>imageLoader.load(path,tex=>{
-    tex.flipY=false;
     tex.needsUpdate=true;
     res(pixelate(tex));
   },undefined,rej));
@@ -705,25 +690,22 @@ function loadTempleIdolAssets(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
     loadFBXAsync('asset/神像/Orc Idle.fbx'),
-    loadFBXAsync('asset/神像/Walk.fbx'),
-    loadTempleIdolColorTextureAsync('asset/神像/tripo_model_basecolor.JPEG'),
-    loadTempleIdolDataTextureAsync('asset/神像/tripo_model_normal.JPEG'),
-    loadTempleIdolDataTextureAsync('asset/神像/tripo_model_roughness.JPEG'),
-    loadTempleIdolDataTextureAsync('asset/神像/tripo_model_metallic.JPEG')
-  ]).then(([idolIdleFBX,idolWalkFBX,baseTex,normalTex,roughnessTex,metalTex])=>{
+    loadFBXAsync('asset/神像/Walk.fbx')
+  ]).then(([idolIdleFBX,idolWalkFBX])=>{
     templeIdolSource=idolIdleFBX;
     templeIdolIdleSource=idolIdleFBX;
     templeIdolWalkSource=idolWalkFBX;
     templeIdolIdleClip=idolIdleFBX;
     templeIdolWalkClip=idolWalkFBX;
-    TEMPLE_IDOL_SKIN.base=baseTex;
-    TEMPLE_IDOL_SKIN.normal=normalTex;
-    TEMPLE_IDOL_SKIN.roughness=roughnessTex;
-    TEMPLE_IDOL_SKIN.metal=metalTex;
+    TEMPLE_IDOL_SKIN.base=null;
+    TEMPLE_IDOL_SKIN.normal=null;
+    TEMPLE_IDOL_SKIN.roughness=null;
+    TEMPLE_IDOL_SKIN.metal=null;
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({
         altarPos:game.templeEvent.altarPos,
         altarTopPos:game.templeEvent.altarTopPos,
+        altarEdgeTopPos:game.templeEvent.altarEdgeTopPos,
         altarFrontPos:game.templeEvent.altarFrontPos,
         doorwayPos:game.templeEvent.doorwayPos,
         streetPos:game.templeEvent.streetPos,
@@ -763,7 +745,7 @@ function ps1ifyCharacterMaterials(root,tint,skin=HUMAN_SKIN){
     o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
     const mats=Array.isArray(o.material)?o.material:[o.material];
     const replaced=mats.map(src=>{
-      const wantsLit=skin.materialKind==='standard' || !!skin.normal || !!skin.roughness || !!skin.metal;
+      const wantsLit=skin.materialKind==='standard';
       const m=(skin.base && !wantsLit) ? new THREE.MeshBasicMaterial() : new THREE.MeshStandardMaterial();
       m.color.set('#d9c08a');
       if(src){
@@ -1244,19 +1226,10 @@ function loadGraffitiTextures(){
   return Promise.all(promises);
 }
 function loadFloorTexture(){
-  return new Promise(res=>{
-    imageLoader.load('asset/photos/floor/'+encodeURIComponent('螢幕擷取畫面 2026-05-13 231357.png'),
-      tex=>{
-        tex.colorSpace=THREE.SRGBColorSpace;
-        TEX.asphalt=pixelate(tex);
-        TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;
-        TEX.asphalt.repeat.set(5,5);
-        res(tex);
-      },
-      undefined,
-      ()=>res(null)
-    );
-  });
+  TEX.asphalt=makeAsphaltTexture();
+  TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;
+  TEX.asphalt.repeat.set(3,2);
+  return Promise.resolve(TEX.asphalt);
 }
 function loadRatPortraitTexture(){
   return new Promise(res=>{
@@ -2443,6 +2416,7 @@ function buildTempleComplex(xBase){
   registerBlocker(incenseTable,1.2);
   const altarPos=temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-8.8));
   const altarTopPos=temple.localToWorld(new THREE.Vector3(0,1.98,-8.8));
+  const altarEdgeTopPos=temple.localToWorld(new THREE.Vector3(0,1.98,-4.9));
   const altarFrontPos=temple.localToWorld(new THREE.Vector3(0,0.12,-3.8));
   const doorwayPos=temple.localToWorld(new THREE.Vector3(0,0.12,8.9));
   const streetPos=temple.localToWorld(new THREE.Vector3(0,0.12,14.8));
@@ -2458,6 +2432,7 @@ function buildTempleComplex(xBase){
     root:temple,
     altarPos,
     altarTopPos,
+    altarEdgeTopPos,
     altarFrontPos,
     doorwayPos,
     streetPos,
@@ -2649,6 +2624,7 @@ function spawnTempleIdol(plazaInfo){
   game.templeEvent.idolActor=idolActor;
   game.templeEvent.altarPos.copy(plazaInfo.altarPos);
   game.templeEvent.altarTopPos.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
+  game.templeEvent.altarEdgeTopPos.copy(plazaInfo.altarEdgeTopPos||plazaInfo.altarTopPos||plazaInfo.altarPos);
   game.templeEvent.altarFrontPos.copy(plazaInfo.altarFrontPos||plazaInfo.altarPos);
   game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
   game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
@@ -2705,6 +2681,7 @@ function generateTempleChunk(idx,xBase){
   game.templeEvent.arch=plazaInfo.arch||null;
   game.templeEvent.altarPos.copy(plazaInfo.altarPos);
   game.templeEvent.altarTopPos.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
+  game.templeEvent.altarEdgeTopPos.copy(plazaInfo.altarEdgeTopPos||plazaInfo.altarTopPos||plazaInfo.altarPos);
   game.templeEvent.altarFrontPos.copy(plazaInfo.altarFrontPos||plazaInfo.altarPos);
   game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
   game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
@@ -3416,6 +3393,9 @@ function setHostHeadMasked(host,masked){
   headBone.updateMatrixWorld(true);
 }
 function buildTempleIdolMaterial(src,mode='awake'){
+  if(mode==='awake'){
+    return Array.isArray(src)?src.map(m=>m.clone()):src.clone();
+  }
   const mat=new THREE.MeshBasicMaterial();
   mat.color.copy(src?.color||new THREE.Color('#ffffff'));
   if(src?.map){
@@ -3608,6 +3588,7 @@ function tickTempleEvent(dt){
     game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.22);
     const idolBaseY=idol.root.position.y;
     const altarFront=game.templeEvent.altarFrontPos;
+    const altarEdgeTop=game.templeEvent.altarEdgeTopPos;
     const altarTop=game.templeEvent.altarTopPos;
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
@@ -3615,18 +3596,23 @@ function tickTempleEvent(dt){
       const climb=clamp(game.templeEvent.swarmProgress*1.12-((phase/Math.PI)%0.12),0,1);
       const ringAngle=phase+gameTime*0.9;
       let targetX, targetZ, targetY;
-      if(climb<0.34){
-        const radius=lerp(6.8,2.1,climb/0.34);
+      if(climb<0.28){
+        const radius=lerp(6.8,2.4,climb/0.28);
         targetX=altarFront.x+Math.cos(ringAngle)*radius;
         targetZ=altarFront.z+Math.sin(ringAngle)*radius*0.55;
         targetY=GROUND_Y_OFFSET;
-      }else if(climb<0.68){
-        const lift=(climb-0.34)/0.34;
-        targetX=lerp(altarFront.x,altarTop.x,lift)+Math.cos(ringAngle)*1.6;
-        targetZ=lerp(altarFront.z,altarTop.z,lift)+Math.sin(ringAngle)*0.9;
-        targetY=lerp(GROUND_Y_OFFSET,altarTop.y+0.08,lift);
+      }else if(climb<0.5){
+        const lift=(climb-0.28)/0.22;
+        targetX=lerp(altarFront.x,altarEdgeTop.x,lift)+Math.cos(ringAngle)*0.8;
+        targetZ=lerp(altarFront.z,altarEdgeTop.z,lift)+Math.sin(ringAngle)*0.45;
+        targetY=lerp(GROUND_Y_OFFSET,altarEdgeTop.y+0.05,lift);
+      }else if(climb<0.74){
+        const topLift=(climb-0.5)/0.24;
+        targetX=lerp(altarEdgeTop.x,altarTop.x,topLift)+Math.cos(ringAngle)*1.05;
+        targetZ=lerp(altarEdgeTop.z,altarTop.z,topLift)+Math.sin(ringAngle)*0.65;
+        targetY=lerp(altarEdgeTop.y+0.05,altarTop.y+0.08,topLift);
       }else{
-        const crest=(climb-0.68)/0.32;
+        const crest=(climb-0.74)/0.26;
         const radius=lerp(1.8,0.9,crest);
         targetX=game.templeEvent.altarPos.x+Math.cos(ringAngle)*radius;
         targetZ=game.templeEvent.altarPos.z+Math.sin(ringAngle)*radius*0.5;
@@ -5657,18 +5643,23 @@ function tickFollowerRats(dt){
       const climb=clamp(game.templeEvent.swarmProgress*1.06,0,1);
       const angle=phase+gameTime*0.8;
       let targetX, targetZ, climbY;
-      if(climb<0.35){
-        const radius=lerp(6.6,1.8,climb/0.35);
+      if(climb<0.28){
+        const radius=lerp(6.6,2.0,climb/0.28);
         targetX=game.templeEvent.altarFrontPos.x+Math.cos(angle)*radius;
         targetZ=game.templeEvent.altarFrontPos.z+Math.sin(angle)*radius*0.6;
         climbY=GROUND_Y_OFFSET;
-      }else if(climb<0.7){
-        const step=(climb-0.35)/0.35;
-        targetX=lerp(game.templeEvent.altarFrontPos.x,game.templeEvent.altarTopPos.x,step)+Math.cos(angle)*1.25;
-        targetZ=lerp(game.templeEvent.altarFrontPos.z,game.templeEvent.altarTopPos.z,step)+Math.sin(angle)*0.7;
-        climbY=lerp(GROUND_Y_OFFSET,game.templeEvent.altarTopPos.y+0.06,step);
+      }else if(climb<0.52){
+        const step=(climb-0.28)/0.24;
+        targetX=lerp(game.templeEvent.altarFrontPos.x,game.templeEvent.altarEdgeTopPos.x,step)+Math.cos(angle)*0.7;
+        targetZ=lerp(game.templeEvent.altarFrontPos.z,game.templeEvent.altarEdgeTopPos.z,step)+Math.sin(angle)*0.42;
+        climbY=lerp(GROUND_Y_OFFSET,game.templeEvent.altarEdgeTopPos.y+0.05,step);
+      }else if(climb<0.74){
+        const topStep=(climb-0.52)/0.22;
+        targetX=lerp(game.templeEvent.altarEdgeTopPos.x,game.templeEvent.altarTopPos.x,topStep)+Math.cos(angle)*0.95;
+        targetZ=lerp(game.templeEvent.altarEdgeTopPos.z,game.templeEvent.altarTopPos.z,topStep)+Math.sin(angle)*0.58;
+        climbY=lerp(game.templeEvent.altarEdgeTopPos.y+0.05,game.templeEvent.altarTopPos.y+0.06,topStep);
       }else{
-        const top=(climb-0.7)/0.3;
+        const top=(climb-0.74)/0.26;
         const radius=lerp(1.6,0.85,top);
         targetX=idol.root.position.x+Math.cos(angle)*radius;
         targetZ=idol.root.position.z+Math.sin(angle)*radius*0.45;
