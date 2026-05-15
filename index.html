@@ -2109,9 +2109,11 @@ function buildTempleRoofTier({width=10,depth=5,y=0,z=0,roofColor='#2f8f86',trimC
 function buildTemplePaifang(x,z=0){
   const root=new THREE.Group();
   root.position.set(x,0,z);
+  root.rotation.y=-Math.PI/2;
   const stoneMat=new THREE.MeshBasicMaterial({color:'#b8b0a6'});
   const redMat=new THREE.MeshBasicMaterial({color:'#cb5e56'});
   const goldMat=new THREE.MeshBasicMaterial({color:'#e7c56e'});
+  const jadeMat=new THREE.MeshBasicMaterial({color:'#6ec7b8'});
   for(const px of [-4.5,-1.4,1.4,4.5]){
     const base=new THREE.Mesh(new THREE.BoxGeometry(0.86,0.46,0.86),stoneMat);
     base.position.set(px,0.23,0);root.add(base);
@@ -2130,6 +2132,16 @@ function buildTemplePaifang(x,z=0){
   root.add(roof1);
   const roof2=buildTempleRoofTier({width:7.2,depth:2.1,y:7.48,roofColor:'#c97b66',trimColor:'#8ad2c6',ornamentColor:'#e7c46f'});
   root.add(roof2);
+  for(const px of [-2.95,0,2.95]){
+    const knot=new THREE.Mesh(new THREE.BoxGeometry(1.18,0.74,0.14),jadeMat);
+    knot.position.set(px,6.25,0.36);root.add(knot);
+    const inner=new THREE.Mesh(new THREE.BoxGeometry(0.78,0.34,0.18),goldMat);
+    inner.position.set(px,6.25,0.43);root.add(inner);
+  }
+  for(const px of [-4.48,-1.4,1.4,4.48]){
+    const lion=new THREE.Mesh(new THREE.SphereGeometry(0.18,8,6),goldMat);
+    lion.position.set(px,5.92,0.42);root.add(lion);
+  }
   addChunkObject(root);
   return root;
 }
@@ -2138,7 +2150,7 @@ function buildTempleComplex(xBase){
   const tileTex=TEX.pavement.clone();tileTex.repeat.set(12,8);pixelate(tileTex);
   const court=new THREE.Mesh(
     new THREE.PlaneGeometry(CHUNK_SIZE*0.96,36),
-    new THREE.MeshBasicMaterial({map:tileTex,color:'#b6b5ad'})
+    new THREE.MeshBasicMaterial({map:tileTex,color:'#c7c3b7'})
   );
   court.rotation.x=-Math.PI/2;
   court.position.set(xBase+CHUNK_SIZE*0.5,0.03,0);
@@ -2153,6 +2165,8 @@ function buildTempleComplex(xBase){
       plaza.add(lantern);
       const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,1.8,6),new THREE.MeshBasicMaterial({color:'#4e4a4f'}));
       pole.position.set(lantern.position.x,0.9,side*8.4);plaza.add(pole);
+      const trim=new THREE.Mesh(new THREE.BoxGeometry(0.38,0.1,0.38),new THREE.MeshBasicMaterial({color:'#f0d37b'}));
+      trim.position.set(lantern.position.x,1.58,side*8.4);plaza.add(trim);
     }
   }
   addChunkObject(plaza);
@@ -2160,30 +2174,52 @@ function buildTempleComplex(xBase){
 
   const temple=new THREE.Group();
   temple.position.set(xBase+18.0,0,0);
+  temple.rotation.y=-Math.PI/2;
   const stoneMat=new THREE.MeshBasicMaterial({color:'#b7b0a7'});
-  const tealMat=new THREE.MeshBasicMaterial({color:'#2f9c90'});
   const goldMat=new THREE.MeshBasicMaterial({color:'#ddb86a'});
   const redMat=new THREE.MeshBasicMaterial({color:'#b94644'});
-  const darkMat=new THREE.MeshBasicMaterial({color:'#2a2422'});
+  const warmStoneMat=new THREE.MeshBasicMaterial({color:'#d0c0a3'});
+  const jadeMat=new THREE.MeshBasicMaterial({color:'#6ebfb4'});
+  const creamMat=new THREE.MeshBasicMaterial({color:'#efe1bd'});
+  const charcoalMat=new THREE.MeshBasicMaterial({color:'#3a2d22'});
   const steps=new THREE.Mesh(new THREE.BoxGeometry(13.8,0.82,7.4),stoneMat);
   steps.position.set(0,0.41,2.0);temple.add(steps);
   const forecourt=new THREE.Mesh(new THREE.BoxGeometry(16.8,0.28,10.6),stoneMat);
   forecourt.position.set(0,0.14,4.9);temple.add(forecourt);
-  const hall=new THREE.Mesh(new THREE.BoxGeometry(12.6,7.8,8.6),new THREE.MeshBasicMaterial({color:'#d1c1a4'}));
-  hall.position.set(0,4.1,-0.2);temple.add(hall);
+  const hallFloor=new THREE.Mesh(new THREE.BoxGeometry(11.8,0.22,8.0),warmStoneMat);
+  hallFloor.position.set(0,0.18,-0.4);temple.add(hallFloor);
+  const backWall=new THREE.Mesh(new THREE.BoxGeometry(11.6,6.8,0.66),warmStoneMat);
+  backWall.position.set(0,3.46,-4.2);temple.add(backWall);
+  const sideWallLeft=new THREE.Mesh(new THREE.BoxGeometry(0.68,6.8,8.0),warmStoneMat);
+  sideWallLeft.position.set(-5.45,3.46,-0.4);temple.add(sideWallLeft);
+  const sideWallRight=sideWallLeft.clone();sideWallRight.position.x=5.45;temple.add(sideWallRight);
+  const frontWingLeft=new THREE.Mesh(new THREE.BoxGeometry(3.66,6.8,0.68),warmStoneMat);
+  frontWingLeft.position.set(-3.98,3.46,3.7);temple.add(frontWingLeft);
+  const frontWingRight=frontWingLeft.clone();frontWingRight.position.x=3.98;temple.add(frontWingRight);
+  const lintel=new THREE.Mesh(new THREE.BoxGeometry(4.6,1.8,0.82),warmStoneMat);
+  lintel.position.set(0,5.5,3.68);temple.add(lintel);
+  const doorLeft=new THREE.Mesh(new THREE.BoxGeometry(1.3,4.7,0.14),charcoalMat);
+  doorLeft.position.set(-1.08,2.45,3.42);doorLeft.rotation.y=0.36;temple.add(doorLeft);
+  const doorRight=doorLeft.clone();doorRight.position.x=1.08;doorRight.rotation.y=-0.36;temple.add(doorRight);
+  const doorTop=new THREE.Mesh(new THREE.BoxGeometry(4.1,0.34,0.2),goldMat);
+  doorTop.position.set(0,4.92,3.52);temple.add(doorTop);
   const sideLeft=new THREE.Mesh(new THREE.BoxGeometry(3.6,6.2,6.2),new THREE.MeshBasicMaterial({color:'#ccc0a9'}));
   sideLeft.position.set(-8.6,3.3,0.1);temple.add(sideLeft);
   const sideRight=sideLeft.clone();sideRight.position.x=8.6;temple.add(sideRight);
-  const doorway=new THREE.Mesh(new THREE.BoxGeometry(3.6,4.7,0.48),darkMat);
-  doorway.position.set(0,2.6,4.12);temple.add(doorway);
   const roofMain=buildTempleRoofTier({width:15.2,depth:10.4,y:8.2,roofColor:'#2a9789',trimColor:'#efca72',ornamentColor:'#d44349'});
   temple.add(roofMain);
   const roofUpper=buildTempleRoofTier({width:9.8,depth:7.0,y:11.2,roofColor:'#37a699',trimColor:'#f2d488',ornamentColor:'#d85252'});
   temple.add(roofUpper);
   const roofTop=buildTempleRoofTier({width:5.4,depth:3.8,y:13.7,roofColor:'#42b1a2',trimColor:'#f2ddb2',ornamentColor:'#de5e58'});
   temple.add(roofTop);
-  const plaque=buildTemplePlaque('鼠王聖殿',4.2,1.1);
+  const plaque=buildTemplePlaque('RAT TEMPLE',4.2,1.1);
   plaque.position.set(0,8.55,4.56);temple.add(plaque);
+  for(const px of [-4.9,-2.45,0,2.45,4.9]){
+    const relief=new THREE.Mesh(new THREE.BoxGeometry(1.9,0.48,0.24),jadeMat);
+    relief.position.set(px,7.28,4.38);temple.add(relief);
+    const goldInset=new THREE.Mesh(new THREE.BoxGeometry(1.28,0.16,0.28),goldMat);
+    goldInset.position.set(px,7.28,4.52);temple.add(goldInset);
+  }
   for(const sx of [-1,1]){
     for(const sz of [-1,1]){
       const tower=new THREE.Mesh(new THREE.BoxGeometry(2.2,8.8,2.2),redMat);
@@ -2197,27 +2233,80 @@ function buildTempleComplex(xBase){
     col.position.set(px,3.3,3.55);temple.add(col);
     const cap=new THREE.Mesh(new THREE.BoxGeometry(0.72,0.3,0.72),goldMat);
     cap.position.set(px,6.68,3.55);temple.add(cap);
+    const plinth=new THREE.Mesh(new THREE.BoxGeometry(0.86,0.34,0.86),stoneMat);
+    plinth.position.set(px,0.17,3.55);temple.add(plinth);
   }
   for(const sx of [-1,1]){
     const wall=new THREE.Mesh(new THREE.BoxGeometry(4.8,4.0,0.9),new THREE.MeshBasicMaterial({color:'#aca59c'}));
     wall.position.set(sx*5.5,2.1,4.25);temple.add(wall);
   }
+  for(const sx of [-1,1]){
+    for(let i=0;i<3;i++){
+      const windowPanel=new THREE.Mesh(new THREE.BoxGeometry(1.28,2.1,0.16),creamMat);
+      windowPanel.position.set(sx*5.12,2.55,-2.55+i*2.15);temple.add(windowPanel);
+      const slatV=new THREE.Mesh(new THREE.BoxGeometry(0.12,1.82,0.2),jadeMat);
+      slatV.position.set(sx*5.04,2.55,-2.55+i*2.15);temple.add(slatV);
+      const slatH=new THREE.Mesh(new THREE.BoxGeometry(0.92,0.12,0.2),goldMat);
+      slatH.position.set(sx*5.04,2.55,-2.55+i*2.15);temple.add(slatH);
+    }
+  }
+  for(let i=0;i<6;i++){
+    const beamBand=new THREE.Mesh(new THREE.BoxGeometry(1.48,0.28,0.26),i%2?jadeMat:goldMat);
+    beamBand.position.set(-3.85+i*1.54,6.08,4.46);temple.add(beamBand);
+  }
+  for(const sx of [-1,1]){
+    for(let i=0;i<4;i++){
+      const eaveCharm=new THREE.Mesh(new THREE.SphereGeometry(0.14,8,6),goldMat);
+      eaveCharm.position.set(sx*(2.6+i*1.12),8.92,4.92);temple.add(eaveCharm);
+    }
+  }
+  const ridgeBase=new THREE.Mesh(new THREE.BoxGeometry(7.4,0.24,0.28),goldMat);
+  ridgeBase.position.set(0,14.62,0.1);temple.add(ridgeBase);
+  for(const px of [-2.8,-1.4,0,1.4,2.8]){
+    const beast=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.68,8),goldMat);
+    beast.position.set(px,14.98,0.1);
+    beast.rotation.z=(px===0?0:Math.sign(px)*0.28);
+    temple.add(beast);
+  }
+  for(const sx of [-1,1]){
+    for(let i=0;i<4;i++){
+      const lantern=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.2,0.64,10),new THREE.MeshBasicMaterial({color:'#c63737'}));
+      lantern.position.set(sx*(1.9+i*1.55),3.95,2.72);temple.add(lantern);
+      const tassel=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.34,0.08),goldMat);
+      tassel.position.set(lantern.position.x,3.42,2.72);temple.add(tassel);
+    }
+  }
   const altar=new THREE.Mesh(new THREE.BoxGeometry(4.2,1.2,2.8),new THREE.MeshBasicMaterial({color:'#734d2d'}));
   altar.position.set(0,0.62,-0.6);temple.add(altar);
+  const altarCloth=new THREE.Mesh(new THREE.BoxGeometry(4.36,0.18,2.94),redMat);
+  altarCloth.position.set(0,1.16,-0.58);temple.add(altarCloth);
+  const incenseTable=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.7,1.0),charcoalMat);
+  incenseTable.position.set(0,0.46,1.35);temple.add(incenseTable);
   for(const sx of [-1,1]){
     const brazier=new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.48,0.72,10),goldMat);
     brazier.position.set(sx*2.5,0.72,2.0);temple.add(brazier);
   }
+  const dragonLeft=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.38,0.22),goldMat);
+  dragonLeft.position.set(-4.2,8.94,4.92);dragonLeft.rotation.z=-0.22;temple.add(dragonLeft);
+  const dragonRight=dragonLeft.clone();dragonRight.position.x=4.2;dragonRight.rotation.z=0.22;temple.add(dragonRight);
   addChunkObject(temple);
-  registerBlocker(steps,6.8);
-  registerBlocker(forecourt,8.3);
   registerBlocker(sideLeft,1.9);
   registerBlocker(sideRight,1.9);
+  registerBlocker(backWall,0.8);
+  registerBlocker(sideWallLeft,0.8);
+  registerBlocker(sideWallRight,0.8);
+  registerBlocker(frontWingLeft,0.8);
+  registerBlocker(frontWingRight,0.8);
+  registerBlocker(lintel,0.8);
+  registerBlocker(altar,2.0);
+  registerBlocker(incenseTable,1.2);
+  const altarPos=temple.localToWorld(new THREE.Vector3(0,1.22,-0.6));
+  const doorwayPos=temple.localToWorld(new THREE.Vector3(0,0.1,4.7));
   return {
     root:temple,
-    altarPos:new THREE.Vector3(xBase+18.0,1.22,-0.6),
-    doorwayX:xBase+18.0,
-    doorwayZ:4.12
+    altarPos,
+    doorwayX:doorwayPos.x,
+    doorwayZ:doorwayPos.z
   };
 }
 
@@ -5248,6 +5337,19 @@ function renderMinimap(){
   if(!player||!minimapCtx)return;
   const w=minimapCanvas.width,h=minimapCanvas.height;
   const cx=w*0.5,cy=h*0.5,r=Math.min(w,h)*0.5-6;
+  const mapScale=3.2;
+  const playerX=player.root.position.x;
+  const playerZ=player.root.position.z;
+  const templePos=game.templeEvent?.altarPos?.lengthSq?.()>0
+    ? game.templeEvent.altarPos
+    : new THREE.Vector3(TEMPLE_CHUNK_IDX*CHUNK_SIZE+18.6,0,0);
+  const toMap=(wx,wz)=>{
+    const relX=(wx-playerX)/mapScale;
+    const relY=-(wz-playerZ)/mapScale;
+    const dx=Math.max(-r+10,Math.min(r-10,relX));
+    const dy=Math.max(-r+10,Math.min(r-10,relY));
+    return {x:cx+dx,y:cy+dy};
+  };
   minimapCtx.clearRect(0,0,w,h);
   minimapCtx.save();
   minimapCtx.beginPath();
@@ -5266,44 +5368,60 @@ function renderMinimap(){
     minimapCtx.lineTo(w,cy+i*18);
     minimapCtx.stroke();
   }
-  const scale=0.42;
-  const playerX=player.root.position.x;
-  const playerZ=player.root.position.z;
-  minimapCtx.strokeStyle='rgba(255,233,160,0.28)';
-  minimapCtx.lineWidth=12;
+  minimapCtx.strokeStyle='rgba(255,233,160,0.26)';
+  minimapCtx.lineWidth=14;
+  minimapCtx.lineCap='round';
   minimapCtx.beginPath();
-  minimapCtx.moveTo(cx-(CHUNK_WINDOW*CHUNK_SIZE)*scale,cy-ALLEY_Z_MAX*scale*0.38);
-  minimapCtx.lineTo(cx+((TEMPLE_CHUNK_IDX*CHUNK_SIZE)-playerX+CHUNK_SIZE)*scale,cy-ALLEY_Z_MAX*scale*0.38);
-  minimapCtx.moveTo(cx-(CHUNK_WINDOW*CHUNK_SIZE)*scale,cy+ALLEY_Z_MAX*scale*0.38);
-  minimapCtx.lineTo(cx+((TEMPLE_CHUNK_IDX*CHUNK_SIZE)-playerX+CHUNK_SIZE)*scale,cy+ALLEY_Z_MAX*scale*0.38);
-  minimapCtx.stroke();
-  const templeWorldX=TEMPLE_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE*0.78;
-  const templeWorldZ=0;
-  let tx=cx+(templeWorldX-playerX)*scale;
-  let ty=cy+(templeWorldZ-playerZ)*scale;
-  const dx=tx-cx,dy=ty-cy;
-  const d=Math.hypot(dx,dy);
-  if(d>r-12){
-    const k=(r-12)/Math.max(0.001,d);
-    tx=cx+dx*k;ty=cy+dy*k;
+  for(let ix=-CHUNK_WINDOW;ix<=TEMPLE_CHUNK_IDX+1;ix++){
+    const worldX=ix*CHUNK_SIZE;
+    const a=toMap(worldX,ALLEY_Z_MIN+1.8);
+    const b=toMap(worldX,ALLEY_Z_MAX-1.8);
+    minimapCtx.moveTo(a.x,a.y);
+    minimapCtx.lineTo(b.x,b.y);
   }
+  minimapCtx.stroke();
+  minimapCtx.strokeStyle='rgba(111,225,255,0.22)';
+  minimapCtx.lineWidth=3;
+  minimapCtx.beginPath();
+  for(let ix=-CHUNK_WINDOW;ix<=TEMPLE_CHUNK_IDX+1;ix+=2){
+    const a=toMap(ix*CHUNK_SIZE,-1.6);
+    const b=toMap(ix*CHUNK_SIZE+CHUNK_SIZE,1.6);
+    minimapCtx.moveTo(a.x,a.y);
+    minimapCtx.lineTo(b.x,b.y);
+  }
+  minimapCtx.stroke();
+  const templeMap=toMap(templePos.x,templePos.z);
+  const dx=templeMap.x-cx,dy=templeMap.y-cy;
+  const dist=Math.hypot(templePos.x-playerX,templePos.z-playerZ);
+  const pulse=1+Math.sin(performance.now()*0.008)*0.18;
+  const tx=templeMap.x;
+  const ty=templeMap.y;
+  minimapCtx.strokeStyle='rgba(255,92,76,0.95)';
+  minimapCtx.lineWidth=2;
+  minimapCtx.beginPath();
+  minimapCtx.arc(tx,ty,9*pulse,0,Math.PI*2);
+  minimapCtx.stroke();
   minimapCtx.fillStyle='rgba(255,97,87,0.95)';
   minimapCtx.beginPath();
   minimapCtx.arc(tx,ty,6,0,Math.PI*2);
   minimapCtx.fill();
   minimapCtx.fillStyle='rgba(255,244,204,0.92)';
   minimapCtx.font='bold 12px monospace';
-  minimapCtx.fillText('TEMPLE',Math.max(8,tx-20),Math.max(14,ty-10));
+  minimapCtx.fillText('TEMPLE',Math.max(8,tx-22),Math.max(14,ty-12));
+  minimapCtx.fillText(`${Math.round(dist)}m`,Math.max(8,tx-12),Math.min(h-6,ty+18));
   minimapCtx.translate(cx,cy);
-  minimapCtx.rotate(-player.yaw);
+  minimapCtx.rotate(player.yaw);
   minimapCtx.fillStyle='rgba(255,236,150,0.98)';
   minimapCtx.beginPath();
-  minimapCtx.moveTo(0,-10);
-  minimapCtx.lineTo(7,8);
-  minimapCtx.lineTo(0,4);
-  minimapCtx.lineTo(-7,8);
+  minimapCtx.moveTo(0,-11);
+  minimapCtx.lineTo(7.5,8);
+  minimapCtx.lineTo(0,4.2);
+  minimapCtx.lineTo(-7.5,8);
   minimapCtx.closePath();
   minimapCtx.fill();
+  minimapCtx.strokeStyle='rgba(30,18,8,0.88)';
+  minimapCtx.lineWidth=1.5;
+  minimapCtx.stroke();
   minimapCtx.restore();
   minimapCtx.strokeStyle='rgba(255,242,193,0.9)';
   minimapCtx.lineWidth=3;
