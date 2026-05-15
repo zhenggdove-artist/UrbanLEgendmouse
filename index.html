@@ -2458,6 +2458,9 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
     || headCandidates.find(o=>!((o.name||'').toLowerCase().includes('end')))
     || headCandidates[0]
     || null;
+  if(headBone && !headBone.userData.originalScale){
+    headBone.userData.originalScale=headBone.scale.clone();
+  }
   const mixer=new THREE.AnimationMixer(root);
   const actions={};
   if(clips){
@@ -2791,6 +2794,19 @@ function syncParasiteOverlay(host,dt,mx=0,my=0){
   }
   host.parasiteOverlay.material.needsUpdate=true;
 }
+function setHostHeadMasked(host,masked){
+  const headBone=host?.inst?.headBone;
+  if(!headBone)return;
+  if(!headBone.userData.originalScale){
+    headBone.userData.originalScale=headBone.scale.clone();
+  }
+  if(masked){
+    headBone.scale.setScalar(0.001);
+  }else{
+    headBone.scale.copy(headBone.userData.originalScale);
+  }
+  headBone.updateMatrixWorld(true);
+}
 function spawnChunkHuman(chunk,x,z,role='wanderer',groupMeta=null){
   const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
   if(!h)return null;
@@ -2936,6 +2952,7 @@ function killHost(host){
   host.dead=true;
   host.controllable=false;
   host.parasitised=false;
+  setHostHeadMasked(host,false);
   host.shoulderRat.visible=false;
   if(host.parasiteOverlay) host.parasiteOverlay.visible=false;
   host.attackCooldown=0;
@@ -3888,6 +3905,7 @@ function enterHost(rat,host){
   host.panicTurnTimer=0;
   host.attackQueued=false;
   host.controllable=true;host.parasitised=true;host.shoulderRat.visible=false;
+  setHostHeadMasked(host,true);
   if(host.parasiteOverlay){
     host.parasiteOverlay.material.map=PLAYER_RAT_FRAMES.idle[0]||rat.sprite?.material?.map||null;
     host.parasiteOverlay.material.needsUpdate=true;
@@ -3908,7 +3926,7 @@ function enterHost(rat,host){
 function exitHost(){
   const host=game.parasitisedHost;if(!host)return;
   if(host.heldProp) throwHeldProp(host,0.35);
-  host.controllable=false;host.parasitised=false;host.shoulderRat.visible=false;if(host.parasiteOverlay) host.parasiteOverlay.visible=false;host.wanderTimer=rand(0.5,2);host.throwCharging=false;host.throwCharge=0;host.actionTimer=0;host.actionName=null;
+  host.controllable=false;host.parasitised=false;setHostHeadMasked(host,false);host.shoulderRat.visible=false;if(host.parasiteOverlay) host.parasiteOverlay.visible=false;host.wanderTimer=rand(0.5,2);host.throwCharging=false;host.throwCharge=0;host.actionTimer=0;host.actionName=null;
   releaseRatFromHost(host,{dropSpeed:-0.7,hint:'Back in the rat.'});
   console.log('[parasitism] host released');
 }
