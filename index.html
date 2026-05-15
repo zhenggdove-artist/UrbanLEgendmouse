@@ -6265,7 +6265,9 @@ async function init(){
       idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,cleanBoyFBX,
       baseColourTexBoy,normalTexBoy,roughTexBoy,metalTexBoy,
       idleSchoolgirlFBX,walkSchoolgirlFBX,runSchoolgirlFBX,jumpSchoolgirlFBX,kickSchoolgirlFBX,cleanSchoolgirlFBX,
-      baseColourTexSchoolgirl,normalTexSchoolgirl,roughTexSchoolgirl,metalTexSchoolgirl
+      baseColourTexSchoolgirl,normalTexSchoolgirl,roughTexSchoolgirl,metalTexSchoolgirl,
+      idleMumFBX,walkMumFBX,runMumFBX,jumpMumFBX,kickMumFBX,cleanMumFBX,
+      baseColourTexMum,normalTexMum,roughTexMum,metalTexMum
     ]=await Promise.all([
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
@@ -6308,7 +6310,17 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/basecolor_1024.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_metallic.JPEG')
+      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/發呆.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/跑動.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/跑動.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/跳躍.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/清潔動作.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_metallic.JPEG')
     ]);
     HUMAN_VARIANTS.length=0;
     HUMAN_VARIANTS.push(makeHumanVariant({
@@ -6330,6 +6342,11 @@ async function init(){
       source:idleSchoolgirlFBX,
       idle:idleSchoolgirlFBX,walk:walkSchoolgirlFBX,run:runSchoolgirlFBX,jump:jumpSchoolgirlFBX,kick:kickSchoolgirlFBX,pickup:null,clean:cleanSchoolgirlFBX,
       skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleMumFBX,
+      idle:idleMumFBX,walk:walkMumFBX,run:runMumFBX,jump:jumpMumFBX,kick:kickMumFBX,pickup:null,clean:cleanMumFBX,
+      skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
     }));
     characterSource=HUMAN_VARIANTS[0].source;
     HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
