@@ -695,14 +695,6 @@ function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
     }
   };
 }
-function extractFirstMeshMaterial(root){
-  let found=null;
-  root?.traverse?.(o=>{
-    if(found || !o.isMesh) return;
-    found=Array.isArray(o.material)?o.material[0]:o.material;
-  });
-  return found;
-}
 function loadTempleIdolAssetsLegacy(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
@@ -743,20 +735,17 @@ function loadTempleIdolAssets(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
     loadFBXAsync('asset/神像/Orc Idle.fbx'),
-    loadFBXAsync('asset/神像/Walk.fbx'),
-    loadGLTFAsync('asset/神像/神像_optimized.glb')
-  ]).then(([idolIdleFBX,idolWalkFBX,idolMaterialGLB])=>{
+    loadFBXAsync('asset/神像/Walk.fbx')
+  ]).then(([idolIdleFBX,idolWalkFBX])=>{
     templeIdolSource=idolIdleFBX;
     templeIdolIdleSource=idolIdleFBX;
     templeIdolWalkSource=idolWalkFBX;
     templeIdolIdleClip=idolIdleFBX.animations?.[0]||null;
     templeIdolWalkClip=idolWalkFBX.animations?.[0]||idolIdleFBX.animations?.[0]||null;
-    const donorMat=extractFirstMeshMaterial(idolMaterialGLB.scene);
-    TEMPLE_IDOL_SKIN.base=donorMat?.map||null;
-    TEMPLE_IDOL_SKIN.normal=donorMat?.normalMap||null;
-    TEMPLE_IDOL_SKIN.roughness=donorMat?.roughnessMap||null;
-    TEMPLE_IDOL_SKIN.metal=donorMat?.metalnessMap||null;
-    TEMPLE_IDOL_SKIN.flipY=false;
+    TEMPLE_IDOL_SKIN.base=null;
+    TEMPLE_IDOL_SKIN.normal=null;
+    TEMPLE_IDOL_SKIN.roughness=null;
+    TEMPLE_IDOL_SKIN.metal=null;
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({
         altarPos:game.templeEvent.altarPos,
@@ -830,10 +819,10 @@ function ps1ifyCharacterMaterials(root,tint,skin=HUMAN_SKIN){
       if(skin.roughness && 'roughnessMap' in m) m.roughnessMap=skin.roughness;
       if(skin.metal && 'metalnessMap' in m) m.metalnessMap=skin.metal;
       const flipY=skin.flipY ?? true;
-      if(m.map) m.map.flipY=flipY;
-      if(m.normalMap) m.normalMap.flipY=flipY;
-      if(m.roughnessMap) m.roughnessMap.flipY=flipY;
-      if(m.metalnessMap) m.metalnessMap.flipY=flipY;
+      if(skin.base && m.map) m.map.flipY=flipY;
+      if(skin.normal && m.normalMap) m.normalMap.flipY=flipY;
+      if(skin.roughness && m.roughnessMap) m.roughnessMap.flipY=flipY;
+      if(skin.metal && m.metalnessMap) m.metalnessMap.flipY=flipY;
       if('roughness' in m) m.roughness=(m.roughnessMap||m.roughness===undefined)?0.95:(m.roughness??0.95);
       if('metalness' in m) m.metalness=(m.metalnessMap||m.metalness===undefined)?0.02:(m.metalness??0.02);
       if(skin.base){
@@ -2308,7 +2297,7 @@ function buildTempleComplex(xBase){
   const plaza=new THREE.Group();
   const tileTex=(TEX.pavement||TEX.asphalt).clone();tileTex.wrapS=tileTex.wrapT=THREE.RepeatWrapping;tileTex.repeat.set(12,8);pixelate(tileTex);
   const court=new THREE.Mesh(
-    new THREE.PlaneGeometry(CHUNK_SIZE*0.96,36),
+    new THREE.PlaneGeometry(CHUNK_SIZE+1.4,36),
     new THREE.MeshBasicMaterial({map:tileTex,color:'#bdb8ae',side:THREE.DoubleSide})
   );
   court.rotation.x=-Math.PI/2;
@@ -3044,6 +3033,15 @@ function ensureChunksAroundX(x){
   if(localX<CHUNK_PREFETCH_MARGIN) minChunk-=CHUNK_PREFETCH_EXTRA;
   for(let i=minChunk;i<=maxChunk;i++){
     if(!chunks.has(i)) generateChunk(i);
+  }
+  const activeStreetChunks=[...chunks.keys()].filter(idx=>idx!==TEMPLE_CHUNK_IDX);
+  const leftmostChunk=activeStreetChunks.length?Math.min(...activeStreetChunks):minChunk;
+  const leftmostEdge=leftmostChunk*CHUNK_SIZE;
+  if(x-leftmostEdge<CHUNK_SIZE*2.5){
+    for(let i=1;i<=CHUNK_PREFETCH_EXTRA;i++){
+      const nextIdx=leftmostChunk-i;
+      if(!chunks.has(nextIdx)) generateChunk(nextIdx);
+    }
   }
   const keepBehind=CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA;
   const keepAhead=CHUNK_WINDOW_AHEAD;
@@ -5267,7 +5265,8 @@ function updatePlayer(dt){
   const mdx=-iy*fwdX+ix*rightX;
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
-  const targetSpeed=isHost?(HOST_MAX_SPEED*(game.testMode?3:1)):PLAYER_MAX_SPEED;
+  const speedMultiplier=game.testMode?10:1;
+  const targetSpeed=(isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED)*speedMultiplier;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
   const prevX=ent.root.position.x, prevZ=ent.root.position.z;
   if(ent.kind==='rat'&&ent.ratAnim?.biteTimer>0){
@@ -5327,7 +5326,8 @@ function updatePlayer(dt){
     : (ent.baseY??0);
   if(inputFlags.jump){
     if(!ent.isAir){
-      ent.vy=isHost?JUMP_VEL*0.92:JUMP_VEL;
+      const jumpMultiplier=game.testMode?1:2;
+      ent.vy=(isHost?JUMP_VEL*0.92:JUMP_VEL)*jumpMultiplier;
       ent.isAir=true;
     }
     inputFlags.jump=false;
