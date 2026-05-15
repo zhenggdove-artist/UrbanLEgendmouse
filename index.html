@@ -593,7 +593,7 @@ const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
-const TEMPLE_IDOL_SPAWN_Y_OFFSET=0.2;
+const TEMPLE_IDOL_SPAWN_Y_OFFSET=-0.8;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
@@ -2607,14 +2607,14 @@ function tryLoopTempleEntity(ent,prevX,prevZ){
     const moveForward=moveX*srcForward.x+moveZ*srcForward.z;
     if(moveForward<-0.001) continue;
     const rightOffset=dx*srcRight.x+dz*srcRight.z;
-    const dstForward=yawToForwardVector(dst.frontYaw);
-    const dstRight=yawToRightVector(dst.frontYaw);
+    const dstForward=yawToForwardVector(dst.rearYaw);
+    const dstRight=yawToRightVector(dst.rearYaw);
     pos.set(
-      dst.frontStreetPos.x+dstForward.x*forwardOffset+dstRight.x*rightOffset,
+      dst.rearStreetPos.x+dstForward.x*forwardOffset+dstRight.x*rightOffset,
       pos.y,
-      dst.frontStreetPos.z+dstForward.z*forwardOffset+dstRight.z*rightOffset
+      dst.rearStreetPos.z+dstForward.z*forwardOffset+dstRight.z*rightOffset
     );
-    const yawDelta=dst.frontYaw-src.rearYaw;
+    const yawDelta=dst.rearYaw-src.rearYaw;
     ent.root.rotation.y+=yawDelta;
     ent.yaw=(ent.yaw??ent.root.rotation.y)+yawDelta;
     if(ent.targetPos?.set) ent.targetPos.set(pos.x,ent.targetPos.y??0,pos.z);
