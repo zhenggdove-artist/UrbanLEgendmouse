@@ -5104,10 +5104,7 @@ function softClampZ(p){
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function softClampTempleX(p){
-  const templeRoot=game.templeEvent?.root;
-  if(!templeRoot)return;
-  const minTempleX=templeRoot.position.x-20.2;
-  if(p.x<minTempleX)p.x=minTempleX;
+  return;
 }
 function sampleSupportHeight(ent,x,z,currentY){
   let support=(ent.baseY??0)+GROUND_Y_OFFSET;
