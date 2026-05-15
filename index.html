@@ -575,6 +575,8 @@ const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
 const BROTH_POOL_GROWTH=2.8;
+const TEMPLE_CHUNK_IDX=8;
+const TEMPLE_SWARM_TRIGGER=1000;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
@@ -593,11 +595,18 @@ const game={
   fx:[],
   chaosSpots:[],
   deathSpots:[],
+  virtualRats:0,
+  testMode:false,
+  templeEvent:{
+    root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
+    started:false,awakened:false,swarmProgress:0,swarmSprites:[],glowCooldown:0
+  },
   ratCityMode:false,
   ratCityAngle:0,
   leaderboard:[]
 };
 let player=null;
+function getTotalRatCount(){ return game.rats.length + (game.virtualRats||0); }
 
 // ===== FBX loaders — the actual skeletal animations =====
 // Running Crawl.fbx → rat crawl cycle. Fast Run.fbx → human run cycle.
@@ -613,6 +622,8 @@ let characterSource=null;
 const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
 const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null};
 const HUMAN_VARIANTS=[];
+const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null};
+let templeIdolSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
 
 function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
@@ -1209,6 +1220,11 @@ function freezeStaticObject(root){
 }
 function addChunkObject(root){
   freezeStaticObject(root);
+  scene.add(root);
+  if(_activeChunk)_activeChunk.meshes.push(root);
+  return root;
+}
+function addDynamicChunkObject(root){
   scene.add(root);
   if(_activeChunk)_activeChunk.meshes.push(root);
   return root;
@@ -1985,6 +2001,193 @@ function buildBackBuildingRows(xBase){
   }
 }
 
+function makeTemplePlaqueTexture(text,bg='#5f2816',fg='#f5d07a'){
+  const c=document.createElement('canvas');c.width=512;c.height=128;
+  const cx=c.getContext('2d');
+  cx.fillStyle=bg;cx.fillRect(0,0,c.width,c.height);
+  const grad=cx.createLinearGradient(0,0,0,c.height);
+  grad.addColorStop(0,'rgba(255,255,255,0.22)');
+  grad.addColorStop(1,'rgba(0,0,0,0.18)');
+  cx.fillStyle=grad;cx.fillRect(0,0,c.width,c.height);
+  cx.strokeStyle='#f4dfb4';cx.lineWidth=8;cx.strokeRect(10,10,c.width-20,c.height-20);
+  cx.font='bold 58px serif';
+  cx.textAlign='center';cx.textBaseline='middle';
+  cx.fillStyle=fg;
+  cx.shadowColor='rgba(255,220,120,0.45)';cx.shadowBlur=10;
+  cx.fillText(text,c.width/2,c.height/2+4);
+  return pixelate(new THREE.CanvasTexture(c));
+}
+function buildTemplePlaque(text,w=2.8,h=0.88){
+  return new THREE.Mesh(
+    new THREE.PlaneGeometry(w,h),
+    new THREE.MeshBasicMaterial({map:makeTemplePlaqueTexture(text),transparent:false,side:THREE.DoubleSide})
+  );
+}
+function buildTempleRoofTier({width=10,depth=5,y=0,z=0,roofColor='#2f8f86',trimColor='#d39a3e',ornamentColor='#d9484e',rise=1.3}={}){
+  const roof=new THREE.Group();
+  roof.position.set(0,y,z);
+  const main=new THREE.Mesh(
+    new THREE.BoxGeometry(width,0.42,depth),
+    new THREE.MeshBasicMaterial({color:roofColor})
+  );
+  roof.add(main);
+  const frontEave=new THREE.Mesh(
+    new THREE.BoxGeometry(width*1.06,0.16,0.56),
+    new THREE.MeshBasicMaterial({color:trimColor})
+  );
+  frontEave.position.set(0,-0.12,depth*0.5+0.12);roof.add(frontEave);
+  const backEave=frontEave.clone();
+  backEave.position.z=-depth*0.5-0.12;roof.add(backEave);
+  const sideEave=new THREE.Mesh(
+    new THREE.BoxGeometry(0.56,0.16,depth*0.94),
+    new THREE.MeshBasicMaterial({color:trimColor})
+  );
+  sideEave.position.set(width*0.5+0.12,-0.12,0);roof.add(sideEave);
+  const sideEave2=sideEave.clone();sideEave2.position.x=-width*0.5-0.12;roof.add(sideEave2);
+  for(const sx of [-1,1]){
+    for(const sz of [-1,1]){
+      const horn=new THREE.Mesh(
+        new THREE.ConeGeometry(0.28,1.0,6),
+        new THREE.MeshBasicMaterial({color:ornamentColor})
+      );
+      horn.position.set(sx*(width*0.5+0.22),0.36,sz*(depth*0.5+0.18));
+      horn.rotation.z=sx*0.78;
+      horn.rotation.x=sz*0.34;
+      roof.add(horn);
+    }
+  }
+  for(let i=0;i<7;i++){
+    const ornament=new THREE.Mesh(
+      new THREE.SphereGeometry(0.13,6,5),
+      new THREE.MeshBasicMaterial({color:pick([trimColor,ornamentColor,'#f2d8a2'])})
+    );
+    ornament.position.set(-width*0.32+i*(width*0.64/6),0.34+Math.sin(i*0.6)*0.08,0);
+    roof.add(ornament);
+  }
+  const cap=new THREE.Mesh(
+    new THREE.BoxGeometry(width*0.62,0.18,depth*0.22),
+    new THREE.MeshBasicMaterial({color:'#f0d7a1'})
+  );
+  cap.position.y=0.30+rise*0.08;
+  roof.add(cap);
+  roof.rotation.x=-0.04;
+  return roof;
+}
+function buildTemplePaifang(x,z=0){
+  const root=new THREE.Group();
+  root.position.set(x,0,z);
+  const stoneMat=new THREE.MeshBasicMaterial({color:'#b8b0a6'});
+  const redMat=new THREE.MeshBasicMaterial({color:'#cb5e56'});
+  const goldMat=new THREE.MeshBasicMaterial({color:'#e7c56e'});
+  for(const px of [-4.5,-1.4,1.4,4.5]){
+    const base=new THREE.Mesh(new THREE.BoxGeometry(0.86,0.46,0.86),stoneMat);
+    base.position.set(px,0.23,0);root.add(base);
+    const col=new THREE.Mesh(new THREE.BoxGeometry(0.56,4.9,0.56),redMat);
+    col.position.set(px,2.9,0);root.add(col);
+    const cap=new THREE.Mesh(new THREE.BoxGeometry(0.76,0.26,0.76),goldMat);
+    cap.position.set(px,5.44,0);root.add(cap);
+  }
+  const lowerBeam=new THREE.Mesh(new THREE.BoxGeometry(10.6,0.44,0.62),goldMat);
+  lowerBeam.position.set(0,5.5,0);root.add(lowerBeam);
+  const upperBeam=new THREE.Mesh(new THREE.BoxGeometry(6.8,0.44,0.62),goldMat);
+  upperBeam.position.set(0,7.04,0);root.add(upperBeam);
+  const plaque=buildTemplePlaque('GGdove',2.9,0.92);
+  plaque.position.set(0,6.26,0.33);root.add(plaque);
+  const roof1=buildTempleRoofTier({width:11.4,depth:2.8,y:6.0,roofColor:'#bb6f59',trimColor:'#7dc3b8',ornamentColor:'#dfb652'});
+  root.add(roof1);
+  const roof2=buildTempleRoofTier({width:7.2,depth:2.1,y:7.48,roofColor:'#c97b66',trimColor:'#8ad2c6',ornamentColor:'#e7c46f'});
+  root.add(roof2);
+  addChunkObject(root);
+  return root;
+}
+function buildTempleComplex(xBase){
+  const plaza=new THREE.Group();
+  const tileTex=TEX.pavement.clone();tileTex.repeat.set(12,8);pixelate(tileTex);
+  const court=new THREE.Mesh(
+    new THREE.PlaneGeometry(CHUNK_SIZE*0.96,36),
+    new THREE.MeshBasicMaterial({map:tileTex,color:'#b6b5ad'})
+  );
+  court.rotation.x=-Math.PI/2;
+  court.position.set(xBase+CHUNK_SIZE*0.5,0.03,0);
+  plaza.add(court);
+  for(const side of [-1,1]){
+    for(let i=0;i<6;i++){
+      const lantern=new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18,0.2,0.7,10),
+        new THREE.MeshBasicMaterial({color:'#c63737'})
+      );
+      lantern.position.set(xBase+3.2+i*3.0,1.2,side*8.4);
+      plaza.add(lantern);
+      const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,1.8,6),new THREE.MeshBasicMaterial({color:'#4e4a4f'}));
+      pole.position.set(lantern.position.x,0.9,side*8.4);plaza.add(pole);
+    }
+  }
+  addChunkObject(plaza);
+  buildTemplePaifang(xBase+4.0,0);
+
+  const temple=new THREE.Group();
+  temple.position.set(xBase+18.0,0,0);
+  const stoneMat=new THREE.MeshBasicMaterial({color:'#b7b0a7'});
+  const tealMat=new THREE.MeshBasicMaterial({color:'#2f9c90'});
+  const goldMat=new THREE.MeshBasicMaterial({color:'#ddb86a'});
+  const redMat=new THREE.MeshBasicMaterial({color:'#b94644'});
+  const darkMat=new THREE.MeshBasicMaterial({color:'#2a2422'});
+  const steps=new THREE.Mesh(new THREE.BoxGeometry(13.8,0.82,7.4),stoneMat);
+  steps.position.set(0,0.41,2.0);temple.add(steps);
+  const forecourt=new THREE.Mesh(new THREE.BoxGeometry(16.8,0.28,10.6),stoneMat);
+  forecourt.position.set(0,0.14,4.9);temple.add(forecourt);
+  const hall=new THREE.Mesh(new THREE.BoxGeometry(12.6,7.8,8.6),new THREE.MeshBasicMaterial({color:'#d1c1a4'}));
+  hall.position.set(0,4.1,-0.2);temple.add(hall);
+  const sideLeft=new THREE.Mesh(new THREE.BoxGeometry(3.6,6.2,6.2),new THREE.MeshBasicMaterial({color:'#ccc0a9'}));
+  sideLeft.position.set(-8.6,3.3,0.1);temple.add(sideLeft);
+  const sideRight=sideLeft.clone();sideRight.position.x=8.6;temple.add(sideRight);
+  const doorway=new THREE.Mesh(new THREE.BoxGeometry(3.6,4.7,0.48),darkMat);
+  doorway.position.set(0,2.6,4.12);temple.add(doorway);
+  const roofMain=buildTempleRoofTier({width:15.2,depth:10.4,y:8.2,roofColor:'#2a9789',trimColor:'#efca72',ornamentColor:'#d44349'});
+  temple.add(roofMain);
+  const roofUpper=buildTempleRoofTier({width:9.8,depth:7.0,y:11.2,roofColor:'#37a699',trimColor:'#f2d488',ornamentColor:'#d85252'});
+  temple.add(roofUpper);
+  const roofTop=buildTempleRoofTier({width:5.4,depth:3.8,y:13.7,roofColor:'#42b1a2',trimColor:'#f2ddb2',ornamentColor:'#de5e58'});
+  temple.add(roofTop);
+  const plaque=buildTemplePlaque('鼠王聖殿',4.2,1.1);
+  plaque.position.set(0,8.55,4.56);temple.add(plaque);
+  for(const sx of [-1,1]){
+    for(const sz of [-1,1]){
+      const tower=new THREE.Mesh(new THREE.BoxGeometry(2.2,8.8,2.2),redMat);
+      tower.position.set(sx*7.1,4.4,sz*3.8);temple.add(tower);
+      const towerRoof=buildTempleRoofTier({width:3.4,depth:3.2,y:8.8,z:0,roofColor:'#2f9e92',trimColor:'#f3c96a',ornamentColor:'#d94d55'});
+      towerRoof.position.x=sx*7.1;towerRoof.position.z=sz*3.8;temple.add(towerRoof);
+    }
+  }
+  for(const px of [-5.1,-2.0,2.0,5.1]){
+    const col=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.38,6.6,10),redMat);
+    col.position.set(px,3.3,3.55);temple.add(col);
+    const cap=new THREE.Mesh(new THREE.BoxGeometry(0.72,0.3,0.72),goldMat);
+    cap.position.set(px,6.68,3.55);temple.add(cap);
+  }
+  for(const sx of [-1,1]){
+    const wall=new THREE.Mesh(new THREE.BoxGeometry(4.8,4.0,0.9),new THREE.MeshBasicMaterial({color:'#aca59c'}));
+    wall.position.set(sx*5.5,2.1,4.25);temple.add(wall);
+  }
+  const altar=new THREE.Mesh(new THREE.BoxGeometry(4.2,1.2,2.8),new THREE.MeshBasicMaterial({color:'#734d2d'}));
+  altar.position.set(0,0.62,-0.6);temple.add(altar);
+  for(const sx of [-1,1]){
+    const brazier=new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.48,0.72,10),goldMat);
+    brazier.position.set(sx*2.5,0.72,2.0);temple.add(brazier);
+  }
+  addChunkObject(temple);
+  registerBlocker(steps,6.8);
+  registerBlocker(forecourt,8.3);
+  registerBlocker(sideLeft,1.9);
+  registerBlocker(sideRight,1.9);
+  return {
+    root:temple,
+    altarPos:new THREE.Vector3(xBase+18.0,1.22,-0.6),
+    doorwayX:xBase+18.0,
+    doorwayZ:4.12
+  };
+}
+
 // ===== Chunk system — infinite alley along the X axis =====
 const CHUNK_SIZE=24, CHUNK_WINDOW=5;
 const chunks=new Map();
@@ -2112,8 +2315,82 @@ function buildMiniPlaza(xBase,width=CHUNK_SIZE){
     buildTable(xBase+rand(4,width-4),rand(-3.8,3.8));
   }
 }
+function spawnTempleIdol(plazaInfo){
+  if(!templeIdolSource||!templeIdolIdleClip||!templeIdolWalkClip)return null;
+  const idolVariant=makeHumanVariant({
+    source:templeIdolSource,
+    idle:templeIdolIdleClip,
+    walk:templeIdolWalkClip,
+    run:templeIdolWalkClip,
+    jump:null,kick:null,pickup:null,clean:null,
+    skin:TEMPLE_IDOL_SKIN
+  });
+  const inst=buildSkinnedActor({
+    targetHeight:1.52*5,
+    tint:null,
+    clips:idolVariant.clips,
+    source:idolVariant.source,
+    skin:idolVariant.skin
+  });
+  const root=inst.outer;
+  root.position.copy(plazaInfo.altarPos);
+  root.rotation.y=Math.PI;
+  addDynamicChunkObject(root);
+  const originalMaterials=[];
+  root.traverse(o=>{
+    if(!o.isMesh)return;
+    originalMaterials.push({mesh:o,material:Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone()});
+    const gold=Array.isArray(o.material)
+      ? o.material.map(()=>new THREE.MeshBasicMaterial({color:'#dcb34f'}))
+      : new THREE.MeshBasicMaterial({color:'#dcb34f'});
+    o.material=gold;
+  });
+  for(const act of Object.values(inst.actions||{})){
+    act.play();
+    act.paused=true;
+    act.time=0;
+  }
+  inst.mixer.update(0);
+  const idolActor={
+    kind:'human',
+    root,inst,curSpeed:0,animState:'idle',actionTimer:0,actionName:null,
+    behaviour:'idle',controllable:false,isAir:false,panicTimer:0,moveInputX:0,moveInputY:0,
+    originalMaterials,awakened:false
+  };
+  game.templeEvent.idol=idolActor;
+  game.templeEvent.idolActor=idolActor;
+  game.templeEvent.altarPos.copy(plazaInfo.altarPos);
+  return idolActor;
+}
+function generateTempleChunk(idx,xBase){
+  const chunk={idx,meshes:[],props:[],humans:[]};
+  _activeChunk=chunk;
+  const floorTex=TEX.pavement.clone();floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;floorTex.repeat.set(4,5);pixelate(floorTex);
+  const floor=new THREE.Mesh(
+    new THREE.PlaneGeometry(CHUNK_SIZE,46),
+    new THREE.MeshBasicMaterial({map:floorTex,color:'#c7c4bb'})
+  );
+  floor.rotation.x=-Math.PI/2;
+  floor.position.set(xBase+CHUNK_SIZE/2,0,0);
+  scene.add(floor);chunk.meshes.push(floor);
+  const plazaInfo=buildTempleComplex(xBase);
+  game.templeEvent.root=plazaInfo.root;
+  game.templeEvent.arch=plazaInfo.arch||null;
+  spawnTempleIdol(plazaInfo);
+  for(let i=0;i<8;i++){
+    const x=xBase+rand(2.5,CHUNK_SIZE-2.5);
+    const z=rand(-8.5,8.5);
+    spawnChunkHuman(chunk,x,z,i<2?'cleaner':'wanderer');
+  }
+  chunks.set(idx,chunk);_activeChunk=null;
+  console.log('[chunk] temple '+idx+' humans='+chunk.humans.length+' meshes='+chunk.meshes.length);
+}
 function generateChunk(idx){
   const xBase=idx*CHUNK_SIZE;
+  if(idx===TEMPLE_CHUNK_IDX){
+    generateTempleChunk(idx,xBase);
+    return;
+  }
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
   const chunkVariant=Math.abs(Math.floor(Math.sin(idx*17.173)*1000))%3;
@@ -2402,6 +2679,7 @@ function ensureChunksAroundX(x){
     if(!chunks.has(i)) generateChunk(i);
   }
   for(const [idx,chunk] of [...chunks]){
+    if(idx===TEMPLE_CHUNK_IDX) continue;
     if(Math.abs(idx-c)>CHUNK_WINDOW){disposeChunk(chunk);chunks.delete(idx);console.log('[chunk] dispose '+idx)}
   }
   lastChunkIdx=c;
@@ -2806,6 +3084,110 @@ function setHostHeadMasked(host,masked){
     headBone.scale.copy(headBone.userData.originalScale);
   }
   headBone.updateMatrixWorld(true);
+}
+function restoreTempleIdolMaterials(idol){
+  if(!idol?.originalMaterials)return;
+  for(const entry of idol.originalMaterials){
+    entry.mesh.material=Array.isArray(entry.material)?entry.material.map(m=>m.clone()):entry.material.clone();
+  }
+}
+function spawnTempleGlow(pos,count=44){
+  for(let i=0;i<count;i++){
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:FX_TEX.ember,transparent:true,depthWrite:false,fog:false,color:pick(['#fff3be','#ffdd8e','#ffe6c9'])
+    }));
+    sprite.position.copy(pos).add(new THREE.Vector3(rand(-2.6,2.6),rand(0.3,7.2),rand(-1.8,1.8)));
+    sprite.scale.setScalar(rand(0.08,0.18));
+    scene.add(sprite);
+    game.fx.push({
+      kind:'temple-glow',sprite,
+      vel:new THREE.Vector3(rand(-0.18,0.18),rand(0.18,0.85),rand(-0.18,0.18)),
+      gravity:0.08,life:1.2+rand(0.4,1.1),maxLife:1.2+rand(0.4,1.1),spin:0
+    });
+  }
+}
+function startTempleAwakening(){
+  if(game.templeEvent.started||game.templeEvent.awakened||!game.templeEvent.idol)return;
+  ensureChunksAroundX(TEMPLE_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE*0.5);
+  game.templeEvent.started=true;
+  game.templeEvent.swarmProgress=0;
+  game.templeEvent.glowCooldown=0;
+  game.templeEvent.swarmSprites.length=0;
+  for(const rat of game.rats){
+    if(rat===player)continue;
+    rat.followPlayer=false;
+    rat.templeBound=true;
+    rat.targetPos?.set(
+      game.templeEvent.altarPos.x+rand(-1.2,1.2),
+      0,
+      game.templeEvent.altarPos.z+rand(-1.0,1.0)
+    );
+  }
+  const swarmVisuals=Math.min(240,Math.max(140,Math.round(getTotalRatCount()*0.16)));
+  const visualFromVirtual=Math.min(game.virtualRats,swarmVisuals);
+  game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
+  for(let i=0;i<swarmVisuals;i++){
+    const rat=buildRat({isPlayer:false});
+    rat.swarmPhase=Math.random()*Math.PI*2;
+    rat.root.position.set(
+      game.templeEvent.altarPos.x+rand(-5.2,5.2),
+      GROUND_Y_OFFSET,
+      game.templeEvent.altarPos.z+rand(2.2,10.5)
+    );
+    rat.templeBound=true;
+    rat.followPlayer=false;
+    rat.targetPos.set(game.templeEvent.altarPos.x,0,game.templeEvent.altarPos.z);
+    rat.moveIntent.y=1;
+    game.rats.push(rat);
+    game.templeEvent.swarmSprites.push(rat);
+  }
+}
+function tickTempleEvent(dt){
+  const idol=game.templeEvent.idol;
+  if(!idol)return;
+  if(!game.templeEvent.started && getTotalRatCount()>=TEMPLE_SWARM_TRIGGER){
+    startTempleAwakening();
+  }
+  if(game.templeEvent.started && !game.templeEvent.awakened){
+    game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.18);
+    for(const rat of game.templeEvent.swarmSprites){
+      if(!rat?.root)continue;
+      const climb=clamp(game.templeEvent.swarmProgress*1.24-rand(0,0.2),0,1);
+      const radius=lerp(3.8,1.4,climb);
+      const angle=(rat.swarmPhase||0)+gameTime*0.9;
+      const targetX=game.templeEvent.altarPos.x+Math.cos(angle)*radius;
+      const targetZ=game.templeEvent.altarPos.z+Math.sin(angle)*radius*0.55;
+      const targetY=GROUND_Y_OFFSET + climb*rand(0.6,6.2);
+      rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*1.8));
+      rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*1.8));
+      rat.root.position.y=lerp(rat.root.position.y,targetY,Math.min(1,dt*1.9));
+      rat.root.rotation.y=Math.atan2(game.templeEvent.altarPos.x-rat.root.position.x,game.templeEvent.altarPos.z-rat.root.position.z);
+      rat.moveIntent.y=1;
+      tickRatBillboard(rat,dt);
+    }
+    game.templeEvent.glowCooldown-=dt;
+    if(game.templeEvent.glowCooldown<=0){
+      spawnTempleGlow(game.templeEvent.altarPos,26);
+      game.templeEvent.glowCooldown=0.18;
+    }
+    if(game.templeEvent.swarmProgress>=1){
+      game.templeEvent.awakened=true;
+      restoreTempleIdolMaterials(idol);
+      idol.awakened=true;
+      idol.curSpeed=HOST_MAX_SPEED*0.42;
+      const walk=idol.inst?.actions?.walk||idol.inst?.actions?.run;
+      if(walk){
+        for(const act of Object.values(idol.inst.actions||{})){ act.stop(); act.paused=false; }
+        walk.reset().play();
+      }
+      spawnTempleGlow(game.templeEvent.altarPos,120);
+    }
+  }
+  if(game.templeEvent.awakened){
+    idol.curSpeed=HOST_MAX_SPEED*0.42;
+    tickActor(idol,dt);
+    if(Math.random()<0.18) spawnTempleGlow(game.templeEvent.altarPos,4);
+  }
 }
 function spawnChunkHuman(chunk,x,z,role='wanderer',groupMeta=null){
   const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
@@ -3666,6 +4048,11 @@ window.addEventListener('keydown',e=>{
     toggleUILayoutEditor();
     return;
   }
+  if(e.shiftKey&&e.code==='KeyT'){
+    e.preventDefault();
+    game.testMode=!game.testMode;
+    return;
+  }
   if(uiLayoutState.active){
     if(e.code==='Escape'){
       e.preventDefault();
@@ -3683,6 +4070,11 @@ window.addEventListener('keydown',e=>{
   if(e.code==='ArrowUp')keys.up=true;if(e.code==='ArrowDown')keys.down=true;
   if(e.code==='ArrowLeft')keys.left=true;if(e.code==='ArrowRight')keys.right=true;
   if(e.code==='Space')inputFlags.jump=true;
+  if(e.code==='Digit1'&&game.testMode){
+    e.preventDefault();
+    const need=Math.max(0,TEMPLE_SWARM_TRIGGER-getTotalRatCount());
+    addRatSwarm(need>0?need:1000,player?.root?.position||new THREE.Vector3(12,0,0));
+  }
   if(e.code==='KeyE'){
     if(game.controlMode==='host') doHostAttack();
     else inputFlags.action=true;
@@ -3981,7 +4373,7 @@ function submitRatCityScore(){
     name,
     chaos:Math.round(game.chaos*100),
     score:getRatCityScore(),
-    rats:game.rats.length,
+    rats:getTotalRatCount(),
     date:new Date().toISOString()
   });
   game.leaderboard.sort((a,b)=>b.score-a.score||b.chaos-a.chaos);
@@ -4162,7 +4554,8 @@ function doHostAttack(){
 function tickControllableHostState(dt){
   const host=game.parasitisedHost;
   if(!host)return;
-  host.parasiteTimer=Math.max(0,host.parasiteTimer-dt);
+  if(game.testMode) host.parasiteTimer=HOST_PARASITE_TIME;
+  else host.parasiteTimer=Math.max(0,host.parasiteTimer-dt);
   modeBadge.textContent=`CONTROL · HOST ${host.parasiteTimer.toFixed(0)}S`;
   if(host.parasiteTimer<=0){
     killHost(host);
@@ -4311,7 +4704,7 @@ function updatePlayer(dt){
   const mdx=-iy*fwdX+ix*rightX;
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
-  const targetSpeed=isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED;
+  const targetSpeed=isHost?(HOST_MAX_SPEED*(game.testMode?3:1)):PLAYER_MAX_SPEED;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
   const prevX=ent.root.position.x, prevZ=ent.root.position.z;
   if(ent.kind==='rat'&&ent.ratAnim?.biteTimer>0){
@@ -4401,11 +4794,35 @@ function summonSpillRats(x,z,count=2){
     rat.targetPos.set(x,0,z);
     rat.moveIntent.y=-1;
     rat.followPlayer=(i===0)||Math.random()<0.32;
+    if(game.templeEvent.started && !game.templeEvent.awakened){
+      rat.templeBound=true;
+      rat.followPlayer=false;
+    }
     rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
     rat.root.rotation.y=rat.yaw;
     game.rats.push(rat);
   }
   registerChaosSpot(x,z,1.8,7.5);
+}
+function addRatSwarm(count,origin=player?.root?.position||new THREE.Vector3()){
+  const visualCount=Math.min(180,count);
+  for(let i=0;i<visualCount;i++){
+    const rat=buildRat({isPlayer:false});
+    const angle=(i/Math.max(1,visualCount))*Math.PI*2+rand(-0.18,0.18);
+    const radius=rand(2.2,7.4);
+    rat.root.position.set(
+      origin.x+Math.cos(angle)*radius,
+      (rat.baseY??0)+GROUND_Y_OFFSET,
+      clamp(origin.z+Math.sin(angle)*radius,ALLEY_Z_MIN+0.6,ALLEY_Z_MAX-0.6)
+    );
+    rat.targetPos.set(origin.x,0,origin.z);
+    rat.moveIntent.y=1;
+    rat.followPlayer=true;
+    rat.yaw=Math.atan2(origin.x-rat.root.position.x,origin.z-rat.root.position.z);
+    rat.root.rotation.y=rat.yaw;
+    game.rats.push(rat);
+  }
+  game.virtualRats+=(count-visualCount);
 }
 function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   if(!p||p.tipTriggered)return;
@@ -4709,6 +5126,10 @@ function tickBreeding(dt){
   rat.targetPos.set(hotspot.x,0,hotspot.z);
   rat.moveIntent.y=-1;
   rat.followPlayer=Math.random()<0.28;
+  if(game.templeEvent.started && !game.templeEvent.awakened){
+    rat.templeBound=true;
+    rat.followPlayer=false;
+  }
   rat.yaw=Math.atan2(hotspot.x-x,hotspot.z-z);
   rat.root.rotation.y=rat.yaw;
   game.rats.push(rat);
@@ -4716,8 +5137,19 @@ function tickBreeding(dt){
 function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
+    if(r.templeBound && game.templeEvent.idol && !game.templeEvent.awakened){
+      r.followPlayer=false;
+      r.targetPos?.set(
+        game.templeEvent.altarPos.x+rand(-1.8,1.8),
+        0,
+        game.templeEvent.altarPos.z+rand(-1.5,1.5)
+      );
+    }
     const chaosTarget=nearestChaosSpot(r.root.position);
     let target=chaosTarget || player.root.position;
+    if(r.templeBound && game.templeEvent.idol && !game.templeEvent.awakened){
+      target={x:game.templeEvent.altarPos.x,z:game.templeEvent.altarPos.z};
+    }
     if(r.followPlayer && player){
       const backX=player.root.position.x-Math.sin(player.yaw)*rand(0.9,1.8);
       const backZ=player.root.position.z-Math.cos(player.yaw)*rand(0.9,1.8);
@@ -4772,8 +5204,9 @@ function updateHUD(dt){
   game.chaos=Math.max(0,game.chaos-CHAOS_DECAY*dt);
   chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
   chaosScoreEl.textContent=String(Math.round(game.chaosScore));
-  ratCountEl.textContent=String(game.rats.length);
-  ratFill.style.width=Math.min(100,game.rats.length*5).toFixed(0)+'%';
+  const totalRats=getTotalRatCount();
+  ratCountEl.textContent=String(totalRats);
+  ratFill.style.width=Math.min(100,totalRats/10).toFixed(0)+'%';
   if(game.controlMode==='host'&&game.parasitisedHost){
     hostLifeBox.style.display='block';
     hostLifeFill.style.height=(clamp(game.parasitisedHost.parasiteTimer/HOST_PARASITE_TIME,0,1)*100).toFixed(1)+'%';
@@ -4865,7 +5298,7 @@ function renderGameToText(){
     }:null,
     nearestBiteable:game.controlMode==='rat'&&player?!!nearestBiteableHuman(player):false,
     chaos:+game.chaos.toFixed(3),
-    rats:game.rats.length,
+    rats:getTotalRatCount(),
     tippedProps:game.props.filter(p=>p.tipped).length,
     cleaners:{
       total:game.humans.filter(h=>h.role==='cleaner').length,
@@ -4893,6 +5326,7 @@ function stepFrame(dt){
     tickHumans(dt);
     tickBreeding(dt);
     tickFollowerRats(dt);
+    tickTempleEvent(dt);
     tickTransientFX(dt);
     if(game.controlMode==='rat'){tickActor(player,dt);tickRatBillboard(player,dt)}
     updateHUD(dt);
@@ -5055,6 +5489,25 @@ async function init(){
     console.log('[fbx] human clips loaded:',Object.keys(HUMAN_CLIPS).filter(k=>HUMAN_CLIPS[k]));
   }catch(e){
     console.error('[fbx] load failed — humans will use placeholder capsules',e);
+  }
+  try{
+    const [idolIdleFBX,idolWalkFBX,idolBase,idolNormal,idolRough,idolMetal]=await Promise.all([
+      loadFBXAsync('asset/temple-idol/Breathing Idle.fbx'),
+      loadFBXAsync('asset/temple-idol/Walking.fbx'),
+      loadHumanTextureAsync('asset/temple-idol/tripo_model_basecolor.JPEG'),
+      loadHumanTextureAsync('asset/temple-idol/tripo_model_normal.JPEG'),
+      loadHumanTextureAsync('asset/temple-idol/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/temple-idol/tripo_model_metallic.JPEG')
+    ]);
+    templeIdolSource=idolIdleFBX;
+    templeIdolIdleClip=idolIdleFBX;
+    templeIdolWalkClip=idolWalkFBX;
+    TEMPLE_IDOL_SKIN.base=idolBase;
+    TEMPLE_IDOL_SKIN.normal=idolNormal;
+    TEMPLE_IDOL_SKIN.roughness=idolRough;
+    TEMPLE_IDOL_SKIN.metal=idolMetal;
+  }catch(e){
+    console.error('[temple-idol] load failed',e);
   }
   setIntroProgress(82,'WORLD');
 
