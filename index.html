@@ -588,8 +588,9 @@ const BROTH_POOL_GROWTH=2.8;
 const TEMPLE_CHUNK_IDX=6;
 const TEMPLE_SWARM_TRIGGER=1000;
 const TEMPLE_IDOL_ALTAR_LOCAL_Y=1.72;
-const TEMPLE_IDOL_HEIGHT=6.8;
+const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
+const TEMPLE_IDOL_SPAWN_Y_OFFSET=-2.0;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
@@ -688,16 +689,20 @@ function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
 function loadTempleIdolAssets(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
-    loadGLTFAsync('asset/temple-idol/Breathing Idle_low.glb'),
-    loadGLTFAsync('asset/temple-idol/Walking_low.glb')
-  ]).then(([idolIdleGLB,idolWalkGLB])=>{
-    templeIdolSource=idolIdleGLB.scene;
-    templeIdolIdleClip={animations:idolIdleGLB.animations||[]};
-    templeIdolWalkClip={animations:idolWalkGLB.animations||[]};
-    TEMPLE_IDOL_SKIN.base=null;
-    TEMPLE_IDOL_SKIN.normal=null;
-    TEMPLE_IDOL_SKIN.roughness=null;
-    TEMPLE_IDOL_SKIN.metal=null;
+    loadFBXAsync('asset/神像/Orc Idle.fbx'),
+    loadFBXAsync('asset/神像/Walk.fbx'),
+    loadHumanTextureAsync('asset/神像/tripo_model_basecolor.JPEG'),
+    loadHumanTextureAsync('asset/神像/tripo_model_normal.JPEG'),
+    loadHumanTextureAsync('asset/神像/tripo_model_roughness.JPEG'),
+    loadHumanTextureAsync('asset/神像/tripo_model_metallic.JPEG')
+  ]).then(([idolIdleFBX,idolWalkFBX,baseTex,normalTex,roughnessTex,metalTex])=>{
+    templeIdolSource=idolIdleFBX;
+    templeIdolIdleClip=idolIdleFBX;
+    templeIdolWalkClip=idolWalkFBX;
+    TEMPLE_IDOL_SKIN.base=baseTex;
+    TEMPLE_IDOL_SKIN.normal=normalTex;
+    TEMPLE_IDOL_SKIN.roughness=roughnessTex;
+    TEMPLE_IDOL_SKIN.metal=metalTex;
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({
         altarPos:game.templeEvent.altarPos,
@@ -2290,32 +2295,33 @@ function buildTempleComplex(xBase){
   const stepMat=new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#b6b1a9'});
   const steps=new THREE.Mesh(new THREE.BoxGeometry(14.4,0.26,5.8),stepMat);
   steps.position.set(0,0.13,7.5);temple.add(steps);
-  const threshold=new THREE.Mesh(new THREE.BoxGeometry(7.2,0.24,3.0),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#c4beb2'}));
+  const threshold=new THREE.Mesh(new THREE.BoxGeometry(7.6,0.24,3.0),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#c4beb2'}));
   threshold.position.set(0,0.12,4.2);temple.add(threshold);
-  const hallFloor=new THREE.Mesh(new THREE.BoxGeometry(18.8,0.24,15.8),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#bdb8af'}));
-  hallFloor.position.set(0,0.12,-0.1);temple.add(hallFloor);
-  const backWall=new THREE.Mesh(new THREE.BoxGeometry(26.0,8.4,0.72),warmStoneMat);
-  backWall.position.set(0,4.22,-9.2);temple.add(backWall);
-  const sideWallLeft=new THREE.Mesh(new THREE.BoxGeometry(0.78,8.4,18.2),warmStoneMat);
-  sideWallLeft.position.set(-12.45,4.22,-0.5);temple.add(sideWallLeft);
+  const hallFloor=new THREE.Mesh(new THREE.BoxGeometry(32.6,0.24,29.8),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#bdb8af'}));
+  hallFloor.position.set(0,0.12,-5.8);temple.add(hallFloor);
+  const backWall=new THREE.Mesh(new THREE.BoxGeometry(34.0,11.4,0.72),warmStoneMat);
+  backWall.position.set(0,5.72,-20.6);temple.add(backWall);
+  const sideWallLeft=new THREE.Mesh(new THREE.BoxGeometry(0.78,11.4,40.8),warmStoneMat);
+  sideWallLeft.position.set(-16.45,5.72,-5.6);temple.add(sideWallLeft);
   const sideWallRight=sideWallLeft.clone();sideWallRight.position.x=5.45;temple.add(sideWallRight);
-  sideWallRight.position.x=12.45;
-  const frontWingLeft=new THREE.Mesh(new THREE.BoxGeometry(8.8,8.4,0.72),warmStoneMat);
-  frontWingLeft.position.set(-8.55,4.22,8.35);temple.add(frontWingLeft);
+  sideWallRight.position.x=16.45;
+  const frontWingLeft=new THREE.Mesh(new THREE.BoxGeometry(12.6,11.4,0.72),warmStoneMat);
+  frontWingLeft.position.set(-10.7,5.72,8.35);temple.add(frontWingLeft);
   const frontWingRight=frontWingLeft.clone();frontWingRight.position.x=3.98;temple.add(frontWingRight);
-  frontWingRight.position.x=8.55;
-  const lintel=new THREE.Mesh(new THREE.BoxGeometry(9.8,2.0,0.82),warmStoneMat);
-  lintel.position.set(0,6.2,8.28);temple.add(lintel);
-  const doorLeft=new THREE.Mesh(new THREE.BoxGeometry(1.3,4.7,0.14),woodDoorMat);
-  doorLeft.position.set(-2.3,2.7,8.05);doorLeft.rotation.y=0.22;temple.add(doorLeft);
+  frontWingRight.position.x=10.7;
+  const lintel=new THREE.Mesh(new THREE.BoxGeometry(10.6,2.4,0.82),warmStoneMat);
+  lintel.position.set(0,7.0,8.28);temple.add(lintel);
+  const doorLeft=new THREE.Mesh(new THREE.BoxGeometry(1.45,6.1,0.14),woodDoorMat);
+  doorLeft.position.set(-2.45,3.4,8.05);doorLeft.rotation.y=0.22;temple.add(doorLeft);
   const doorRight=doorLeft.clone();doorRight.position.x=1.08;doorRight.rotation.y=-0.36;temple.add(doorRight);
-  doorRight.position.x=2.3;doorRight.rotation.y=-0.22;
+  doorRight.position.x=2.45;doorRight.rotation.y=-0.22;
   const doorTop=new THREE.Mesh(new THREE.BoxGeometry(4.1,0.34,0.2),goldMat);
   doorTop.scale.set(2.2,1,1);
-  doorTop.position.set(0,5.18,8.15);temple.add(doorTop);
-  const sideLeft=new THREE.Mesh(new THREE.BoxGeometry(3.6,6.2,6.2),new THREE.MeshBasicMaterial({color:'#ccc0a9'}));
-  sideLeft.position.set(-8.6,3.3,0.1);temple.add(sideLeft);
+  doorTop.position.set(0,6.6,8.15);temple.add(doorTop);
+  const sideLeft=new THREE.Mesh(new THREE.BoxGeometry(4.4,8.4,8.2),new THREE.MeshBasicMaterial({color:'#ccc0a9'}));
+  sideLeft.position.set(-11.9,4.2,0.1);temple.add(sideLeft);
   const sideRight=sideLeft.clone();sideRight.position.x=8.6;temple.add(sideRight);
+  sideRight.position.x=11.9;
   const roofMain=buildTempleRoofTier({width:30.8,depth:24.4,y:9.8,roofColor:'#2a9789',trimColor:'#efca72',ornamentColor:'#d44349'});
   temple.add(roofMain);
   const roofUpper=buildTempleRoofTier({width:19.2,depth:15.2,y:13.2,roofColor:'#37a699',trimColor:'#f2d488',ornamentColor:'#d85252'});
@@ -2333,12 +2339,12 @@ function buildTempleComplex(xBase){
   for(const sx of [-1,1]){
     for(const sz of [-1,1]){
       const tower=new THREE.Mesh(new THREE.BoxGeometry(2.2,8.8,2.2),redMat);
-      tower.position.set(sx*7.1,4.4,sz*3.8);temple.add(tower);
+      tower.position.set(sx*9.6,4.4,sz*5.1);temple.add(tower);
       const towerRoof=buildTempleRoofTier({width:3.4,depth:3.2,y:8.8,z:0,roofColor:'#2f9e92',trimColor:'#f3c96a',ornamentColor:'#d94d55'});
-      towerRoof.position.x=sx*7.1;towerRoof.position.z=sz*3.8;temple.add(towerRoof);
+      towerRoof.position.x=sx*9.6;towerRoof.position.z=sz*5.1;temple.add(towerRoof);
     }
   }
-  for(const px of [-5.1,-2.0,2.0,5.1]){
+  for(const px of [-6.2,-2.1,2.1,6.2]){
     const colTex=makeTempleTotemTexture(px<0?'dragon':'phoenix');
     const col=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.38,6.6,10),new THREE.MeshBasicMaterial({map:colTex,color:'#d26056'}));
     col.position.set(px,3.3,3.55);temple.add(col);
@@ -2348,17 +2354,17 @@ function buildTempleComplex(xBase){
     plinth.position.set(px,0.17,3.55);temple.add(plinth);
   }
   for(const sx of [-1,1]){
-    const wall=new THREE.Mesh(new THREE.BoxGeometry(4.8,4.0,0.9),new THREE.MeshBasicMaterial({color:'#aca59c'}));
-    wall.position.set(sx*5.5,2.1,4.25);temple.add(wall);
+    const wall=new THREE.Mesh(new THREE.BoxGeometry(7.2,6.4,0.9),new THREE.MeshBasicMaterial({color:'#aca59c'}));
+    wall.position.set(sx*7.3,3.3,4.25);temple.add(wall);
   }
   for(const sx of [-1,1]){
-    for(let i=0;i<3;i++){
+    for(let i=0;i<5;i++){
       const windowPanel=new THREE.Mesh(new THREE.BoxGeometry(1.28,2.1,0.16),creamMat);
-      windowPanel.position.set(sx*5.12,2.55,-2.55+i*2.15);temple.add(windowPanel);
+      windowPanel.position.set(sx*7.12,2.55,-8.25+i*4.15);temple.add(windowPanel);
       const slatV=new THREE.Mesh(new THREE.BoxGeometry(0.12,1.82,0.2),jadeMat);
-      slatV.position.set(sx*5.04,2.55,-2.55+i*2.15);temple.add(slatV);
+      slatV.position.set(sx*7.04,2.55,-8.25+i*4.15);temple.add(slatV);
       const slatH=new THREE.Mesh(new THREE.BoxGeometry(0.92,0.12,0.2),goldMat);
-      slatH.position.set(sx*5.04,2.55,-2.55+i*2.15);temple.add(slatH);
+      slatH.position.set(sx*7.04,2.55,-8.25+i*4.15);temple.add(slatH);
     }
   }
   for(let i=0;i<6;i++){
@@ -2387,10 +2393,10 @@ function buildTempleComplex(xBase){
       tassel.position.set(lantern.position.x,3.42,2.72);temple.add(tassel);
     }
   }
-  const altar=new THREE.Mesh(new THREE.BoxGeometry(8.2,1.6,5.4),new THREE.MeshBasicMaterial({color:'#734d2d'}));
-  altar.position.set(0,0.82,-1.4);temple.add(altar);
-  const altarCloth=new THREE.Mesh(new THREE.BoxGeometry(8.36,0.18,5.54),redMat);
-  altarCloth.position.set(0,1.62,-1.38);temple.add(altarCloth);
+  const altar=new THREE.Mesh(new THREE.BoxGeometry(12.4,1.85,8.0),new THREE.MeshBasicMaterial({color:'#734d2d'}));
+  altar.position.set(0,0.94,-8.8);temple.add(altar);
+  const altarCloth=new THREE.Mesh(new THREE.BoxGeometry(12.56,0.18,8.14),redMat);
+  altarCloth.position.set(0,1.88,-8.78);temple.add(altarCloth);
   const incenseTable=new THREE.Mesh(new THREE.BoxGeometry(2.6,0.8,1.2),charcoalMat);
   incenseTable.position.set(-4.25,0.62,2.4);temple.add(incenseTable);
   for(const sx of [-1,1]){
@@ -2414,12 +2420,12 @@ function buildTempleComplex(xBase){
   registerBlocker(lintel,0.8);
   registerBlocker(altar,2.0);
   registerBlocker(incenseTable,1.2);
-  const altarPos=temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-1.4));
+  const altarPos=temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-8.8));
   const doorwayPos=temple.localToWorld(new THREE.Vector3(0,0.12,8.9));
   const streetPos=temple.localToWorld(new THREE.Vector3(0,0.12,14.8));
   const processionPath=[
-    temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-1.4)),
-    temple.localToWorld(new THREE.Vector3(0,0.9,1.2)),
+    temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-8.8)),
+    temple.localToWorld(new THREE.Vector3(0,2.1,-4.2)),
     temple.localToWorld(new THREE.Vector3(0,0.12,4.5)),
     temple.localToWorld(new THREE.Vector3(0,0.12,8.9)),
     temple.localToWorld(new THREE.Vector3(0,0.12,14.8)),
@@ -2582,6 +2588,7 @@ function spawnTempleIdol(plazaInfo){
   });
   const root=inst.outer;
   root.position.copy(plazaInfo.altarPos);
+  root.position.y+=TEMPLE_IDOL_SPAWN_Y_OFFSET;
   root.rotation.y=Math.PI;
   addDynamicChunkObject(root);
   const originalMaterials=[];
@@ -2603,9 +2610,16 @@ function spawnTempleIdol(plazaInfo){
     processIndex:0,processionPath:(plazaInfo.processionPath||[]).map(p=>p.clone()),
     doorwayPos:plazaInfo.doorwayPos?.clone?.()||new THREE.Vector3(),
     streetPos:plazaInfo.streetPos?.clone?.()||new THREE.Vector3(),
-    killRadius:TEMPLE_IDOL_KILL_RADIUS
+    killRadius:TEMPLE_IDOL_KILL_RADIUS,roamTarget:null,roamTimer:0
   };
   setTempleIdolPhaseMaterials(idolActor,'gold');
+  const idleAct=inst.actions?.idle||inst.actions?.walk||inst.actions?.run;
+  if(idleAct){
+    idleAct.reset();
+    idleAct.paused=true;
+    idleAct.time=0;
+    idleAct.play();
+  }
   game.templeEvent.idol=idolActor;
   game.templeEvent.idolActor=idolActor;
   game.templeEvent.altarPos.copy(plazaInfo.altarPos);
@@ -3438,6 +3452,8 @@ function awakenTempleIdol(idol){
   idol.awakened=true;
   idol.processIndex=1;
   idol.curSpeed=HOST_MAX_SPEED*0.58;
+  idol.roamTarget=null;
+  idol.roamTimer=0;
   setTempleIdolPhaseMaterials(idol,'awake');
   for(const act of Object.values(idol.inst?.actions||{})){
     act.stop();
@@ -3454,6 +3470,13 @@ function awakenTempleIdol(idol){
   setTempleFlash(0);
   spawnTempleGlow(game.templeEvent.altarPos,180);
 }
+function tickTempleIdolKills(idol){
+  for(const h of game.humans){
+    if(h.dead||h.parasitised||h===game.parasitisedHost)continue;
+    const hitDist=Math.hypot(h.root.position.x-idol.root.position.x,h.root.position.z-idol.root.position.z);
+    if(hitDist<=idol.killRadius) killHost(h);
+  }
+}
 function tickTempleIdolProcession(idol,dt){
   const path=idol.processionPath?.length?idol.processionPath:game.templeEvent.processionPath;
   if(!path?.length)return;
@@ -3469,12 +3492,39 @@ function tickTempleIdolProcession(idol,dt){
     idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
   }
   idol.root.position.y=lerp(idol.root.position.y,target.y,Math.min(1,dt*2.2));
-  if(dist<0.5 && idol.processIndex<path.length-1) idol.processIndex++;
-  for(const h of game.humans){
-    if(h.dead||h.parasitised||h===game.parasitisedHost)continue;
-    const hitDist=Math.hypot(h.root.position.x-idol.root.position.x,h.root.position.z-idol.root.position.z);
-    if(hitDist<=idol.killRadius) killHost(h);
+  if(dist<0.5){
+    if(idol.processIndex<path.length-1) idol.processIndex++;
+    else game.templeEvent.phase='roam';
   }
+  tickTempleIdolKills(idol);
+  tickActor(idol,dt);
+}
+function tickTempleIdolRoam(idol,dt){
+  idol.roamTimer=(idol.roamTimer||0)-dt;
+  const needNewTarget=!idol.roamTarget || idol.roamTimer<=0
+    || Math.hypot(idol.roamTarget.x-idol.root.position.x,idol.roamTarget.z-idol.root.position.z)<1.2;
+  if(needNewTarget){
+    idol.roamTimer=rand(2.8,5.8);
+    idol.roamTarget=new THREE.Vector3(
+      idol.root.position.x+rand(-18,18),
+      GROUND_Y_OFFSET+0.12,
+      clamp(rand(ALLEY_Z_MIN+2.5,ALLEY_Z_MAX-2.5),ALLEY_Z_MIN+2.5,ALLEY_Z_MAX-2.5)
+    );
+  }
+  const dx=idol.roamTarget.x-idol.root.position.x;
+  const dz=idol.roamTarget.z-idol.root.position.z;
+  const dist=Math.hypot(dx,dz);
+  if(dist>0.01){
+    const yaw=Math.atan2(dx,dz);
+    rotateTowardYaw(idol,yaw,dt,3.6);
+    const move=Math.min(idol.curSpeed*dt,dist);
+    idol.root.position.x+=Math.sin(yaw)*move;
+    idol.root.position.z+=Math.cos(yaw)*move;
+  }
+  idol.root.position.y=lerp(idol.root.position.y,GROUND_Y_OFFSET+0.12,Math.min(1,dt*3.2));
+  softClampZ(idol.root.position);
+  softClampTempleX(idol.root.position);
+  tickTempleIdolKills(idol);
   tickActor(idol,dt);
 }
 function tickTempleEvent(dt){
@@ -3486,14 +3536,16 @@ function tickTempleEvent(dt){
   if(!game.templeEvent.started)return;
   if(game.templeEvent.phase==='gather'){
     game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.22);
+    const idolBaseY=idol.root.position.y;
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
       const climb=clamp(game.templeEvent.swarmProgress*1.18-(rat.swarmPhase?((rat.swarmPhase/Math.PI)%0.18):0),0,1);
-      const radius=lerp(3.8,1.4,climb);
+      const radius=lerp(5.8,1.2,climb);
       const angle=(rat.swarmPhase||0)+gameTime*0.9;
       const targetX=game.templeEvent.altarPos.x+Math.cos(angle)*radius;
       const targetZ=game.templeEvent.altarPos.z+Math.sin(angle)*radius*0.55;
-      const targetY=GROUND_Y_OFFSET + climb*rand(0.8,6.0);
+      const tableLift=clamp((1-(radius/5.8))*1.9,0,1.9);
+      const targetY=lerp(GROUND_Y_OFFSET,idolBaseY+rand(0.2,TEMPLE_IDOL_HEIGHT*0.82),climb)+tableLift;
       rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*1.8));
       rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*1.8));
       rat.root.position.y=lerp(rat.root.position.y,targetY,Math.min(1,dt*1.9));
@@ -3554,7 +3606,8 @@ function tickTempleEvent(dt){
     return;
   }
   if(game.templeEvent.awakened){
-    tickTempleIdolProcession(idol,dt);
+    if(game.templeEvent.phase==='procession') tickTempleIdolProcession(idol,dt);
+    else tickTempleIdolRoam(idol,dt);
     if(Math.random()<0.22) spawnTempleGlow(idol.root.position,4);
   }
 }
@@ -5513,12 +5566,31 @@ function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
     if(r.templeBound && game.templeEvent.idol && !game.templeEvent.awakened){
+      const idol=game.templeEvent.idol;
+      const phase=(r.swarmPhase!==undefined)?r.swarmPhase:(r.swarmPhase=Math.random()*Math.PI*2);
+      const climb=clamp(game.templeEvent.swarmProgress*1.06,0,1);
+      const radius=lerp(6.2,1.15,climb);
+      const angle=phase+gameTime*0.8;
+      const targetX=idol.root.position.x+Math.cos(angle)*radius;
+      const targetZ=idol.root.position.z+Math.sin(angle)*radius*0.62;
+      const climbY=lerp(GROUND_Y_OFFSET,idol.root.position.y+rand(0.1,TEMPLE_IDOL_HEIGHT*0.75),climb);
+      const dx=targetX-r.root.position.x;
+      const dz=targetZ-r.root.position.z;
+      const yaw=Math.atan2(dx,dz);
+      const spd=2.1+game.chaos*1.5;
       r.followPlayer=false;
-      r.targetPos?.set(
-        game.templeEvent.altarPos.x+rand(-1.8,1.8),
-        0,
-        game.templeEvent.altarPos.z+rand(-1.5,1.5)
-      );
+      r.root.position.x+=Math.sin(yaw)*spd*dt;
+      r.root.position.z+=Math.cos(yaw)*spd*dt;
+      r.root.position.y=lerp(r.root.position.y,climbY,Math.min(1,dt*2.6));
+      r.root.rotation.y=yaw;
+      r.curSpeed=spd;
+      if(r.moveIntent){
+        r.moveIntent.x=0;
+        r.moveIntent.y=1;
+      }
+      tickActor(r,dt);
+      tickRatBillboard(r,dt);
+      continue;
     }
     const chaosTarget=nearestChaosSpot(r.root.position);
     let target=chaosTarget || player.root.position;
