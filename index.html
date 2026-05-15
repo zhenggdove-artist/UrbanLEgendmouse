@@ -695,6 +695,14 @@ function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
     }
   };
 }
+function extractFirstMeshMaterial(root){
+  let found=null;
+  root?.traverse?.(o=>{
+    if(found || !o.isMesh) return;
+    found=Array.isArray(o.material)?o.material[0]:o.material;
+  });
+  return found;
+}
 function loadTempleIdolAssetsLegacy(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
@@ -734,18 +742,20 @@ function loadTempleIdolAssetsLegacy(){
 function loadTempleIdolAssets(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
-    loadGLTFAsync('asset/temple-idol/Breathing Idle_low.glb'),
-    loadGLTFAsync('asset/temple-idol/Walking_low.glb')
-  ]).then(([idolIdleGLB,idolWalkGLB])=>{
-    templeIdolSource=idolIdleGLB.scene;
-    templeIdolIdleSource=idolIdleGLB.scene;
-    templeIdolWalkSource=idolWalkGLB.scene;
-    templeIdolIdleClip=idolIdleGLB.animations?.[0]||null;
-    templeIdolWalkClip=idolWalkGLB.animations?.[0]||idolIdleGLB.animations?.[0]||null;
-    TEMPLE_IDOL_SKIN.base=null;
-    TEMPLE_IDOL_SKIN.normal=null;
-    TEMPLE_IDOL_SKIN.roughness=null;
-    TEMPLE_IDOL_SKIN.metal=null;
+    loadFBXAsync('asset/神像/Orc Idle.fbx'),
+    loadFBXAsync('asset/神像/Walk.fbx'),
+    loadGLTFAsync('asset/神像/神像_optimized.glb')
+  ]).then(([idolIdleFBX,idolWalkFBX,idolMaterialGLB])=>{
+    templeIdolSource=idolIdleFBX;
+    templeIdolIdleSource=idolIdleFBX;
+    templeIdolWalkSource=idolWalkFBX;
+    templeIdolIdleClip=idolIdleFBX.animations?.[0]||null;
+    templeIdolWalkClip=idolWalkFBX.animations?.[0]||idolIdleFBX.animations?.[0]||null;
+    const donorMat=extractFirstMeshMaterial(idolMaterialGLB.scene);
+    TEMPLE_IDOL_SKIN.base=donorMat?.map||null;
+    TEMPLE_IDOL_SKIN.normal=donorMat?.normalMap||null;
+    TEMPLE_IDOL_SKIN.roughness=donorMat?.roughnessMap||null;
+    TEMPLE_IDOL_SKIN.metal=donorMat?.metalnessMap||null;
     TEMPLE_IDOL_SKIN.flipY=false;
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({
@@ -2492,9 +2502,9 @@ function buildTempleComplex(xBase){
 // ===== Chunk system — infinite alley along the X axis =====
 const CHUNK_SIZE=24;
 const CHUNK_WINDOW_AHEAD=6;
-const CHUNK_WINDOW_A_SIDE=8;
+const CHUNK_WINDOW_A_SIDE=14;
 const CHUNK_PREFETCH_MARGIN=8;
-const CHUNK_PREFETCH_EXTRA=2;
+const CHUNK_PREFETCH_EXTRA=4;
 const chunks=new Map();
 let lastChunkIdx=null;
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
@@ -2609,9 +2619,13 @@ function buildSkyTunnel(xBase,width=CHUNK_SIZE){
   }
 }
 function buildMiniPlaza(xBase,width=CHUNK_SIZE){
+  const courtTex=(TEX.pavement||TEX.asphalt).clone();
+  courtTex.wrapS=courtTex.wrapT=THREE.RepeatWrapping;
+  courtTex.repeat.set(4.8,2.6);
+  pixelate(courtTex);
   const court=new THREE.Mesh(
     new THREE.PlaneGeometry(width*0.72,11.5),
-    new THREE.MeshBasicMaterial({color:'#3c3430'})
+    new THREE.MeshBasicMaterial({map:courtTex,color:'#b9b0a3'})
   );
   court.rotation.x=-Math.PI/2;
   court.position.set(xBase+width*0.5,0.02,0);
