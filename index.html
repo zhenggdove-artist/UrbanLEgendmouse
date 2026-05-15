@@ -591,6 +591,8 @@ const TEMPLE_A_CHUNK_IDX=-10;
 const TEMPLE_IDOL_ALTAR_LOCAL_Y=1.72;
 const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
+const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
+const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0.2;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
@@ -642,6 +644,7 @@ const HUMAN_VARIANTS=[];
 const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 let templeIdolSource=null,templeIdolIdleSource=null,templeIdolWalkSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
 let templeIdolLoadPromise=null;
+const templeLoopPortals={a:null,b:null};
 
 function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
@@ -679,20 +682,26 @@ function loadTextureSequence(paths){
     return tex;
   })));
 }
+function resolveAnimationClip(src){
+  if(!src)return null;
+  if(Array.isArray(src.animations) && src.animations[0]) return src.animations[0];
+  if(Array.isArray(src.tracks) && src.duration!==undefined) return src;
+  return null;
+}
 function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
   return {
     source,
     skin,
     clips:{
-      idle:idle?.animations?.[0]||null,
-      walk:walk?.animations?.[0]||null,
-      run:run?.animations?.[0]||null,
-      jump:jump?.animations?.[0]||null,
-      kick:kick?.animations?.[0]||null,
-      pickup:pickup?.animations?.[0]||null,
+      idle:resolveAnimationClip(idle),
+      walk:resolveAnimationClip(walk),
+      run:resolveAnimationClip(run),
+      jump:resolveAnimationClip(jump),
+      kick:resolveAnimationClip(kick),
+      pickup:resolveAnimationClip(pickup),
       punch:null,
       punchcombo:null,
-      clean:clean?.animations?.[0]||null
+      clean:resolveAnimationClip(clean)
     }
   };
 }
@@ -2523,6 +2532,8 @@ function buildTempleComplex(xBase,opts={}){
   const altarFrontPos=temple.localToWorld(new THREE.Vector3(0,0.12,-3.8));
   const doorwayPos=temple.localToWorld(new THREE.Vector3(0,0.12,8.9));
   const streetPos=temple.localToWorld(new THREE.Vector3(0,0.12,14.8));
+  const rearDoorwayPos=temple.localToWorld(new THREE.Vector3(0,0.12,-20.7));
+  const rearStreetPos=temple.localToWorld(new THREE.Vector3(0,0.12,-30.0));
   const processionPath=[
     temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-8.8)),
     temple.localToWorld(new THREE.Vector3(0,2.1,-4.2)),
@@ -2539,6 +2550,8 @@ function buildTempleComplex(xBase,opts={}){
     altarFrontPos,
     doorwayPos,
     streetPos,
+    rearDoorwayPos,
+    rearStreetPos,
     processionPath,
     doorwayX:doorwayPos.x,
     doorwayZ:doorwayPos.z
@@ -2553,6 +2566,65 @@ const CHUNK_PREFETCH_MARGIN=8;
 const CHUNK_PREFETCH_EXTRA=4;
 const chunks=new Map();
 let lastChunkIdx=null;
+function yawToForwardVector(yaw){
+  return new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
+}
+function yawToRightVector(yaw){
+  return new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+}
+function portalYawFromPoints(a,b){
+  return Math.atan2(b.x-a.x,b.z-a.z);
+}
+function setTempleLoopPortal(slot,plazaInfo){
+  if(!plazaInfo?.streetPos || !plazaInfo?.rearStreetPos)return;
+  templeLoopPortals[slot]={
+    frontDoorwayPos:plazaInfo.doorwayPos.clone(),
+    frontStreetPos:plazaInfo.streetPos.clone(),
+    rearDoorwayPos:plazaInfo.rearDoorwayPos.clone(),
+    rearStreetPos:plazaInfo.rearStreetPos.clone(),
+    frontYaw:portalYawFromPoints(plazaInfo.doorwayPos,plazaInfo.streetPos),
+    rearYaw:portalYawFromPoints(plazaInfo.rearDoorwayPos,plazaInfo.rearStreetPos)
+  };
+}
+function tryLoopTempleEntity(ent,prevX,prevZ){
+  if(!ent?.root || !templeLoopPortals.a || !templeLoopPortals.b)return false;
+  if((ent.loopPortalLockUntil||0)>gameTime)return false;
+  const pos=ent.root.position;
+  const moveX=pos.x-prevX;
+  const moveZ=pos.z-prevZ;
+  const pairs=[
+    {src:templeLoopPortals.a,dst:templeLoopPortals.b},
+    {src:templeLoopPortals.b,dst:templeLoopPortals.a}
+  ];
+  for(const {src,dst} of pairs){
+    const dx=pos.x-src.rearStreetPos.x;
+    const dz=pos.z-src.rearStreetPos.z;
+    if(dx*dx+dz*dz>TEMPLE_LOOP_PORTAL_RADIUS*TEMPLE_LOOP_PORTAL_RADIUS) continue;
+    const srcForward=yawToForwardVector(src.rearYaw);
+    const srcRight=yawToRightVector(src.rearYaw);
+    const forwardOffset=dx*srcForward.x+dz*srcForward.z;
+    if(forwardOffset<0.2) continue;
+    const moveForward=moveX*srcForward.x+moveZ*srcForward.z;
+    if(moveForward<-0.001) continue;
+    const rightOffset=dx*srcRight.x+dz*srcRight.z;
+    const dstForward=yawToForwardVector(dst.frontYaw);
+    const dstRight=yawToRightVector(dst.frontYaw);
+    pos.set(
+      dst.frontStreetPos.x+dstForward.x*forwardOffset+dstRight.x*rightOffset,
+      pos.y,
+      dst.frontStreetPos.z+dstForward.z*forwardOffset+dstRight.z*rightOffset
+    );
+    const yawDelta=dst.frontYaw-src.rearYaw;
+    ent.root.rotation.y+=yawDelta;
+    ent.yaw=(ent.yaw??ent.root.rotation.y)+yawDelta;
+    if(ent.targetPos?.set) ent.targetPos.set(pos.x,ent.targetPos.y??0,pos.z);
+    if(ent.roamTarget) ent.roamTarget=null;
+    ent.loopPortalLockUntil=gameTime+TEMPLE_LOOP_PORTAL_COOLDOWN;
+    if(player && ent===player) ensureChunksAroundX(pos.x);
+    return true;
+  }
+  return false;
+}
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
 function disposeMesh(o){scene.remove(o);o.traverse(n=>{if(n.isMesh){n.geometry?.dispose();disposeMaterials(n.material)}})}
 function disposeChunk(chunk){
@@ -2780,6 +2852,8 @@ function generateTempleChunk(idx,xBase,opts={}){
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
   const plazaInfo=buildTempleComplex(xBase,opts);
+  if(idx===TEMPLE_A_CHUNK_IDX) setTempleLoopPortal('a',plazaInfo);
+  if(idx===TEMPLE_CHUNK_IDX) setTempleLoopPortal('b',plazaInfo);
   if(opts.eventTemple!==false){
     game.templeEvent.root=plazaInfo.root;
     game.templeEvent.arch=plazaInfo.arch||null;
@@ -5291,6 +5365,7 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
   }
   softClampZ(pos);
   softClampTempleX(pos);
+  tryLoopTempleEntity(ent,prevX,prevZ);
 }
 function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   const curY=ent.root.rotation.y;
