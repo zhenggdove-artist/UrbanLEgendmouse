@@ -624,6 +624,7 @@ const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null};
 const HUMAN_VARIANTS=[];
 const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null};
 let templeIdolSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
+let templeIdolLoadPromise=null;
 
 function loadFBXAsync(path,onProgress){
   return new Promise((res,rej)=>fbxLoader.load(path,res,onProgress,rej));
@@ -668,6 +669,34 @@ function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
       clean:clean?.animations?.[0]||null
     }
   };
+}
+function loadTempleIdolAssets(){
+  if(templeIdolLoadPromise) return templeIdolLoadPromise;
+  templeIdolLoadPromise=Promise.all([
+    loadFBXAsync('asset/temple-idol/Breathing Idle.fbx'),
+    loadFBXAsync('asset/temple-idol/Walking.fbx'),
+    loadHumanTextureAsync('asset/temple-idol/tripo_model_basecolor.JPEG'),
+    loadHumanTextureAsync('asset/temple-idol/tripo_model_normal.JPEG'),
+    loadHumanTextureAsync('asset/temple-idol/tripo_model_roughness.JPEG'),
+    loadHumanTextureAsync('asset/temple-idol/tripo_model_metallic.JPEG')
+  ]).then(([idolIdleFBX,idolWalkFBX,idolBase,idolNormal,idolRough,idolMetal])=>{
+    templeIdolSource=idolIdleFBX;
+    templeIdolIdleClip=idolIdleFBX;
+    templeIdolWalkClip=idolWalkFBX;
+    TEMPLE_IDOL_SKIN.base=idolBase;
+    TEMPLE_IDOL_SKIN.normal=idolNormal;
+    TEMPLE_IDOL_SKIN.roughness=idolRough;
+    TEMPLE_IDOL_SKIN.metal=idolMetal;
+    if(game.templeEvent.root && !game.templeEvent.idol){
+      spawnTempleIdol({altarPos:game.templeEvent.altarPos});
+    }
+    return true;
+  }).catch(err=>{
+    console.error('[temple-idol] load failed',err);
+    templeIdolLoadPromise=null;
+    throw err;
+  });
+  return templeIdolLoadPromise;
 }
 
 const PLAYER_RAT_FRAME_PATHS={
@@ -3107,7 +3136,11 @@ function spawnTempleGlow(pos,count=44){
   }
 }
 function startTempleAwakening(){
-  if(game.templeEvent.started||game.templeEvent.awakened||!game.templeEvent.idol)return;
+  if(game.templeEvent.started||game.templeEvent.awakened)return;
+  if(!game.templeEvent.idol){
+    loadTempleIdolAssets().catch(()=>{});
+    return;
+  }
   ensureChunksAroundX(TEMPLE_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE*0.5);
   game.templeEvent.started=true;
   game.templeEvent.swarmProgress=0;
@@ -5490,25 +5523,7 @@ async function init(){
   }catch(e){
     console.error('[fbx] load failed — humans will use placeholder capsules',e);
   }
-  try{
-    const [idolIdleFBX,idolWalkFBX,idolBase,idolNormal,idolRough,idolMetal]=await Promise.all([
-      loadFBXAsync('asset/temple-idol/Breathing Idle.fbx'),
-      loadFBXAsync('asset/temple-idol/Walking.fbx'),
-      loadHumanTextureAsync('asset/temple-idol/tripo_model_basecolor.JPEG'),
-      loadHumanTextureAsync('asset/temple-idol/tripo_model_normal.JPEG'),
-      loadHumanTextureAsync('asset/temple-idol/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/temple-idol/tripo_model_metallic.JPEG')
-    ]);
-    templeIdolSource=idolIdleFBX;
-    templeIdolIdleClip=idolIdleFBX;
-    templeIdolWalkClip=idolWalkFBX;
-    TEMPLE_IDOL_SKIN.base=idolBase;
-    TEMPLE_IDOL_SKIN.normal=idolNormal;
-    TEMPLE_IDOL_SKIN.roughness=idolRough;
-    TEMPLE_IDOL_SKIN.metal=idolMetal;
-  }catch(e){
-    console.error('[temple-idol] load failed',e);
-  }
+  loadTempleIdolAssets().catch(()=>{});
   setIntroProgress(82,'WORLD');
 
   // Build the player rat (with FBX skin if it loaded).
