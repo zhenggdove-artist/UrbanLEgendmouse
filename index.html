@@ -210,6 +210,7 @@
   #rats-win .rw-btn{appearance:none;border:none;border-radius:4px;padding:11px 22px;
     background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
     letter-spacing:0.16em;cursor:pointer}
+  #temple-flash{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:45;transition:opacity .08s linear}
 
   .ui-layout-editor{position:fixed;inset:0;z-index:1200;pointer-events:none}
   .ui-layout-editor::before{content:'';position:absolute;inset:0;background:rgba(12,8,20,0.16)}
@@ -353,6 +354,7 @@
   <div class="rw-sub">THE ALLEY BELONGS TO THE SWARM</div>
   <button class="rw-btn" id="rw-replay">PLAY AGAIN</button>
 </div>
+<div id="temple-flash"></div>
 
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
@@ -585,6 +587,9 @@ const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
 const BROTH_POOL_GROWTH=2.8;
 const TEMPLE_CHUNK_IDX=6;
 const TEMPLE_SWARM_TRIGGER=1000;
+const TEMPLE_IDOL_ALTAR_LOCAL_Y=1.72;
+const TEMPLE_IDOL_HEIGHT=6.8;
+const TEMPLE_IDOL_KILL_RADIUS=1.2;
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
@@ -607,7 +612,9 @@ const game={
   testMode:false,
   templeEvent:{
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
-    started:false,awakened:false,swarmProgress:0,swarmSprites:[],glowCooldown:0
+    doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
+    started:false,awakened:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
+    glowCooldown:0,flashStrength:0
   },
   ratCityMode:false,
   ratCityAngle:0,
@@ -692,7 +699,12 @@ function loadTempleIdolAssets(){
     TEMPLE_IDOL_SKIN.roughness=null;
     TEMPLE_IDOL_SKIN.metal=null;
     if(game.templeEvent.root && !game.templeEvent.idol){
-      spawnTempleIdol({altarPos:game.templeEvent.altarPos});
+      spawnTempleIdol({
+        altarPos:game.templeEvent.altarPos,
+        doorwayPos:game.templeEvent.doorwayPos,
+        streetPos:game.templeEvent.streetPos,
+        processionPath:game.templeEvent.processionPath
+      });
     }
     return true;
   }).catch(err=>{
@@ -2111,7 +2123,6 @@ function buildTempleRoofTier({width=10,depth=5,y=0,z=0,roofColor='#2f8f86',trimC
   return roof;
 }
 const TEMPLE_DECOR_TEX={door:null,dragon:null,phoenix:null};
-const TEMPLE_IDOL_ALTAR_LOCAL_Y=1.26;
 function makeTempleDoorTexture(){
   if(TEMPLE_DECOR_TEX.door)return TEMPLE_DECOR_TEX.door;
   const c=document.createElement('canvas');c.width=160;c.height=256;
@@ -2276,16 +2287,13 @@ function buildTempleComplex(xBase){
   const charcoalMat=new THREE.MeshBasicMaterial({color:'#3a2d22'});
   const woodDoorMat=new THREE.MeshBasicMaterial({map:makeTempleDoorTexture(),color:'#a66a3a'});
   const asphaltTemple=(TEX.asphalt||TEX.pavement).clone();asphaltTemple.wrapS=asphaltTemple.wrapT=THREE.RepeatWrapping;asphaltTemple.repeat.set(3.4,2.2);pixelate(asphaltTemple);
-  const stepMat=new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#b6b1a9',side:THREE.DoubleSide});
-  const steps=new THREE.Mesh(new THREE.PlaneGeometry(16.5,8.4),stepMat);
-  steps.rotation.x=-Math.PI/2;
-  steps.position.set(0,GROUND_Y_OFFSET+0.01,2.6);temple.add(steps);
-  const forecourt=new THREE.Mesh(new THREE.PlaneGeometry(20.5,14.4),stepMat);
-  forecourt.rotation.x=-Math.PI/2;
-  forecourt.position.set(0,GROUND_Y_OFFSET+0.012,5.8);temple.add(forecourt);
-  const hallFloor=new THREE.Mesh(new THREE.PlaneGeometry(28.0,24.0),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#bdb8af',side:THREE.DoubleSide}));
-  hallFloor.rotation.x=-Math.PI/2;
-  hallFloor.position.set(0,GROUND_Y_OFFSET+0.014,-0.8);temple.add(hallFloor);
+  const stepMat=new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#b6b1a9'});
+  const steps=new THREE.Mesh(new THREE.BoxGeometry(14.4,0.26,5.8),stepMat);
+  steps.position.set(0,0.13,7.5);temple.add(steps);
+  const threshold=new THREE.Mesh(new THREE.BoxGeometry(7.2,0.24,3.0),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#c4beb2'}));
+  threshold.position.set(0,0.12,4.2);temple.add(threshold);
+  const hallFloor=new THREE.Mesh(new THREE.BoxGeometry(18.8,0.24,15.8),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#bdb8af'}));
+  hallFloor.position.set(0,0.12,-0.1);temple.add(hallFloor);
   const backWall=new THREE.Mesh(new THREE.BoxGeometry(26.0,8.4,0.72),warmStoneMat);
   backWall.position.set(0,4.22,-9.2);temple.add(backWall);
   const sideWallLeft=new THREE.Mesh(new THREE.BoxGeometry(0.78,8.4,18.2),warmStoneMat);
@@ -2383,9 +2391,8 @@ function buildTempleComplex(xBase){
   altar.position.set(0,0.82,-1.4);temple.add(altar);
   const altarCloth=new THREE.Mesh(new THREE.BoxGeometry(8.36,0.18,5.54),redMat);
   altarCloth.position.set(0,1.62,-1.38);temple.add(altarCloth);
-  const incenseTable=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.7,1.0),charcoalMat);
-  incenseTable.scale.set(1.8,1.2,1.6);
-  incenseTable.position.set(0,0.52,3.8);temple.add(incenseTable);
+  const incenseTable=new THREE.Mesh(new THREE.BoxGeometry(2.6,0.8,1.2),charcoalMat);
+  incenseTable.position.set(-4.25,0.62,2.4);temple.add(incenseTable);
   for(const sx of [-1,1]){
     const brazier=new THREE.Mesh(new THREE.CylinderGeometry(0.38,0.48,0.72,10),goldMat);
     brazier.position.set(sx*2.5,0.72,2.0);temple.add(brazier);
@@ -2393,8 +2400,10 @@ function buildTempleComplex(xBase){
   const dragonLeft=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.38,0.22),goldMat);
   dragonLeft.position.set(-4.2,8.94,4.92);dragonLeft.rotation.z=-0.22;temple.add(dragonLeft);
   const dragonRight=dragonLeft.clone();dragonRight.position.x=4.2;dragonRight.rotation.z=0.22;temple.add(dragonRight);
-  temple.scale.setScalar(6);
   addChunkObject(temple);
+  registerBlocker(steps,0.8,{supportOnly:true});
+  registerBlocker(threshold,0.8,{supportOnly:true});
+  registerBlocker(hallFloor,0.8,{supportOnly:true});
   registerBlocker(sideLeft,1.9);
   registerBlocker(sideRight,1.9);
   registerBlocker(backWall,0.8);
@@ -2406,10 +2415,22 @@ function buildTempleComplex(xBase){
   registerBlocker(altar,2.0);
   registerBlocker(incenseTable,1.2);
   const altarPos=temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-1.4));
-  const doorwayPos=temple.localToWorld(new THREE.Vector3(0,0.02,17.0));
+  const doorwayPos=temple.localToWorld(new THREE.Vector3(0,0.12,8.9));
+  const streetPos=temple.localToWorld(new THREE.Vector3(0,0.12,14.8));
+  const processionPath=[
+    temple.localToWorld(new THREE.Vector3(0,TEMPLE_IDOL_ALTAR_LOCAL_Y,-1.4)),
+    temple.localToWorld(new THREE.Vector3(0,0.9,1.2)),
+    temple.localToWorld(new THREE.Vector3(0,0.12,4.5)),
+    temple.localToWorld(new THREE.Vector3(0,0.12,8.9)),
+    temple.localToWorld(new THREE.Vector3(0,0.12,14.8)),
+    temple.localToWorld(new THREE.Vector3(0,0.12,58.0))
+  ];
   return {
     root:temple,
     altarPos,
+    doorwayPos,
+    streetPos,
+    processionPath,
     doorwayX:doorwayPos.x,
     doorwayZ:doorwayPos.z
   };
@@ -2553,7 +2574,7 @@ function spawnTempleIdol(plazaInfo){
     skin:TEMPLE_IDOL_SKIN
   });
   const inst=buildSkinnedActor({
-    targetHeight:1.52*5,
+    targetHeight:TEMPLE_IDOL_HEIGHT,
     tint:null,
     clips:idolVariant.clips,
     source:idolVariant.source,
@@ -2567,10 +2588,6 @@ function spawnTempleIdol(plazaInfo){
   root.traverse(o=>{
     if(!o.isMesh)return;
     originalMaterials.push({mesh:o,material:Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone()});
-    const gold=Array.isArray(o.material)
-      ? o.material.map(()=>new THREE.MeshBasicMaterial({color:'#dcb34f'}))
-      : new THREE.MeshBasicMaterial({color:'#dcb34f'});
-    o.material=gold;
   });
   for(const act of Object.values(inst.actions||{})){
     act.play();
@@ -2582,11 +2599,19 @@ function spawnTempleIdol(plazaInfo){
     kind:'human',
     root,inst,curSpeed:0,animState:'idle',actionTimer:0,actionName:null,
     behaviour:'idle',controllable:false,isAir:false,panicTimer:0,moveInputX:0,moveInputY:0,
-    originalMaterials,awakened:false
+    originalMaterials,awakened:false,
+    processIndex:0,processionPath:(plazaInfo.processionPath||[]).map(p=>p.clone()),
+    doorwayPos:plazaInfo.doorwayPos?.clone?.()||new THREE.Vector3(),
+    streetPos:plazaInfo.streetPos?.clone?.()||new THREE.Vector3(),
+    killRadius:TEMPLE_IDOL_KILL_RADIUS
   };
+  setTempleIdolPhaseMaterials(idolActor,'gold');
   game.templeEvent.idol=idolActor;
   game.templeEvent.idolActor=idolActor;
   game.templeEvent.altarPos.copy(plazaInfo.altarPos);
+  game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
+  game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
+  game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
   return idolActor;
 }
 function generateTempleChunk(idx,xBase){
@@ -2603,6 +2628,10 @@ function generateTempleChunk(idx,xBase){
   const plazaInfo=buildTempleComplex(xBase);
   game.templeEvent.root=plazaInfo.root;
   game.templeEvent.arch=plazaInfo.arch||null;
+  game.templeEvent.altarPos.copy(plazaInfo.altarPos);
+  game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
+  game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
+  game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
   spawnTempleIdol(plazaInfo);
   chunks.set(idx,chunk);_activeChunk=null;
   console.log('[chunk] temple '+idx+' humans='+chunk.humans.length+' meshes='+chunk.meshes.length);
@@ -3309,11 +3338,38 @@ function setHostHeadMasked(host,masked){
   }
   headBone.updateMatrixWorld(true);
 }
-function restoreTempleIdolMaterials(idol){
+function buildTempleIdolMaterial(src,mode='awake'){
+  const mat=new THREE.MeshBasicMaterial();
+  mat.color.copy(src?.color||new THREE.Color('#ffffff'));
+  if(src?.map){
+    mat.map=src.map;
+    pixelate(mat.map);
+    mat.map.colorSpace=THREE.SRGBColorSpace;
+  }
+  if(src?.transparent!==undefined) mat.transparent=src.transparent;
+  if(src?.opacity!==undefined) mat.opacity=src.opacity;
+  if(src?.alphaTest!==undefined) mat.alphaTest=src.alphaTest;
+  if(src?.side!==undefined) mat.side=src.side;
+  if(mode==='gold'){
+    mat.map=null;
+    mat.color.set('#dcb34f');
+  }else if(mode==='flash'){
+    mat.color.set('#fff7df');
+  }
+  mat.needsUpdate=true;
+  return mat;
+}
+function setTempleIdolPhaseMaterials(idol,mode='awake'){
   if(!idol?.originalMaterials)return;
   for(const entry of idol.originalMaterials){
-    entry.mesh.material=Array.isArray(entry.material)?entry.material.map(m=>m.clone()):entry.material.clone();
+    entry.mesh.material=Array.isArray(entry.material)
+      ? entry.material.map(src=>buildTempleIdolMaterial(src,mode))
+      : buildTempleIdolMaterial(entry.material,mode);
   }
+}
+function setTempleFlash(strength=0){
+  game.templeEvent.flashStrength=clamp(strength,0,1);
+  if(templeFlashEl) templeFlashEl.style.opacity=game.templeEvent.flashStrength.toFixed(3);
 }
 function spawnTempleGlow(pos,count=44){
   for(let i=0;i<count;i++){
@@ -3338,12 +3394,16 @@ function startTempleAwakening(){
   }
   ensureChunksAroundX(TEMPLE_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE*0.5);
   game.templeEvent.started=true;
+  game.templeEvent.phase='gather';
+  game.templeEvent.phaseTimer=0;
   game.templeEvent.swarmProgress=0;
   game.templeEvent.glowCooldown=0;
   game.templeEvent.swarmSprites.length=0;
+  setTempleIdolPhaseMaterials(game.templeEvent.idol,'gold');
   for(const rat of game.rats){
     if(rat===player)continue;
     rat.followPlayer=false;
+    rat.followStatue=false;
     rat.templeBound=true;
     rat.targetPos?.set(
       game.templeEvent.altarPos.x+rand(-1.2,1.2),
@@ -3364,11 +3424,58 @@ function startTempleAwakening(){
     );
     rat.templeBound=true;
     rat.followPlayer=false;
+    rat.followStatue=false;
     rat.targetPos.set(game.templeEvent.altarPos.x,0,game.templeEvent.altarPos.z);
     rat.moveIntent.y=1;
     game.rats.push(rat);
     game.templeEvent.swarmSprites.push(rat);
   }
+}
+function awakenTempleIdol(idol){
+  game.templeEvent.awakened=true;
+  game.templeEvent.phase='procession';
+  game.templeEvent.phaseTimer=0;
+  idol.awakened=true;
+  idol.processIndex=1;
+  idol.curSpeed=HOST_MAX_SPEED*0.58;
+  setTempleIdolPhaseMaterials(idol,'awake');
+  for(const act of Object.values(idol.inst?.actions||{})){
+    act.stop();
+    act.paused=false;
+  }
+  const walk=idol.inst?.actions?.walk||idol.inst?.actions?.run||idol.inst?.actions?.idle;
+  if(walk) walk.reset().fadeIn(0.12).play();
+  for(const rat of game.rats){
+    if(rat===player)continue;
+    rat.templeBound=false;
+    rat.followPlayer=false;
+    rat.followStatue=true;
+  }
+  setTempleFlash(0);
+  spawnTempleGlow(game.templeEvent.altarPos,180);
+}
+function tickTempleIdolProcession(idol,dt){
+  const path=idol.processionPath?.length?idol.processionPath:game.templeEvent.processionPath;
+  if(!path?.length)return;
+  const target=path[Math.min(idol.processIndex,path.length-1)];
+  const dx=target.x-idol.root.position.x;
+  const dz=target.z-idol.root.position.z;
+  const dist=Math.hypot(dx,dz);
+  const step=idol.curSpeed*dt;
+  if(dist>0.001){
+    const yaw=Math.atan2(dx,dz);
+    rotateTowardYaw(idol,yaw,dt,4.4);
+    idol.root.position.x+=Math.sin(yaw)*Math.min(step,dist);
+    idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
+  }
+  idol.root.position.y=lerp(idol.root.position.y,target.y,Math.min(1,dt*2.2));
+  if(dist<0.5 && idol.processIndex<path.length-1) idol.processIndex++;
+  for(const h of game.humans){
+    if(h.dead||h.parasitised||h===game.parasitisedHost)continue;
+    const hitDist=Math.hypot(h.root.position.x-idol.root.position.x,h.root.position.z-idol.root.position.z);
+    if(hitDist<=idol.killRadius) killHost(h);
+  }
+  tickActor(idol,dt);
 }
 function tickTempleEvent(dt){
   const idol=game.templeEvent.idol;
@@ -3376,16 +3483,17 @@ function tickTempleEvent(dt){
   if(!game.templeEvent.started && getTotalRatCount()>=TEMPLE_SWARM_TRIGGER){
     startTempleAwakening();
   }
-  if(game.templeEvent.started && !game.templeEvent.awakened){
-    game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.18);
+  if(!game.templeEvent.started)return;
+  if(game.templeEvent.phase==='gather'){
+    game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.22);
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
-      const climb=clamp(game.templeEvent.swarmProgress*1.24-rand(0,0.2),0,1);
+      const climb=clamp(game.templeEvent.swarmProgress*1.18-(rat.swarmPhase?((rat.swarmPhase/Math.PI)%0.18):0),0,1);
       const radius=lerp(3.8,1.4,climb);
       const angle=(rat.swarmPhase||0)+gameTime*0.9;
       const targetX=game.templeEvent.altarPos.x+Math.cos(angle)*radius;
       const targetZ=game.templeEvent.altarPos.z+Math.sin(angle)*radius*0.55;
-      const targetY=GROUND_Y_OFFSET + climb*rand(0.6,6.2);
+      const targetY=GROUND_Y_OFFSET + climb*rand(0.8,6.0);
       rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*1.8));
       rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*1.8));
       rat.root.position.y=lerp(rat.root.position.y,targetY,Math.min(1,dt*1.9));
@@ -3399,22 +3507,55 @@ function tickTempleEvent(dt){
       game.templeEvent.glowCooldown=0.18;
     }
     if(game.templeEvent.swarmProgress>=1){
-      game.templeEvent.awakened=true;
-      restoreTempleIdolMaterials(idol);
-      idol.awakened=true;
-      idol.curSpeed=HOST_MAX_SPEED*0.42;
-      const walk=idol.inst?.actions?.walk||idol.inst?.actions?.run;
-      if(walk){
-        for(const act of Object.values(idol.inst.actions||{})){ act.stop(); act.paused=false; }
-        walk.reset().play();
-      }
+      game.templeEvent.phase='glow';
+      game.templeEvent.phaseTimer=1.1;
+      setTempleIdolPhaseMaterials(idol,'flash');
+      setTempleFlash(0.22);
       spawnTempleGlow(game.templeEvent.altarPos,120);
     }
+    return;
+  }
+  if(game.templeEvent.phase==='glow'){
+    game.templeEvent.phaseTimer=Math.max(0,game.templeEvent.phaseTimer-dt);
+    setTempleFlash(lerp(game.templeEvent.flashStrength,0.72,Math.min(1,dt*4.2)));
+    if(Math.random()<0.55) spawnTempleGlow(game.templeEvent.altarPos,8);
+    if(game.templeEvent.phaseTimer<=0){
+      game.templeEvent.phase='flash';
+      game.templeEvent.phaseTimer=0.48;
+      setTempleFlash(1);
+      spawnTempleGlow(game.templeEvent.altarPos,220);
+    }
+    return;
+  }
+  if(game.templeEvent.phase==='flash'){
+    game.templeEvent.phaseTimer=Math.max(0,game.templeEvent.phaseTimer-dt);
+    if(Math.random()<0.75) spawnTempleGlow(game.templeEvent.altarPos,12);
+    if(game.templeEvent.phaseTimer<=0){
+      game.templeEvent.phase='drop';
+      game.templeEvent.phaseTimer=0.85;
+      setTempleIdolPhaseMaterials(idol,'awake');
+    }
+    return;
+  }
+  if(game.templeEvent.phase==='drop'){
+    game.templeEvent.phaseTimer=Math.max(0,game.templeEvent.phaseTimer-dt);
+    const dropProgress=1-(game.templeEvent.phaseTimer/0.85);
+    setTempleFlash(Math.max(0,0.95-dropProgress*1.25));
+    for(const rat of game.templeEvent.swarmSprites){
+      if(!rat?.root)continue;
+      rat.root.position.y=lerp(rat.root.position.y,GROUND_Y_OFFSET,Math.min(1,dt*6.5));
+      rat.followStatue=true;
+      rat.templeBound=false;
+      rat.followPlayer=false;
+    }
+    if(game.templeEvent.phaseTimer<=0){
+      awakenTempleIdol(idol);
+    }
+    return;
   }
   if(game.templeEvent.awakened){
-    idol.curSpeed=HOST_MAX_SPEED*0.42;
-    tickActor(idol,dt);
-    if(Math.random()<0.18) spawnTempleGlow(game.templeEvent.altarPos,4);
+    tickTempleIdolProcession(idol,dt);
+    if(Math.random()<0.22) spawnTempleGlow(idol.root.position,4);
   }
 }
 function spawnChunkHuman(chunk,x,z,role='wanderer',groupMeta=null){
@@ -5384,6 +5525,16 @@ function tickFollowerRats(dt){
     if(r.templeBound && game.templeEvent.idol && !game.templeEvent.awakened){
       target={x:game.templeEvent.altarPos.x,z:game.templeEvent.altarPos.z};
     }
+    if(r.followStatue && game.templeEvent.awakened && game.templeEvent.idol){
+      const idol=game.templeEvent.idol;
+      const phase=(r.swarmPhase!==undefined)?r.swarmPhase:(r.swarmPhase=Math.random()*Math.PI*2);
+      const ring=phase+gameTime*0.7;
+      const trail=1.3+((r.swarmPhase||0)%1.8);
+      target={
+        x:idol.root.position.x-Math.sin(idol.yaw||idol.root.rotation.y)*trail+Math.cos(ring)*1.25,
+        z:idol.root.position.z-Math.cos(idol.yaw||idol.root.rotation.y)*trail+Math.sin(ring)*0.8
+      };
+    }
     if(r.followPlayer && player){
       const backX=player.root.position.x-Math.sin(player.yaw)*rand(0.9,1.8);
       const backZ=player.root.position.z-Math.cos(player.yaw)*rand(0.9,1.8);
@@ -5418,7 +5569,7 @@ function tickFollowerRats(dt){
     r.curSpeed=spd;
     if(r.moveIntent){
       r.moveIntent.x=0;
-      const chasingPlayer=!!r.followPlayer || !chaosTarget;
+      const chasingPlayer=!!r.followPlayer || !!r.followStatue || !chaosTarget;
       r.moveIntent.y=spd>0.01?(chasingPlayer?1:-1):0;
     }
     tickActor(r,dt);
@@ -5585,6 +5736,7 @@ const introProgressFill=document.getElementById('intro-progress-fill');
 const introProgressText=document.getElementById('intro-progress-text');
 const ratsWinEl=document.getElementById('rats-win');
 const ratsWinReplay=document.getElementById('rw-replay');
+const templeFlashEl=document.getElementById('temple-flash');
 function setIntroProgress(p,label){
   introProgressFill.style.width=clamp(p,0,100)+'%';
   if(label)introProgressText.textContent=label+' '+Math.round(p)+'%';
