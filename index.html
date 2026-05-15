@@ -673,20 +673,16 @@ function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
 function loadTempleIdolAssets(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
-    loadFBXAsync('asset/temple-idol/Breathing Idle.fbx'),
-    loadFBXAsync('asset/temple-idol/Walking.fbx'),
-    loadHumanTextureAsync('asset/temple-idol/tripo_model_basecolor.JPEG'),
-    loadHumanTextureAsync('asset/temple-idol/tripo_model_normal.JPEG'),
-    loadHumanTextureAsync('asset/temple-idol/tripo_model_roughness.JPEG'),
-    loadHumanTextureAsync('asset/temple-idol/tripo_model_metallic.JPEG')
-  ]).then(([idolIdleFBX,idolWalkFBX,idolBase,idolNormal,idolRough,idolMetal])=>{
-    templeIdolSource=idolIdleFBX;
-    templeIdolIdleClip=idolIdleFBX;
-    templeIdolWalkClip=idolWalkFBX;
-    TEMPLE_IDOL_SKIN.base=idolBase;
-    TEMPLE_IDOL_SKIN.normal=idolNormal;
-    TEMPLE_IDOL_SKIN.roughness=idolRough;
-    TEMPLE_IDOL_SKIN.metal=idolMetal;
+    loadGLTFAsync('asset/temple-idol/Breathing Idle_low.glb'),
+    loadGLTFAsync('asset/temple-idol/Walking_low.glb')
+  ]).then(([idolIdleGLB,idolWalkGLB])=>{
+    templeIdolSource=idolIdleGLB.scene;
+    templeIdolIdleClip={animations:idolIdleGLB.animations||[]};
+    templeIdolWalkClip={animations:idolWalkGLB.animations||[]};
+    TEMPLE_IDOL_SKIN.base=null;
+    TEMPLE_IDOL_SKIN.normal=null;
+    TEMPLE_IDOL_SKIN.roughness=null;
+    TEMPLE_IDOL_SKIN.metal=null;
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({altarPos:game.templeEvent.altarPos});
     }
@@ -5523,7 +5519,7 @@ async function init(){
   }catch(e){
     console.error('[fbx] load failed — humans will use placeholder capsules',e);
   }
-  loadTempleIdolAssets().catch(()=>{});
+  await loadTempleIdolAssets().catch(()=>{});
   setIntroProgress(82,'WORLD');
 
   // Build the player rat (with FBX skin if it loaded).
