@@ -593,7 +593,12 @@ const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
-const TEMPLE_IDOL_SPAWN_Y_OFFSET=-2;
+const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
+function resolveIdolGroundY(idol){
+  const sy=sampleSupportHeight(idol,idol.root.position.x,idol.root.position.z,idol.root.position.y);
+  const base=(idol.baseY??0)+GROUND_Y_OFFSET;
+  return sy>base+0.001?sy:base;
+}
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
@@ -2805,6 +2810,8 @@ function spawnTempleIdol(plazaInfo){
   }
   game.templeEvent.idol=idolActor;
   game.templeEvent.idolActor=idolActor;
+  idolActor.baseY=0;
+  root.position.y=resolveIdolGroundY(idolActor);
   game.templeEvent.altarPos.copy(plazaInfo.altarPos);
   game.templeEvent.altarTopPos.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
   game.templeEvent.altarEdgeTopPos.copy(plazaInfo.altarEdgeTopPos||plazaInfo.altarTopPos||plazaInfo.altarPos);
@@ -3737,7 +3744,8 @@ function tickTempleIdolProcession(idol,dt){
     idol.root.position.x+=Math.sin(yaw)*Math.min(step,dist);
     idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
   }
-  idol.root.position.y=lerp(idol.root.position.y,target.y,Math.min(1,dt*2.2));
+  const groundY=resolveIdolGroundY(idol);
+  idol.root.position.y=lerp(idol.root.position.y,groundY,Math.min(1,dt*6.0));
   if(dist<0.5){
     if(idol.processIndex<path.length-1) idol.processIndex++;
     else game.templeEvent.phase='roam';
@@ -3770,7 +3778,8 @@ function tickTempleIdolRoam(idol,dt){
     idol.root.position.x+=Math.sin(yaw)*move;
     idol.root.position.z+=Math.cos(yaw)*move;
   }
-  idol.root.position.y=lerp(idol.root.position.y,GROUND_Y_OFFSET+0.12,Math.min(1,dt*3.2));
+  const groundY=resolveIdolGroundY(idol);
+  idol.root.position.y=lerp(idol.root.position.y,groundY,Math.min(1,dt*6.0));
   softClampZ(idol.root.position);
   softClampTempleX(idol.root.position);
   tickTempleIdolKills(idol);
@@ -3812,10 +3821,13 @@ function tickTempleEvent(dt){
         targetY=lerp(altarEdgeTop.y+0.05,altarTop.y+0.08,topLift);
       }else{
         const crest=(climb-0.74)/0.26;
-        const radius=lerp(1.8,0.9,crest);
+        const radius=lerp(1.8,0.55,crest);
         targetX=game.templeEvent.altarPos.x+Math.cos(ringAngle)*radius;
         targetZ=game.templeEvent.altarPos.z+Math.sin(ringAngle)*radius*0.5;
-        targetY=lerp(altarTop.y+0.08,idolBaseY+rand(0.3,TEMPLE_IDOL_HEIGHT*0.8),crest);
+        const bodyT=(phase%Math.PI)/Math.PI;
+        const climbCeiling=idolBaseY+TEMPLE_IDOL_HEIGHT+0.35;
+        const climbFloor=idolBaseY+0.25;
+        targetY=lerp(altarTop.y+0.08,lerp(climbFloor,climbCeiling,bodyT),crest);
       }
       rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*1.8));
       rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*1.8));
@@ -3944,11 +3956,11 @@ function spawnBiteBlood(host,multiplier=1){
       color:new THREE.Color(i%3===0?'#ffb2b2':'#d81f41')
     }));
     sprite.scale.setScalar(rand(0.12,0.28)*Math.sqrt(Math.max(1,multiplier))*0.75);
-    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.09,0.09),rand(-0.06,0.14),rand(-0.09,0.09)));
+    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.045,0.045),rand(-0.03,0.07),rand(-0.045,0.045)));
     scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
-      vel:new THREE.Vector3(rand(-1.8,1.8)*Math.min(2.8,multiplier*0.22+1),rand(0.8,3.6)*Math.min(2.6,multiplier*0.18+1),rand(-1.8,1.8)*Math.min(2.8,multiplier*0.22+1)),
+      vel:new THREE.Vector3(rand(-0.9,0.9)*Math.min(2.8,multiplier*0.22+1),rand(0.4,1.8)*Math.min(2.6,multiplier*0.18+1),rand(-0.9,0.9)*Math.min(2.8,multiplier*0.22+1)),
       gravity:4.4,life:0.8+Math.min(0.8,multiplier*0.04),maxLife:0.8+Math.min(0.8,multiplier*0.04),spin:rand(-14,14)
     });
   }
@@ -3966,11 +3978,11 @@ function spawnBodyBlood(host,multiplier=1){
       color:new THREE.Color(i%4===0?'#ff8a8a':'#cf1735')
     }));
     sprite.scale.setScalar(rand(0.14,0.32)*Math.sqrt(Math.max(1,multiplier))*0.72);
-    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.12,0.12),rand(-0.18,0.18),rand(-0.12,0.12)));
+    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.06,0.06),rand(-0.09,0.09),rand(-0.06,0.06)));
     scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
-      vel:new THREE.Vector3(rand(-2.8,2.8)*Math.min(3.2,multiplier*0.16+1),rand(-0.2,4.2)*Math.min(2.8,multiplier*0.16+1),rand(-2.8,2.8)*Math.min(3.2,multiplier*0.16+1)),
+      vel:new THREE.Vector3(rand(-1.4,1.4)*Math.min(3.2,multiplier*0.16+1),rand(-0.1,2.1)*Math.min(2.8,multiplier*0.16+1),rand(-1.4,1.4)*Math.min(3.2,multiplier*0.16+1)),
       gravity:4.6,life:0.9+Math.min(0.9,multiplier*0.03),maxLife:0.9+Math.min(0.9,multiplier*0.03),spin:rand(-12,12)
     });
   }
