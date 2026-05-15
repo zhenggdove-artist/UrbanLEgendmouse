@@ -695,7 +695,7 @@ function makeHumanVariant({source,idle,walk,run,jump,kick,pickup,clean,skin}){
     }
   };
 }
-function loadTempleIdolAssets(){
+function loadTempleIdolAssetsLegacy(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
     loadFBXAsync('asset/神像/Orc Idle.fbx'),
@@ -731,6 +731,41 @@ function loadTempleIdolAssets(){
   return templeIdolLoadPromise;
 }
 
+function loadTempleIdolAssets(){
+  if(templeIdolLoadPromise) return templeIdolLoadPromise;
+  templeIdolLoadPromise=Promise.all([
+    loadGLTFAsync('asset/temple-idol/Breathing Idle_low.glb'),
+    loadGLTFAsync('asset/temple-idol/Walking_low.glb')
+  ]).then(([idolIdleGLB,idolWalkGLB])=>{
+    templeIdolSource=idolIdleGLB.scene;
+    templeIdolIdleSource=idolIdleGLB.scene;
+    templeIdolWalkSource=idolWalkGLB.scene;
+    templeIdolIdleClip=idolIdleGLB.animations?.[0]||null;
+    templeIdolWalkClip=idolWalkGLB.animations?.[0]||idolIdleGLB.animations?.[0]||null;
+    TEMPLE_IDOL_SKIN.base=null;
+    TEMPLE_IDOL_SKIN.normal=null;
+    TEMPLE_IDOL_SKIN.roughness=null;
+    TEMPLE_IDOL_SKIN.metal=null;
+    TEMPLE_IDOL_SKIN.flipY=false;
+    if(game.templeEvent.root && !game.templeEvent.idol){
+      spawnTempleIdol({
+        altarPos:game.templeEvent.altarPos,
+        altarTopPos:game.templeEvent.altarTopPos,
+        altarEdgeTopPos:game.templeEvent.altarEdgeTopPos,
+        altarFrontPos:game.templeEvent.altarFrontPos,
+        doorwayPos:game.templeEvent.doorwayPos,
+        streetPos:game.templeEvent.streetPos,
+        processionPath:game.templeEvent.processionPath
+      });
+    }
+    return true;
+  }).catch(err=>{
+    console.error('[temple-idol] load failed',err);
+    templeIdolLoadPromise=null;
+    throw err;
+  });
+  return templeIdolLoadPromise;
+}
 const PLAYER_RAT_FRAME_PATHS={
   idle:Array.from({length:14},(_,i)=>`asset/mouse/mouseidle/mouseidle_${String(i+1).padStart(4,'0')}.png`),
   bite:Array.from({length:7},(_,i)=>`asset/mouse/mousebite/BITE_${String(i+1).padStart(4,'0')}.png`),
@@ -2455,7 +2490,11 @@ function buildTempleComplex(xBase){
 }
 
 // ===== Chunk system — infinite alley along the X axis =====
-const CHUNK_SIZE=24, CHUNK_WINDOW=6;
+const CHUNK_SIZE=24;
+const CHUNK_WINDOW_AHEAD=6;
+const CHUNK_WINDOW_A_SIDE=8;
+const CHUNK_PREFETCH_MARGIN=8;
+const CHUNK_PREFETCH_EXTRA=2;
 const chunks=new Map();
 let lastChunkIdx=null;
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
@@ -2985,13 +3024,20 @@ function generateChunk(idx){
 
 function ensureChunksAroundX(x){
   const c=Math.floor(x/CHUNK_SIZE);
-  const maxForward=c+CHUNK_WINDOW;
-  for(let i=c-CHUNK_WINDOW;i<=maxForward;i++){
+  const localX=x-c*CHUNK_SIZE;
+  let minChunk=c-CHUNK_WINDOW_A_SIDE;
+  let maxChunk=c+CHUNK_WINDOW_AHEAD;
+  if(localX<CHUNK_PREFETCH_MARGIN) minChunk-=CHUNK_PREFETCH_EXTRA;
+  for(let i=minChunk;i<=maxChunk;i++){
     if(!chunks.has(i)) generateChunk(i);
   }
+  const keepBehind=CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA;
+  const keepAhead=CHUNK_WINDOW_AHEAD;
   for(const [idx,chunk] of [...chunks]){
     if(idx===TEMPLE_CHUNK_IDX) continue;
-    if(Math.abs(idx-c)>CHUNK_WINDOW){disposeChunk(chunk);chunks.delete(idx);console.log('[chunk] dispose '+idx)}
+    if(idx<=(c-keepBehind-1) || idx>=(c+keepAhead+1)){
+      disposeChunk(chunk);chunks.delete(idx);console.log('[chunk] dispose '+idx);
+    }
   }
   lastChunkIdx=c;
 }
@@ -5793,7 +5839,7 @@ function renderMinimap(){
   minimapCtx.lineWidth=14;
   minimapCtx.lineCap='round';
   minimapCtx.beginPath();
-  for(let ix=-CHUNK_WINDOW;ix<=TEMPLE_CHUNK_IDX+1;ix++){
+  for(let ix=-(CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA);ix<=TEMPLE_CHUNK_IDX+1;ix++){
     const worldX=ix*CHUNK_SIZE;
     const a=toMap(worldX,ALLEY_Z_MIN+1.8);
     const b=toMap(worldX,ALLEY_Z_MAX-1.8);
@@ -5804,7 +5850,7 @@ function renderMinimap(){
   minimapCtx.strokeStyle='rgba(111,225,255,0.22)';
   minimapCtx.lineWidth=3;
   minimapCtx.beginPath();
-  for(let ix=-CHUNK_WINDOW;ix<=TEMPLE_CHUNK_IDX+1;ix+=2){
+  for(let ix=-(CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA);ix<=TEMPLE_CHUNK_IDX+1;ix+=2){
     const a=toMap(ix*CHUNK_SIZE,-1.6);
     const b=toMap(ix*CHUNK_SIZE+CHUNK_SIZE,1.6);
     minimapCtx.moveTo(a.x,a.y);
