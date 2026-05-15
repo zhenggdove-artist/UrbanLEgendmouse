@@ -1236,9 +1236,11 @@ function loadGraffitiTextures(){
   return Promise.all(promises);
 }
 function loadFloorTexture(){
-  TEX.asphalt=makeAsphaltTexture();
-  TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;
-  TEX.asphalt.repeat.set(3,2);
+  if(!TEX.asphalt){
+    TEX.asphalt=makeRoadReferenceTexture();
+    TEX.asphalt.wrapS=TEX.asphalt.wrapT=THREE.RepeatWrapping;
+    TEX.asphalt.repeat.set(3,2);
+  }
   return Promise.resolve(TEX.asphalt);
 }
 function loadRatPortraitTexture(){
@@ -2259,7 +2261,7 @@ function buildTemplePaifang(x,z=0){
 }
 function buildTempleComplex(xBase){
   const plaza=new THREE.Group();
-  const tileTex=(TEX.asphalt||TEX.pavement).clone();tileTex.wrapS=tileTex.wrapT=THREE.RepeatWrapping;tileTex.repeat.set(12,8);pixelate(tileTex);
+  const tileTex=(TEX.pavement||TEX.asphalt).clone();tileTex.wrapS=tileTex.wrapT=THREE.RepeatWrapping;tileTex.repeat.set(12,8);pixelate(tileTex);
   const court=new THREE.Mesh(
     new THREE.PlaneGeometry(CHUNK_SIZE*0.96,36),
     new THREE.MeshBasicMaterial({map:tileTex,color:'#bdb8ae',side:THREE.DoubleSide})
@@ -2295,13 +2297,13 @@ function buildTempleComplex(xBase){
   const creamMat=new THREE.MeshBasicMaterial({color:'#efe1bd'});
   const charcoalMat=new THREE.MeshBasicMaterial({color:'#3a2d22'});
   const woodDoorMat=new THREE.MeshBasicMaterial({map:makeTempleDoorTexture(),color:'#a66a3a'});
-  const asphaltTemple=(TEX.asphalt||TEX.pavement).clone();asphaltTemple.wrapS=asphaltTemple.wrapT=THREE.RepeatWrapping;asphaltTemple.repeat.set(3.4,2.2);pixelate(asphaltTemple);
-  const stepMat=new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#b6b1a9'});
+  const templeFloorTex=(TEX.pavement||TEX.asphalt).clone();templeFloorTex.wrapS=templeFloorTex.wrapT=THREE.RepeatWrapping;templeFloorTex.repeat.set(7.0,4.8);pixelate(templeFloorTex);
+  const stepMat=new THREE.MeshBasicMaterial({map:templeFloorTex,color:'#b6b1a9'});
   const steps=new THREE.Mesh(new THREE.BoxGeometry(14.4,0.26,5.8),stepMat);
   steps.position.set(0,0.13,7.5);temple.add(steps);
-  const threshold=new THREE.Mesh(new THREE.BoxGeometry(7.6,0.24,3.0),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#c4beb2'}));
+  const threshold=new THREE.Mesh(new THREE.BoxGeometry(7.6,0.24,3.0),new THREE.MeshBasicMaterial({map:templeFloorTex,color:'#c4beb2'}));
   threshold.position.set(0,0.12,4.2);temple.add(threshold);
-  const hallFloor=new THREE.Mesh(new THREE.BoxGeometry(32.6,0.24,29.8),new THREE.MeshBasicMaterial({map:asphaltTemple,color:'#bdb8af'}));
+  const hallFloor=new THREE.Mesh(new THREE.BoxGeometry(32.6,0.24,29.8),new THREE.MeshBasicMaterial({map:templeFloorTex,color:'#bdb8af'}));
   hallFloor.position.set(0,0.12,-5.8);temple.add(hallFloor);
   const backWall=new THREE.Mesh(new THREE.BoxGeometry(34.0,11.4,0.72),warmStoneMat);
   backWall.position.set(0,5.72,-20.6);temple.add(backWall);
@@ -2678,14 +2680,6 @@ function replaceTempleIdolWithWalkRig(idol){
 function generateTempleChunk(idx,xBase){
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
-  const floorTex=(TEX.asphalt||TEX.pavement).clone();floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;floorTex.repeat.set(4,5);pixelate(floorTex);
-  const floor=new THREE.Mesh(
-    new THREE.PlaneGeometry(CHUNK_SIZE,46),
-    new THREE.MeshBasicMaterial({map:floorTex,color:'#b9b4aa',side:THREE.DoubleSide})
-  );
-  floor.rotation.x=-Math.PI/2;
-  floor.position.set(xBase+CHUNK_SIZE/2,0,0);
-  scene.add(floor);chunk.meshes.push(floor);
   const plazaInfo=buildTempleComplex(xBase);
   game.templeEvent.root=plazaInfo.root;
   game.templeEvent.arch=plazaInfo.arch||null;
@@ -5110,7 +5104,10 @@ function softClampZ(p){
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function softClampTempleX(p){
-  return;
+  const templeRoot=game.templeEvent?.root;
+  if(!templeRoot)return;
+  const minTempleX=templeRoot.position.x-20.2;
+  if(p.x<minTempleX)p.x=minTempleX;
 }
 function sampleSupportHeight(ent,x,z,currentY){
   let support=(ent.baseY??0)+GROUND_Y_OFFSET;
