@@ -638,7 +638,7 @@ let characterSource=null;
 const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
 const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 const HUMAN_VARIANTS=[];
-const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:false,materialKind:'basic'};
+const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 let templeIdolSource=null,templeIdolIdleSource=null,templeIdolWalkSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
 let templeIdolLoadPromise=null;
 
@@ -658,6 +658,15 @@ function loadHumanTextureAsync(path){
   return new Promise((res,rej)=>imageLoader.load(path,tex=>{
     tex.flipY=true;
     tex.colorSpace=THREE.SRGBColorSpace;
+    tex.needsUpdate=true;
+    res(pixelate(tex));
+  },undefined,rej));
+}
+function loadTempleIdolBaseTextureAsync(path){
+  return new Promise((res,rej)=>imageLoader.load(path,tex=>{
+    tex.flipY=true;
+    tex.colorSpace=THREE.SRGBColorSpace;
+    tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping;
     tex.needsUpdate=true;
     res(pixelate(tex));
   },undefined,rej));
@@ -690,14 +699,15 @@ function loadTempleIdolAssets(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
     loadFBXAsync('asset/神像/Orc Idle.fbx'),
-    loadFBXAsync('asset/神像/Walk.fbx')
-  ]).then(([idolIdleFBX,idolWalkFBX])=>{
+    loadFBXAsync('asset/神像/Walk.fbx'),
+    loadTempleIdolBaseTextureAsync('asset/神像/tripo_model_basecolor.JPEG')
+  ]).then(([idolIdleFBX,idolWalkFBX,baseTex])=>{
     templeIdolSource=idolIdleFBX;
     templeIdolIdleSource=idolIdleFBX;
     templeIdolWalkSource=idolWalkFBX;
     templeIdolIdleClip=idolIdleFBX;
     templeIdolWalkClip=idolWalkFBX;
-    TEMPLE_IDOL_SKIN.base=null;
+    TEMPLE_IDOL_SKIN.base=baseTex;
     TEMPLE_IDOL_SKIN.normal=null;
     TEMPLE_IDOL_SKIN.roughness=null;
     TEMPLE_IDOL_SKIN.metal=null;
@@ -2981,7 +2991,7 @@ function generateChunk(idx){
 
 function ensureChunksAroundX(x){
   const c=Math.floor(x/CHUNK_SIZE);
-  const maxForward=Math.min(TEMPLE_CHUNK_IDX,c+CHUNK_WINDOW);
+  const maxForward=c+CHUNK_WINDOW;
   for(let i=c-CHUNK_WINDOW;i<=maxForward;i++){
     if(!chunks.has(i)) generateChunk(i);
   }
@@ -5100,8 +5110,7 @@ function softClampZ(p){
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function softClampTempleX(p){
-  const maxX=(TEMPLE_CHUNK_IDX+1)*CHUNK_SIZE-2.8;
-  if(p.x>maxX)p.x=maxX;
+  return;
 }
 function sampleSupportHeight(ent,x,z,currentY){
   let support=(ent.baseY??0)+GROUND_Y_OFFSET;
