@@ -2616,6 +2616,7 @@ function generateChunk(idx){
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
   const chunkVariant=Math.abs(Math.floor(Math.sin(idx*17.173)*1000))%3;
+  const nearTempleApproach=idx>=TEMPLE_CHUNK_IDX-1;
 
   // --- Floor: a single asphalt strip running the whole alley width.
   const floorTex=TEX.asphalt.clone();floorTex.wrapS=floorTex.wrapT=THREE.RepeatWrapping;
@@ -2627,8 +2628,8 @@ function generateChunk(idx){
   floor.rotation.x=-Math.PI/2;
   floor.position.set(xBase+CHUNK_SIZE/2,0,0);
   scene.add(floor);chunk.meshes.push(floor);
-  if(chunkVariant===1) buildSkyTunnel(xBase);
-  if(chunkVariant===2) buildMiniPlaza(xBase);
+  if(!nearTempleApproach && chunkVariant===1) buildSkyTunnel(xBase);
+  if(!nearTempleApproach && chunkVariant===2) buildMiniPlaza(xBase);
 
   // --- Buildings on BOTH sides — staggered widths, heights, colours and
   // front/back offsets so the alley never reads as a repeated wall strip.
@@ -2642,9 +2643,9 @@ function generateChunk(idx){
       const remain=xBase+CHUNK_SIZE-cursor;
       if(remain<4.6) width=remain;
       else width=Math.min(width,remain);
-      const height=rand(6.2,17.8);
+      const height=nearTempleApproach?rand(6.8,11.2):rand(6.2,17.8);
       const depth=rand(1.3,2.8);
-      const frontZ=sign*(10.8+rand(0.3,2.2));
+      const frontZ=nearTempleApproach?sign*(15.6+rand(1.8,3.6)):sign*(10.8+rand(0.3,2.2));
       const tex=TEX.facade[((idx*5+partIdx+(sign>0?2:0))%4+4)%4].clone();
       tex.wrapS=THREE.RepeatWrapping;tex.wrapT=THREE.RepeatWrapping;
       tex.repeat.set(Math.max(1.5,width/2.6),Math.max(2.2,height/2.4));pixelate(tex);
@@ -2673,11 +2674,11 @@ function generateChunk(idx){
         addChunkObject(ledge);
       }
       buildingFaces.push({sign,xMin:cursor,xMax:cursor+width,frontZ,height});
-      if(Math.random()<0.34 && width>4.8){
+      if(!nearTempleApproach && Math.random()<0.34 && width>4.8){
         const stairX=clamp(centreX+rand(-width*0.18,width*0.18),cursor+0.9,cursor+width-0.9);
         buildFireEscapeStair(stairX,frontZ,sign,Math.max(3,Math.min(5,Math.round(height/3.8))));
       }
-      if(Math.random()<0.52){
+      if(!nearTempleApproach && Math.random()<0.52){
         buildRoofWaterTank(
           centreX+rand(-width*0.22,width*0.22),
           height+0.02,
@@ -2685,7 +2686,7 @@ function generateChunk(idx){
           rand(0.9,1.2)
         );
       }
-      if(Math.random()<0.46){
+      if(!nearTempleApproach && Math.random()<0.46){
         buildLaundryRack(
           centreX+rand(-width*0.28,width*0.28),
           height+0.02,
@@ -2735,7 +2736,7 @@ function generateChunk(idx){
         panel.rotation.y=face.sign>0?Math.PI:0;
         addChunkObject(panel);
       }
-      if(Math.random()<0.78){
+      if(!nearTempleApproach && Math.random()<0.78){
         buildUtilityCabinet(
           rand(face.xMin+0.55,face.xMax-0.55),
           face.frontZ-face.sign*0.62,
@@ -2746,13 +2747,13 @@ function generateChunk(idx){
   }
 
   // --- Market stalls: irregular cluster layout with mixed sizes.
-  buildMarketCluster(xBase);
+  if(!nearTempleApproach) buildMarketCluster(xBase);
 
   // --- Hanging horizontal signs running along the buildings.
   const signPool=[TEX.signRed,TEX.signRed2,TEX.signBlue,TEX.signYellow,TEX.signGreen,
                   TEX.signRed3,TEX.signTeal,TEX.signPink,TEX.signWhite,TEX.signPurple];
   for(const face of buildingFaces){
-    if(Math.random()<0.82){
+    if(!nearTempleApproach && Math.random()<0.82){
       buildHangingSign(
         rand(face.xMin+0.7,face.xMax-0.7),
         rand(3.0,Math.min(5.6,face.height-1.4)),
@@ -2762,7 +2763,7 @@ function generateChunk(idx){
         rand(0.9,1.4)
       );
     }
-    if(Math.random()<0.38){
+    if(!nearTempleApproach && Math.random()<0.38){
       const tex=pick([TEX.signTall1,TEX.signTall2,...signPool]);
       const vert=new THREE.Mesh(
         new THREE.BoxGeometry(0.10,rand(1.8,3.4),0.6),
