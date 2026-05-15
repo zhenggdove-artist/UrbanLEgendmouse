@@ -2350,22 +2350,46 @@ function generateChunk(idx){
 
   // --- Humans (real skinned actors) — kept low (2-3 per chunk) so the
   // total stays under ~8 across the whole 3-chunk window.
-  const humanCount=2+(Math.random()<0.4?1:0);
-  for(let i=0;i<humanCount;i++){
+  const pickHumanSpawn=()=>{
     let x=xBase+rand(2,CHUNK_SIZE-2);
-    let z=rand(-2.2,2.2);
-    for(let tries=0;tries<6;tries++){
+    let z=rand(-4.8,4.8);
+    for(let tries=0;tries<8;tries++){
       const blocked=game.deathSpots.some(s=>{
         const dx=s.x-x, dz=s.z-z;
         return dx*dx+dz*dz<4.2*4.2;
       });
       if(!blocked) break;
       x=xBase+rand(2,CHUNK_SIZE-2);
-      z=rand(-2.2,2.2);
+      z=rand(-4.8,4.8);
     }
-    const role=(i===0 && (idx%2===0))?'cleaner':'wanderer';
-    const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
-    if(h){chunk.humans.push(h);game.humans.push(h)}
+    return {x,z};
+  };
+  const soloCount=2+(Math.random()<0.75?1:0)+(Math.random()<0.35?1:0);
+  const cleanerQuota=1+(Math.random()<0.42?1:0);
+  for(let i=0;i<soloCount;i++){
+    const {x,z}=pickHumanSpawn();
+    const role=i<cleanerQuota?'cleaner':'wanderer';
+    spawnChunkHuman(chunk,x,z,role);
+  }
+  const groupCount=1+((Math.random()<0.28 && idx%2===0)?1:0);
+  for(let g=0;g<groupCount;g++){
+    const size=3+Math.floor(Math.random()*5);
+    const {x:leadX,z:leadZ}=pickHumanSpawn();
+    const groupId=`chunk-${idx}-group-${g}`;
+    const leader=spawnChunkHuman(chunk,leadX,leadZ,Math.random()<0.22?'cleaner':'wanderer',{id:groupId});
+    if(!leader)continue;
+    leader.groupLeader=null;
+    for(let memberIndex=1;memberIndex<size;memberIndex++){
+      const angle=(memberIndex/Math.max(1,size-1))*Math.PI*2+rand(-0.32,0.32);
+      const radius=0.9+Math.floor(memberIndex/2)*0.55+rand(-0.12,0.18);
+      const mx=clamp(leadX+Math.cos(angle)*radius,xBase+1.4,xBase+CHUNK_SIZE-1.4);
+      const mz=clamp(leadZ+Math.sin(angle)*radius,ALLEY_Z_MIN+0.7,ALLEY_Z_MAX-0.7);
+      spawnChunkHuman(chunk,mx,mz,'wanderer',{
+        id:groupId,
+        leader,
+        offset:new THREE.Vector3(Math.cos(angle)*radius,0,Math.sin(angle)*radius)
+      });
+    }
   }
 
   chunks.set(idx,chunk);_activeChunk=null;
@@ -2590,7 +2614,8 @@ function buildHuman({position,role='wanderer'}={}){
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
       behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+      actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false,
+      socialGroupId:null,groupLeader:null,groupOffset:null};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -2622,7 +2647,8 @@ function buildHuman({position,role='wanderer'}={}){
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
-    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false};
+    actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false,
+    socialGroupId:null,groupLeader:null,groupOffset:null};
 }
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
@@ -2765,6 +2791,18 @@ function syncParasiteOverlay(host,dt,mx=0,my=0){
   }
   host.parasiteOverlay.material.needsUpdate=true;
 }
+function spawnChunkHuman(chunk,x,z,role='wanderer',groupMeta=null){
+  const h=buildHuman({position:new THREE.Vector3(x,0,z),role});
+  if(!h)return null;
+  if(groupMeta){
+    h.socialGroupId=groupMeta.id;
+    h.groupLeader=groupMeta.leader||null;
+    h.groupOffset=groupMeta.offset?groupMeta.offset.clone():null;
+  }
+  chunk.humans.push(h);
+  game.humans.push(h);
+  return h;
+}
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
   if(host?.root){
@@ -2821,6 +2859,28 @@ function spawnBiteBlood(host,multiplier=1){
       kind:'blood',sprite,
       vel:new THREE.Vector3(rand(-1.8,1.8)*Math.min(2.8,multiplier*0.22+1),rand(0.8,3.6)*Math.min(2.6,multiplier*0.18+1),rand(-1.8,1.8)*Math.min(2.8,multiplier*0.22+1)),
       gravity:4.4,life:0.8+Math.min(0.8,multiplier*0.04),maxLife:0.8+Math.min(0.8,multiplier*0.04),spin:rand(-14,14)
+    });
+  }
+}
+function spawnBodyBlood(host,multiplier=1){
+  const base=new THREE.Vector3(
+    host.root.position.x,
+    (host.baseY||0)+Math.max(0.92,(host.height||1.6)*0.52),
+    host.root.position.z
+  );
+  const count=Math.round(120*multiplier);
+  for(let i=0;i<count;i++){
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:FX_TEX.blood,transparent:true,depthWrite:false,fog:false,
+      color:new THREE.Color(i%4===0?'#ff8a8a':'#cf1735')
+    }));
+    sprite.scale.setScalar(rand(0.14,0.32)*Math.sqrt(Math.max(1,multiplier))*0.72);
+    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.12,0.12),rand(-0.18,0.18),rand(-0.12,0.12)));
+    scene.add(sprite);
+    game.fx.push({
+      kind:'blood',sprite,
+      vel:new THREE.Vector3(rand(-2.8,2.8)*Math.min(3.2,multiplier*0.16+1),rand(-0.2,4.2)*Math.min(2.8,multiplier*0.16+1),rand(-2.8,2.8)*Math.min(3.2,multiplier*0.16+1)),
+      gravity:4.6,life:0.9+Math.min(0.9,multiplier*0.03),maxLife:0.9+Math.min(0.9,multiplier*0.03),spin:rand(-12,12)
     });
   }
 }
@@ -2896,7 +2956,7 @@ function killHost(host){
     host.bloodPool.visible=true;
     host.bloodPool.scale.set(2.4,2.4,2.4);
   }
-  spawnBiteBlood(host,10);
+  spawnBodyBlood(host,10);
   spawnImpactDebris(host.root.position,120,'#b11428');
   spawnComicImpact(host.root.position,'SPLAT!','#ff95a3');
   game.deathSpots.push({x:host.root.position.x,z:host.root.position.z,ttl:45});
@@ -3121,24 +3181,34 @@ function attachHumanStatusProps(root){
   return {bloodPool,cleanBar,parasiteOverlay};
 }
 function makeComicTextTexture(text,fill='#fff7c2',stroke='#310c16',fontSize=44){
-  const c=document.createElement('canvas');c.width=320;c.height=112;
+  const opts=arguments[4]||{};
+  const c=document.createElement('canvas');
+  c.width=Math.max(480,Math.ceil(text.length*fontSize*1.16)+220);
+  c.height=Math.max(150,Math.ceil(fontSize*2.5));
   const cx=c.getContext('2d');
   cx.clearRect(0,0,c.width,c.height);
   cx.translate(c.width/2,c.height/2);
-  cx.rotate((-8+Math.random()*16)*Math.PI/180);
+  if(opts.rotate!==false) cx.rotate((-8+Math.random()*16)*Math.PI/180);
   cx.font=`bold ${fontSize}px Arial`;
   cx.textAlign='center';
   cx.textBaseline='middle';
   cx.lineWidth=Math.max(12,Math.round(fontSize*0.3));
   cx.strokeStyle=stroke;
   cx.strokeText(text,0,4);
-  cx.fillStyle=fill;
+  if(Array.isArray(opts.gradient) && opts.gradient.length>=2){
+    const grad=cx.createLinearGradient(-c.width*0.28,-fontSize*0.5,c.width*0.28,fontSize*0.7);
+    const step=1/Math.max(1,opts.gradient.length-1);
+    opts.gradient.forEach((color,idx)=>grad.addColorStop(step*idx,color));
+    cx.fillStyle=grad;
+  }else{
+    cx.fillStyle=fill;
+  }
   cx.fillText(text,0,4);
   return pixelate(new THREE.CanvasTexture(c));
 }
 function spawnComicImpact(pos,text='BAM!',fill='#fff7c2',opts={}){
   const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-    map:makeComicTextTexture(text,fill,opts.stroke||'#310c16',opts.fontSize||44),transparent:true,depthWrite:false,fog:false
+    map:makeComicTextTexture(text,fill,opts.stroke||'#310c16',opts.fontSize||44,opts),transparent:true,depthWrite:false,fog:false
   }));
   sprite.position.copy(pos).y+=(opts.yOffset??0.9);
   sprite.scale.set(opts.scaleX??1.25,opts.scaleY??0.62,1);
@@ -3164,16 +3234,19 @@ function awardChaosScore(pos,baseGain,clusterRadius=4.2){
   game.chaos=Math.min(1,game.chaos+gain);
   const points=Math.round(gain*1000);
   game.chaosScore+=points;
-  spawnComicImpact(pos,`+${points} CHAOS`,cluster>3?'#59fff4':'#6fffd2',{
-    stroke:'#082126',
-    fontSize:62,
-    scaleX:2.2,
-    scaleY:1.04,
+  spawnComicImpact(pos,`+${points} CHAOS`,'#ffb24a',{
+    stroke:'#54110f',
+    gradient:['#ff4d2a','#ff7f1f','#ffb23c'],
+    fontSize:66,
+    scaleX:2.8,
+    scaleY:1.08,
     yOffset:1.55,
-    life:1.35,
-    gravity:0.28,
-    vel:new THREE.Vector3(rand(-0.06,0.06),0.66,rand(-0.06,0.06)),
-    grow:0.38
+    life:1.58,
+    gravity:0,
+    vel:new THREE.Vector3(rand(-0.03,0.03),0.92,0),
+    grow:0.22,
+    spin:0,
+    rotate:false
   });
   const chaosRise=Math.max(0,game.chaos-prevChaos);
   if(chaosRise>0.009){
@@ -3241,9 +3314,9 @@ const UI_LAYOUT_DEFAULTS={
     'viewport-frame-bottom':{x:50,y:91.6,w:100,h:40},
     'viewport-frame-left':{x:11,y:50,w:22,h:100},
     'viewport-frame-right':{x:89,y:50,w:22,h:100},
-    'mode-badge':{x:18,y:7.2,w:22,h:5.6},
-    'chaos-box':{x:72,y:7.2,w:24,h:6.4},
-    'rats-box':{x:72,y:14,w:24,h:6.4},
+    'mode-badge':{x:12,y:5,w:0,h:0},
+    'chaos-box':{x:80,y:9.8,w:32,h:7.2},
+    'rats-box':{x:80,y:18.6,w:32,h:7.2},
     'hint':{x:50,y:10.2,w:60,h:5.4},
     'joystick-zone':{x:19,y:84,w:24,h:16},
     'jump-btn':{x:84,y:61,w:13,h:9},
@@ -3273,10 +3346,17 @@ function loadUILayoutConfig(){
     const raw=localStorage.getItem(UI_LAYOUT_STORAGE_KEY);
     if(!raw) return cloneUILayoutConfig(UI_LAYOUT_DEFAULTS);
     const parsed=JSON.parse(raw);
-    return {
+    const config={
       desktop:{...cloneUILayoutConfig(UI_LAYOUT_DEFAULTS.desktop),...(parsed.desktop||{})},
       mobile:{...cloneUILayoutConfig(UI_LAYOUT_DEFAULTS.mobile),...(parsed.mobile||{})}
     };
+    const oldChaos=config.mobile['chaos-box'];
+    const oldRats=config.mobile['rats-box'];
+    const oldMode=config.mobile['mode-badge'];
+    if(oldChaos && oldChaos.x===72 && oldChaos.y===7.2) config.mobile['chaos-box']={...UI_LAYOUT_DEFAULTS.mobile['chaos-box']};
+    if(oldRats && oldRats.x===72 && oldRats.y===14) config.mobile['rats-box']={...UI_LAYOUT_DEFAULTS.mobile['rats-box']};
+    if(oldMode && oldMode.x===18 && oldMode.y===7.2) config.mobile['mode-badge']={...UI_LAYOUT_DEFAULTS.mobile['mode-badge']};
+    return config;
   }catch(_){
     return cloneUILayoutConfig(UI_LAYOUT_DEFAULTS);
   }
@@ -4409,6 +4489,17 @@ function restorePropFromCleaner(prop){
   prop.reservedBy=null;
   game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
 }
+function countNearbyGroundRats(pos,radius=3.2){
+  let count=0;
+  const r2=radius*radius;
+  for(const rat of game.rats){
+    if(rat===player || rat===game.controlled)continue;
+    const dx=rat.root.position.x-pos.x;
+    const dz=rat.root.position.z-pos.z;
+    if(dx*dx+dz*dz<=r2) count++;
+  }
+  return count;
+}
 function tickCleaner(cleaner,dt){
   if(cleaner.controllable||cleaner.parasitised||cleaner.dead)return;
   if(cleaner.downTimer>0)return;
@@ -4426,7 +4517,7 @@ function tickCleaner(cleaner,dt){
     if(cleaner.wanderTimer<=0){cleaner.wanderTimer=1.0+Math.random()*1.8;cleaner.yaw+=(Math.random()-0.5)*Math.PI*0.9}
     const turnDiff=rotateTowardYaw(cleaner,cleaner.yaw,dt,5.4);
     const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.26?0.32:1);
-    cleaner.curSpeed=0.78*moveScale;
+    cleaner.curSpeed=0.92*moveScale;
     const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
     cleaner.root.position.x+=Math.sin(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
     cleaner.root.position.z+=Math.cos(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
@@ -4445,7 +4536,7 @@ function tickCleaner(cleaner,dt){
   if(dist>CLEANER_TIDY_RADIUS){
     cleaner.behaviour='seek';
     const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.24?0.28:1);
-    cleaner.curSpeed=1.08*moveScale;
+    cleaner.curSpeed=1.32*moveScale;
     cleaner.cleanBar.root.visible=false;
     const prevX=cleaner.root.position.x, prevZ=cleaner.root.position.z;
     cleaner.root.position.x+=Math.sin(cleaner.root.rotation.y)*cleaner.curSpeed*dt;
@@ -4481,6 +4572,13 @@ function tickHumans(dt){
       h.cleanBar.root.visible=false;
       tickActor(h,dt);
       continue;
+    }
+    if(!h.controllable && !h.parasitised){
+      const ratPressure=countNearbyGroundRats(h.root.position,3.25);
+      if(ratPressure>=10){
+        h.panicTimer=Math.max(h.panicTimer,1.75);
+        h.panicTurnTimer=0;
+      }
     }
     if(h.downTimer>0){
       h.downTimer=Math.max(0,h.downTimer-dt);
@@ -4520,9 +4618,34 @@ function tickHumans(dt){
       tickCleaner(h,dt);
     }else if(!h.controllable){
       h.cleanBar.root.visible=false;
+      if(h.groupLeader && h.groupLeader!==h){
+        if(h.groupLeader.dead || h.groupLeader.parasitised){
+          h.groupLeader=null;
+          h.groupOffset=null;
+        }else{
+          const off=h.groupOffset||new THREE.Vector3(0.8,0,0);
+          const sinY=Math.sin(h.groupLeader.root.rotation.y), cosY=Math.cos(h.groupLeader.root.rotation.y);
+          const tx=h.groupLeader.root.position.x + off.x*cosY + off.z*sinY;
+          const tz=h.groupLeader.root.position.z + off.z*cosY - off.x*sinY;
+          const dx=tx-h.root.position.x;
+          const dz=tz-h.root.position.z;
+          const dist=Math.hypot(dx,dz);
+          const desiredYaw=Math.atan2(dx,dz);
+          const turnDiff=rotateTowardYaw(h,desiredYaw,dt,6.8);
+          const moveScale=Math.abs(turnDiff)>0.82?0:(Math.abs(turnDiff)>0.34?0.42:1);
+          h.curSpeed=dist>0.42?0.96*moveScale:0;
+          const prevX=h.root.position.x, prevZ=h.root.position.z;
+          h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
+          h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
+          resolveWorldCollisions(h,prevX,prevZ,0.38);
+          softClampZ(h.root.position);
+          tickActor(h,dt);
+          continue;
+        }
+      }
       if(!h.targetProp){
         const nearbyMess=findNearestMessForCleaner(h);
-        if(nearbyMess && Math.random()<0.30){
+        if(nearbyMess && Math.random()<0.68){
           h.targetProp=nearbyMess;
           h.behaviour='seek';
           h.tidyTimer=CLEANER_TIDY_TIME;
@@ -4611,7 +4734,7 @@ function tickFollowerRats(dt){
     r.curSpeed=spd;
     if(r.moveIntent){
       r.moveIntent.x=0;
-      const chasingPlayer=!!r.followPlayer;
+      const chasingPlayer=!!r.followPlayer || !chaosTarget;
       r.moveIntent.y=spd>0.01?(chasingPlayer?1:-1):0;
     }
     tickActor(r,dt);
