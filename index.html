@@ -5039,7 +5039,9 @@ function measureUILayoutRect(def,metrics){
     : document.getElementById(def.id);
   if(el){
     const r=el.getBoundingClientRect();
-    if(r.width>0 && r.height>0 && getComputedStyle(el).display!=='none') return r;
+    if(r.width>0 && r.height>0 && getComputedStyle(el).display!=='none'){
+      return {left:r.left,top:r.top,width:r.width,height:r.height};
+    }
   }
   return getUILayoutBoxRect(def,metrics);
 }
@@ -5238,14 +5240,17 @@ function refreshUILayoutEditor(){
     const box=ensureUILayoutOverlayBox(uiLayoutState.editor,def);
     const metrics=ensureUILayoutMetrics(def);
     if(!box||!metrics) continue;
+    const isSelected=uiLayoutState.selectedIds.includes(def.id);
+    const isActive=uiLayoutState.drag?.id===def.id;
+    const panelOnly=isUILayoutPanelOnlyDef(def);
     const r=measureUILayoutRect(def,metrics);
     box.style.left=`${r.left}px`;
     box.style.top=`${r.top}px`;
     box.style.width=`${Math.max(r.width,18)}px`;
     box.style.height=`${Math.max(r.height,18)}px`;
     box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
-    box.style.display=metrics.hidden?'none':'block';
-    box.classList.toggle('panel-only',isUILayoutPanelOnlyDef(def));
+    box.style.display=(metrics.hidden || (panelOnly && !isSelected && !isActive))?'none':'block';
+    box.classList.toggle('panel-only',panelOnly);
     box.classList.toggle('is-hidden',!!metrics.hidden);
     box.classList.toggle('is-locked',!!metrics.locked);
     box.querySelector('.ui-layout-box-label').textContent=`${def.label}${metrics.hidden?' [hidden]':''}`;
@@ -5279,6 +5284,42 @@ async function exportUILayoutConfig(){
     ()=>showUILayoutToast('Layout export copied with line range'),
     ()=>window.prompt('Copy layout config',payload)
   );
+}
+function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
+  const def=getUILayoutDef(defId);
+  if(!def) return false;
+  const metrics=ensureUILayoutMetrics(def);
+  if(!metrics || metrics.hidden) return false;
+  if(metrics.locked){
+    showUILayoutToast(`${def.label} is locked`);
+    return true;
+  }
+  if(e.shiftKey) setUILayoutSelection(def.id,{additive:true});
+  else setUILayoutSelection(def.id);
+  pushUILayoutHistory(mode==='resize'?'resize':'move');
+  uiLayoutState.drag={
+    id:def.id,
+    mode,
+    corner,
+    startX:e.clientX,
+    startY:e.clientY,
+    startRect:measureUILayoutRect(def,metrics),
+    pointerId:e.pointerId
+  };
+  uiLayoutState.overlays.get(def.id)?.classList.add('active');
+  return true;
+}
+function handleUILayoutDirectTargetPointerDown(e){
+  if(!uiLayoutState.active) return;
+  if(e.target?.closest?.('.ui-layout-editor')) return;
+  const target=e.target?.closest?.('[id]');
+  if(!target?.id) return;
+  const def=getUILayoutDef(target.id);
+  if(!def || isUILayoutPanelOnlyDef(def)) return;
+  if(beginUILayoutPointerDrag(def.id,e,{mode:'move'})){
+    e.preventDefault();
+    e.stopPropagation();
+  }
 }
 function setUILayoutMode(mode){
   uiLayoutState.mode=mode;
@@ -5604,25 +5645,7 @@ function ensureUILayoutOverlayBox(root,def){
     <div class="ui-layout-handle" data-corner="sw"></div><div class="ui-layout-handle" data-corner="w"></div>`;
   box.addEventListener('pointerdown',e=>{
     const handle=e.target.closest('.ui-layout-handle');
-    const currentDef=getUILayoutDef(def.id);
-    const metrics=ensureUILayoutMetrics(currentDef);
-    if(!metrics) return;
-    if(metrics.locked){
-      showUILayoutToast(`${currentDef.label} is locked`);
-      return;
-    }
-    if(e.shiftKey) setUILayoutSelection(currentDef.id,{additive:true});
-    else setUILayoutSelection(currentDef.id);
-    pushUILayoutHistory(handle?'resize':'move');
-    uiLayoutState.drag={
-      id:currentDef.id,
-      mode:handle?'resize':'move',
-      corner:handle?.dataset.corner||'se',
-      startX:e.clientX,
-      startY:e.clientY,
-      startRect:measureUILayoutRect(currentDef,metrics),
-      pointerId:e.pointerId
-    };
+    if(!beginUILayoutPointerDrag(def.id,e,{mode:handle?'resize':'move',corner:handle?.dataset.corner||'se'})) return;
     box.classList.add('active');
     box.setPointerCapture?.(e.pointerId);
     e.preventDefault();
@@ -5734,6 +5757,7 @@ function buildUILayoutEditor(){
   root.querySelectorAll('[data-layout-mode]').forEach(btn=>{
     btn.addEventListener('click',()=>setUILayoutMode(btn.dataset.layoutMode));
   });
+  window.addEventListener('pointerdown',handleUILayoutDirectTargetPointerDown,true);
   window.addEventListener('pointermove',handleUILayoutPointerMove);
   window.addEventListener('pointerup',handleUILayoutPointerUp);
   window.addEventListener('pointercancel',handleUILayoutPointerUp);
@@ -5791,6 +5815,7 @@ function disableUILayoutEditor(){
   uiLayoutState.active=false;
   document.body.classList.remove('ui-layout-admin');
   window.removeEventListener('wheel',handleAdminStageWheel,{capture:true});
+  window.removeEventListener('pointerdown',handleUILayoutDirectTargetPointerDown,true);
   window.removeEventListener('pointermove',handleUILayoutPointerMove);
   window.removeEventListener('pointerup',handleUILayoutPointerUp);
   window.removeEventListener('pointercancel',handleUILayoutPointerUp);
