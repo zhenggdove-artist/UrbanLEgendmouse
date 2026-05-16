@@ -2885,16 +2885,24 @@ function tryLoopTempleEntity(ent,prevX,prevZ){
     const srcForward=yawToForwardVector(src.rearYaw);
     const srcRight=yawToRightVector(src.rearYaw);
     const forwardOffset=dx*srcForward.x+dz*srcForward.z;
-    if(forwardOffset<0.2) continue;
+    if(Math.abs(forwardOffset)<0.2) continue;
     const moveForward=moveX*srcForward.x+moveZ*srcForward.z;
-    if(moveForward<-0.001) continue;
+    // Bidirectional trigger: fire when the entity is past the portal in
+    // the same direction it is moving — handles BOTH directions of the
+    // ring loop. Standing still (moveForward ~ 0) does not fire.
+    if(moveForward*forwardOffset<=0.00005) continue;
     const rightOffset=dx*srcRight.x+dz*srcRight.z;
     const dstForward=yawToForwardVector(dst.rearYaw);
     const dstRight=yawToRightVector(dst.rearYaw);
+    // Push the entity past the destination portal by RADIUS + margin in
+    // the direction it was moving, so it does NOT immediately re-trigger
+    // the dst portal on subsequent frames once the cooldown expires.
+    const exitDist=TEMPLE_LOOP_PORTAL_RADIUS+0.8;
+    const placedForward=(forwardOffset>0?+1:-1)*exitDist;
     pos.set(
-      dst.rearStreetPos.x+dstForward.x*forwardOffset+dstRight.x*rightOffset,
+      dst.rearStreetPos.x+dstForward.x*placedForward+dstRight.x*rightOffset,
       pos.y,
-      dst.rearStreetPos.z+dstForward.z*forwardOffset+dstRight.z*rightOffset
+      dst.rearStreetPos.z+dstForward.z*placedForward+dstRight.z*rightOffset
     );
     const yawDelta=dst.rearYaw-src.rearYaw;
     ent.root.rotation.y+=yawDelta;
@@ -3037,30 +3045,43 @@ function buildMiniPlaza(xBase,width=CHUNK_SIZE){
   }
 }
 function ensureTempleIdolLights(){
-  // The temple idols sit at world x = -222 (chunk A) and x = +162 (chunk B).
-  // DirectionalLights are parallel rays — only the direction (target -
-  // position) matters, not the absolute placement. So we anchor both
-  // light + target near the world origin and let the same lights wash
-  // every temple altar from the same upper-front-right angle.
+  // Both temple idols face WORLD -X (the player approaches from -X).
+  // DirectionalLights are parallel rays — direction = target - position.
+  // To light the idol's FRONT (which faces -X), light must come from the
+  // -X half-space and shine toward +X (so the ray's X component is +).
+  // Previously the lights came from +X and lit the BACK of the idol,
+  // leaving the visible front face with only ambient illumination — that
+  // is why the statue read as a flat muddy brown.
   if(!game.templeEvent.lightTarget){
     game.templeEvent.lightTarget=new THREE.Object3D();
     game.templeEvent.lightTarget.position.set(0,1.9,0);
     scene.add(game.templeEvent.lightTarget);
   }
   if(!game.templeEvent.keyLight){
-    const key=new THREE.DirectionalLight('#ffe2a2',1.45);
-    key.position.set(5.5,8.5,6.5);
+    // Warm key from front-upper-right of the idol's face.
+    const key=new THREE.DirectionalLight('#ffe7a8',1.8);
+    key.position.set(-8.5,8.5,5.5);
     key.target=game.templeEvent.lightTarget;
     scene.add(key);
     scene.add(key.target);
     game.templeEvent.keyLight=key;
   }
   if(!game.templeEvent.rimLight){
-    const rim=new THREE.DirectionalLight('#a4cfff',0.55);
-    rim.position.set(-4.2,5.2,-5.6);
+    // Cool rim from front-left to model the cheek/silhouette.
+    const rim=new THREE.DirectionalLight('#a4cfff',0.7);
+    rim.position.set(-6.0,4.5,-6.5);
     rim.target=game.templeEvent.lightTarget;
     scene.add(rim);
     game.templeEvent.rimLight=rim;
+  }
+  if(!game.templeEvent.fillLight){
+    // Soft fill from in front so the body's centre never falls into
+    // pure ambient — guarantees the dark side still reads as gold.
+    const fill=new THREE.DirectionalLight('#fff2c5',0.6);
+    fill.position.set(-12,3.0,0);
+    fill.target=game.templeEvent.lightTarget;
+    scene.add(fill);
+    game.templeEvent.fillLight=fill;
   }
 }
 function spawnTempleIdol(plazaInfo,{decorative=false}={}){
@@ -3105,7 +3126,11 @@ function spawnTempleIdol(plazaInfo,{decorative=false}={}){
     processIndex:0,processionPath:(plazaInfo.processionPath||[]).map(p=>p.clone()),
     doorwayPos:plazaInfo.doorwayPos?.clone?.()||new THREE.Vector3(),
     streetPos:plazaInfo.streetPos?.clone?.()||new THREE.Vector3(),
-    killRadius:TEMPLE_IDOL_KILL_RADIUS,roamTarget:null,roamTimer:0
+    killRadius:TEMPLE_IDOL_KILL_RADIUS,roamTarget:null,roamTimer:0,
+    // Plaza snapshot kept on the idol so we can dynamically promote the
+    // twin to "primary" if the player triggers the ritual at the other
+    // temple end of the loop.
+    plazaSnapshot:clonePlazaInfoForIdol(plazaInfo)
   };
   ensureTempleIdolLights();
   setTempleIdolPhaseMaterials(idolActor,'gold');
@@ -4022,9 +4047,12 @@ function buildTempleIdolMaterial(src,mode='awake'){
     const mat=new THREE.MeshPhongMaterial({
       color:'#f7c63a',
       specular:'#fff2c5',
-      shininess:110,
-      emissive:'#5a3a08',
-      emissiveIntensity:0.32,
+      shininess:90,
+      // Emissive kept low so the directional key/rim/fill drives the
+      // visible shading. Earlier values dominated the diffuse and made
+      // the body read as flat brown.
+      emissive:'#2a1c06',
+      emissiveIntensity:0.18,
       transparent:src?.transparent===true,
       opacity:src?.opacity ?? 1,
       side:src?.side ?? THREE.FrontSide
@@ -4072,13 +4100,61 @@ function setAllTempleIdolPhaseMaterials(mode){
     if(idol) setTempleIdolPhaseMaterials(idol,mode);
   }
 }
-function isPlayerInsideEventTemple(){
-  if(!player?.root || !game.templeEvent.root) return false;
-  const templeX=game.templeEvent.altarPos.x;
-  const zone=TEMPLE_KEEP_OUT_ZONES.find(z=>templeX>=z.minX && templeX<=z.maxX);
-  if(!zone) return false;
+function isPlayerInsideAnyTempleZone(){
+  // Either temple counts — the loop portal makes them functionally one.
+  if(!player?.root) return null;
   const {x,z}=player.root.position;
-  return x>=zone.minX && x<=zone.maxX && z>=zone.minZ && z<=zone.maxZ;
+  for(const zone of TEMPLE_KEEP_OUT_ZONES){
+    if(x>=zone.minX && x<=zone.maxX && z>=zone.minZ && z<=zone.maxZ){
+      return zone;
+    }
+  }
+  return null;
+}
+function isPlayerInsideEventTemple(){
+  return !!isPlayerInsideAnyTempleZone();
+}
+function promoteIdolToPrimary(idolActor){
+  // Make a (currently-decorative) idol the active event idol. Swap with
+  // the existing primary so the OTHER temple becomes the decorative
+  // twin, and copy the new primary's plaza positions into game.templeEvent
+  // so swarm spawn / climb logic references the player's temple end.
+  if(!idolActor||idolActor===game.templeEvent.idol) return;
+  const prev=game.templeEvent.idol;
+  const idx=game.templeEvent.secondaryIdols.indexOf(idolActor);
+  if(idx>=0) game.templeEvent.secondaryIdols.splice(idx,1);
+  if(prev){
+    prev.decorative=true;
+    game.templeEvent.secondaryIdols.push(prev);
+  }
+  idolActor.decorative=false;
+  game.templeEvent.idol=idolActor;
+  game.templeEvent.idolActor=idolActor;
+  const snap=idolActor.plazaSnapshot;
+  if(snap){
+    game.templeEvent.altarPos.copy(snap.altarPos);
+    game.templeEvent.altarTopPos.copy(snap.altarTopPos);
+    game.templeEvent.altarEdgeTopPos.copy(snap.altarEdgeTopPos);
+    game.templeEvent.altarFrontPos.copy(snap.altarFrontPos);
+    game.templeEvent.doorwayPos.copy(snap.doorwayPos);
+    game.templeEvent.streetPos.copy(snap.streetPos);
+    game.templeEvent.processionPath=snap.processionPath.map(p=>p.clone());
+  }
+}
+function ensurePrimaryIdolMatchesPlayer(){
+  // If the player is standing inside the twin (decorative) temple's zone,
+  // promote that idol to primary BEFORE the awakening fires so the swarm
+  // bursts in through the door the player is standing next to.
+  const zone=isPlayerInsideAnyTempleZone();
+  if(!zone) return;
+  const primaryAltarX=game.templeEvent.altarPos.x;
+  const primaryInZone=primaryAltarX>=zone.minX && primaryAltarX<=zone.maxX;
+  if(primaryInZone) return;
+  const match=game.templeEvent.secondaryIdols.find(id=>{
+    const ax=id?.plazaSnapshot?.altarPos?.x;
+    return ax!==undefined && ax>=zone.minX && ax<=zone.maxX;
+  });
+  if(match) promoteIdolToPrimary(match);
 }
 function startTempleGathering(){
   if(game.templeEvent.gathering||game.templeEvent.awakened)return;
@@ -4275,10 +4351,25 @@ function tickTempleIdolRoam(idol,dt){
   realignActorFeet(idol.inst);
 }
 function tickTempleEvent(dt){
-  const idol=game.templeEvent.idol;
-  if(!idol)return;
+  // If the player is currently inside the twin (decorative) temple's
+  // zone, hot-swap that idol to be the primary BEFORE we trigger
+  // gathering or awakening — so rats stream toward the door the player
+  // is standing at, not the far end of the loop.
+  if(!game.templeEvent.started && !game.templeEvent.awakened){
+    ensurePrimaryIdolMatchesPlayer();
+  }
+  // Gathering can begin even before the idol asset has finished loading
+  // — the rats just walk toward the altar's recorded XZ. We only block
+  // the swarm/awakening on idol availability.
   if(!game.templeEvent.gathering && getTotalRatCount()>=TEMPLE_SWARM_TRIGGER){
     startTempleGathering();
+  }
+  const idol=game.templeEvent.idol;
+  if(!idol){
+    if(game.templeEvent.gathering && !templeIdolSource){
+      loadTempleIdolAssets().catch(()=>{});
+    }
+    return;
   }
   if(game.templeEvent.gathering && !game.templeEvent.started && isPlayerInsideEventTemple()){
     startTempleAwakening();
