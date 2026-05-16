@@ -4797,7 +4797,7 @@ const uiLayoutState={
   overlays:new Map(),drag:null,toastTimer:null,clipboard:null,forcedMode:null,
   adminZoom:1,listDrag:null,panelDrag:null,objectPanelCollapsed:false,
   objectPanelScrollTop:0,panelRect:{left:16,top:16,width:340,height:520},
-  customFrameSeq:0
+  customFrameSeq:0,history:[],historyIndex:-1,isRestoringHistory:false
 };
 const layoutMobileQuery=window.matchMedia('(max-width:640px)');
 function cloneUILayoutConfig(v){ return JSON.parse(JSON.stringify(v)); }
@@ -4833,6 +4833,41 @@ function loadUILayoutConfig(){
 function saveUILayoutConfig(){
   localStorage.setItem(UI_LAYOUT_STORAGE_KEY,JSON.stringify(uiLayoutState.config));
   window.__uiLayoutConfig=uiLayoutState.config;
+}
+function createUILayoutHistorySnapshot(){
+  return JSON.stringify({
+    config:uiLayoutState.config,
+    selectedId:uiLayoutState.selectedId,
+    selectedIds:uiLayoutState.selectedIds,
+    scrollTop:uiLayoutState.objectPanelScrollTop
+  });
+}
+function pushUILayoutHistory(reason='edit'){
+  if(uiLayoutState.isRestoringHistory || !uiLayoutState.active || !uiLayoutState.config) return;
+  const snapshot=createUILayoutHistorySnapshot();
+  if(uiLayoutState.history[uiLayoutState.historyIndex]===snapshot) return;
+  uiLayoutState.history=uiLayoutState.history.slice(0,uiLayoutState.historyIndex+1);
+  uiLayoutState.history.push(snapshot);
+  uiLayoutState.historyIndex=uiLayoutState.history.length-1;
+}
+function restoreUILayoutHistory(direction=-1){
+  const nextIndex=uiLayoutState.historyIndex+direction;
+  if(nextIndex<0 || nextIndex>=uiLayoutState.history.length) return false;
+  const snapshot=uiLayoutState.history[nextIndex];
+  if(!snapshot) return false;
+  const parsed=JSON.parse(snapshot);
+  uiLayoutState.isRestoringHistory=true;
+  uiLayoutState.config=cloneUILayoutConfig(parsed.config);
+  uiLayoutState.historyIndex=nextIndex;
+  uiLayoutState.selectedId=parsed.selectedId||null;
+  uiLayoutState.selectedIds=Array.isArray(parsed.selectedIds)?parsed.selectedIds.filter(Boolean):[];
+  uiLayoutState.objectPanelScrollTop=parsed.scrollTop||0;
+  saveUILayoutConfig();
+  applyUILayoutConfig();
+  refreshUILayoutEditor();
+  uiLayoutState.isRestoringHistory=false;
+  showUILayoutToast(direction<0?'Undo':'Redo');
+  return true;
 }
 function getUILayoutMode(){ return uiLayoutState.mode || uiLayoutState.forcedMode || getUILayoutAutoMode(); }
 function getUILayoutStore(){ return uiLayoutState.config[getUILayoutMode()]; }
@@ -5128,6 +5163,13 @@ function refreshUILayoutObjectPanel(){
     </div>`;
     row.querySelector('[data-action="up"]').textContent='UP';
     row.querySelector('[data-action="down"]').textContent='DN';
+    row.querySelectorAll('button').forEach(btn=>{
+      btn.addEventListener('pointerdown',e=>{
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+    row.addEventListener('pointerdown',()=>{ captureUILayoutObjectPanelScroll(); });
     row.addEventListener('click',e=>{
       const action=e.target?.dataset?.action;
       if(action==='lock'){ e.stopPropagation(); toggleUILayoutLock(def.id); return; }
@@ -5136,7 +5178,6 @@ function refreshUILayoutObjectPanel(){
       if(action==='down'){ e.stopPropagation(); moveUILayoutLayer(def.id,'down'); return; }
       if(e.shiftKey) setUILayoutSelection(def.id,{additive:true});
       else setUILayoutSelection(def.id);
-      refreshUILayoutEditor();
     });
     list.appendChild(row);
   }
@@ -5196,6 +5237,7 @@ function setUILayoutMode(mode){
   refreshUILayoutEditor();
 }
 function setUILayoutSelection(id,{additive=false}={}){
+  captureUILayoutObjectPanelScroll();
   if(!id){
     uiLayoutState.selectedId=null;
     uiLayoutState.selectedIds=[];
@@ -5211,6 +5253,7 @@ function setUILayoutSelection(id,{additive=false}={}){
   }
   syncUILayoutSelectionStyles();
   refreshUILayoutGuides();
+  restoreUILayoutObjectPanelScroll();
 }
 function clampUILayoutRect(rect,bounds){
   const width=Math.max(18,Math.min(rect.width,bounds.width));
@@ -5248,6 +5291,7 @@ function snapUILayoutRect(rect,def){
 function updateUILayoutMetricsFromRect(def,rect){
   const metrics=ensureUILayoutMetrics(def);
   buildUILayoutMetricsFromRect(def,metrics,rect);
+  setUILayoutMetrics(def,metrics);
   applyUILayoutMetrics(def,metrics);
   saveUILayoutConfig();
 }
@@ -5275,15 +5319,35 @@ function handleUILayoutPointerMove(e){
     next.left+=dx;
     next.top+=dy;
   }else{
-    if(drag.corner.includes('e')) next.width=Math.max(18,drag.startRect.width+dx);
-    if(drag.corner.includes('s')) next.height=Math.max(18,drag.startRect.height+dy);
-    if(drag.corner.includes('w')){
-      next.left=drag.startRect.left+dx;
-      next.width=Math.max(18,drag.startRect.width-dx);
-    }
-    if(drag.corner.includes('n')){
-      next.top=drag.startRect.top+dy;
-      next.height=Math.max(18,drag.startRect.height-dy);
+    const isCorner=drag.corner.length===2;
+    if(isCorner){
+      const aspect=drag.startRect.width/Math.max(1,drag.startRect.height);
+      let width=drag.startRect.width;
+      let height=drag.startRect.height;
+      if(drag.corner.includes('e')) width=Math.max(18,drag.startRect.width+dx);
+      if(drag.corner.includes('w')) width=Math.max(18,drag.startRect.width-dx);
+      if(drag.corner.includes('s')) height=Math.max(18,drag.startRect.height+dy);
+      if(drag.corner.includes('n')) height=Math.max(18,drag.startRect.height-dy);
+      const widthScale=width/Math.max(1,drag.startRect.width);
+      const heightScale=height/Math.max(1,drag.startRect.height);
+      const scaleFactor=Math.max(widthScale,heightScale);
+      width=Math.max(18,drag.startRect.width*scaleFactor);
+      height=Math.max(18,width/aspect);
+      if(drag.corner.includes('w')) next.left=drag.startRect.left+(drag.startRect.width-width);
+      if(drag.corner.includes('n')) next.top=drag.startRect.top+(drag.startRect.height-height);
+      next.width=width;
+      next.height=height;
+    }else{
+      if(drag.corner.includes('e')) next.width=Math.max(18,drag.startRect.width+dx);
+      if(drag.corner.includes('s')) next.height=Math.max(18,drag.startRect.height+dy);
+      if(drag.corner.includes('w')){
+        next.left=drag.startRect.left+dx;
+        next.width=Math.max(18,drag.startRect.width-dx);
+      }
+      if(drag.corner.includes('n')){
+        next.top=drag.startRect.top+dy;
+        next.height=Math.max(18,drag.startRect.height-dy);
+      }
     }
   }
   next=snapUILayoutRect(next,def);
@@ -5310,6 +5374,7 @@ function copySelectedUILayoutItem(){
 function pasteSelectedUILayoutItem(){
   const def=getUILayoutDef(uiLayoutState.selectedId);
   if(!def||!uiLayoutState.clipboard) return false;
+  pushUILayoutHistory('paste');
   const metrics={...ensureUILayoutMetrics(def),...JSON.parse(JSON.stringify(uiLayoutState.clipboard)),hidden:false};
   setUILayoutMetrics(def,metrics);
   applyUILayoutMetrics(def,metrics);
@@ -5321,6 +5386,7 @@ function pasteSelectedUILayoutItem(){
 function toggleUILayoutHidden(id=uiLayoutState.selectedId){
   const def=getUILayoutDef(id);
   if(!def) return false;
+  pushUILayoutHistory('toggle hidden');
   const metrics={...ensureUILayoutMetrics(def)};
   metrics.hidden=!metrics.hidden;
   setUILayoutMetrics(def,metrics);
@@ -5333,6 +5399,7 @@ function toggleUILayoutHidden(id=uiLayoutState.selectedId){
 function toggleUILayoutLock(id=uiLayoutState.selectedId){
   const def=getUILayoutDef(id);
   if(!def) return false;
+  pushUILayoutHistory('toggle lock');
   const metrics={...ensureUILayoutMetrics(def)};
   metrics.locked=!metrics.locked;
   setUILayoutMetrics(def,metrics);
@@ -5347,6 +5414,7 @@ function moveUILayoutLayer(targetId,direction){
   const index=defs.findIndex(def=>def.id===targetId);
   const swapIndex=direction==='up'?index-1:index+1;
   if(index<0||swapIndex<0||swapIndex>=defs.length) return false;
+  pushUILayoutHistory('move layer');
   const ordered=defs.map(def=>def.id);
   [ordered[index],ordered[swapIndex]]=[ordered[swapIndex],ordered[index]];
   applyUILayoutLayerOrder(ordered);
@@ -5357,6 +5425,7 @@ function moveUILayoutLayer(targetId,direction){
 function moveSelectedUILayoutItems(edge){
   const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[uiLayoutState.selectedId]).filter(Boolean);
   if(!ids.length) return false;
+  pushUILayoutHistory('move selected layers');
   const ordered=getUILayoutOrderedIds(true);
   const moving=ordered.filter(id=>ids.includes(id));
   const remaining=ordered.filter(id=>!ids.includes(id));
@@ -5369,6 +5438,7 @@ function moveSelectedUILayoutItems(edge){
 function mirrorSelectedUILayoutItems(axis){
   const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[uiLayoutState.selectedId]).filter(Boolean);
   if(!ids.length) return false;
+  pushUILayoutHistory('mirror');
   for(const id of ids){
     const def=getUILayoutDef(id);
     if(!def) continue;
@@ -5385,6 +5455,7 @@ function mirrorSelectedUILayoutItems(axis){
   return true;
 }
 function createUILayoutCustomFrame(src,name='Imported Frame'){
+  pushUILayoutHistory('import frame');
   const frames=getUILayoutFrameStore();
   const id=`custom-frame-${Date.now()}-${++uiLayoutState.customFrameSeq}`;
   const frame={
@@ -5483,6 +5554,7 @@ function ensureUILayoutOverlayBox(root,def){
     }
     if(e.shiftKey) setUILayoutSelection(currentDef.id,{additive:true});
     else setUILayoutSelection(currentDef.id);
+    pushUILayoutHistory(handle?'resize':'move');
     uiLayoutState.drag={
       id:currentDef.id,
       mode:handle?'resize':'move',
@@ -5565,6 +5637,7 @@ function buildUILayoutEditor(){
     const action=e.target?.dataset?.layoutAction;
     if(!action) return;
     if(action==='reset'){
+      pushUILayoutHistory('reset');
       uiLayoutState.config[getUILayoutMode()]=cloneUILayoutConfig(UI_LAYOUT_DEFAULTS[getUILayoutMode()]);
       applyUILayoutConfig();
       saveUILayoutConfig();
@@ -5600,6 +5673,7 @@ function buildUILayoutEditor(){
 function nudgeUILayoutSelection(dx,dy){
   const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[uiLayoutState.selectedId]).filter(Boolean);
   if(!ids.length) return false;
+  pushUILayoutHistory('nudge');
   let moved=false;
   for(const id of ids){
     const def=getUILayoutDef(id);
@@ -5638,6 +5712,9 @@ function enableUILayoutEditor(){
   setUILayoutMode(uiLayoutState.mode);
   setUILayoutSelection(uiLayoutState.selectedId||UI_LAYOUT_TARGET_DEFS[0].id);
   refreshUILayoutEditor();
+  uiLayoutState.history=[];
+  uiLayoutState.historyIndex=-1;
+  pushUILayoutHistory('start');
   showUILayoutToast('Layout admin enabled');
 }
 function disableUILayoutEditor(){
@@ -5734,6 +5811,11 @@ window.addEventListener('keydown',e=>{
     return;
   }
   if(uiLayoutState.active){
+    if((e.ctrlKey||e.metaKey) && e.code==='KeyZ'){
+      e.preventDefault();
+      restoreUILayoutHistory(-1);
+      return;
+    }
     if((e.ctrlKey||e.metaKey) && e.code==='KeyC'){
       e.preventDefault();
       copySelectedUILayoutItem();
