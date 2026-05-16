@@ -4739,38 +4739,266 @@ function nearestChaosSpot(pos){
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
 // ===== UI layout admin (Shift+C) =====
 const UI_LAYOUT_STORAGE_KEY='urbanLegendMouseUILayoutV1';
+Replace index.html lines 4742-4775 with the block below.
+
 const UI_LAYOUT_DEFAULTS={
-  desktop:{
-    'viewport-frame-top':{x:50,y:8.4,w:100,h:34},
-    'viewport-frame-bottom':{x:50,y:91.6,w:100,h:40},
-    'viewport-frame-left':{x:11,y:50,w:22,h:100},
-    'viewport-frame-right':{x:89,y:50,w:22,h:100},
-    'mode-badge':{x:11,y:9.8,w:10.5,h:5.5},
-    'chaos-box':{x:82,y:9.8,w:13.2,h:6.6},
-    'rats-box':{x:82,y:17.2,w:13.2,h:6.6},
-    'rat-city-btn':{x:50,y:8.4,w:12.5,h:5.8},
-    'hint':{x:50,y:8,w:28,h:4.8},
-    'joystick-zone':{x:12,y:84,w:9.8,h:17.5},
-    'jump-btn':{x:90.5,y:61,w:5.6,h:10},
-    'bite-btn':{x:90.5,y:76,w:5.6,h:10},
-    'pickup-btn':{x:90.5,y:91,w:5.6,h:10},
-    'exit-host-btn':{x:9.5,y:91,w:5.6,h:10}
+  "desktop": {
+    "viewport-frame-top": {
+      "x": 50,
+      "y": 8.4,
+      "w": 100,
+      "h": 34,
+      "z": 14,
+      "hidden": false,
+      "locked": false
+    },
+    "viewport-frame-bottom": {
+      "x": 50,
+      "y": 91.6,
+      "w": 100,
+      "h": 40,
+      "z": 13,
+      "hidden": false,
+      "locked": false
+    },
+    "viewport-frame-left": {
+      "x": 11,
+      "y": 50,
+      "w": 22,
+      "h": 100,
+      "z": 12,
+      "hidden": false,
+      "locked": false
+    },
+    "viewport-frame-right": {
+      "x": 89,
+      "y": 50,
+      "w": 22,
+      "h": 100,
+      "z": 11,
+      "hidden": false,
+      "locked": false
+    },
+    "mode-badge": {
+      "x": 11,
+      "y": 9.8,
+      "w": 10.5,
+      "h": 5.5,
+      "z": 10,
+      "hidden": false,
+      "locked": false
+    },
+    "chaos-box": {
+      "x": 90.526,
+      "y": 10.215,
+      "w": 14.569,
+      "h": 9.123,
+      "z": 9,
+      "hidden": false,
+      "locked": false
+    },
+    "rats-box": {
+      "x": 90.527,
+      "y": 25.148,
+      "w": 14.569,
+      "h": 6.905,
+      "z": 8,
+      "hidden": false,
+      "locked": false
+    },
+    "rat-city-btn": {
+      "x": 50,
+      "y": 6.636,
+      "w": 12.5,
+      "h": 5.798,
+      "z": 7,
+      "hidden": false,
+      "locked": false
+    },
+    "hint": {
+      "x": 50,
+      "y": 8,
+      "w": 28,
+      "h": 4.8,
+      "z": 6,
+      "hidden": false,
+      "locked": false
+    },
+    "joystick-zone": {
+      "x": 12.185,
+      "y": 71.517,
+      "w": 8.346,
+      "h": 17.495,
+      "z": 5,
+      "hidden": false,
+      "locked": false
+    },
+    "jump-btn": {
+      "x": 90.499,
+      "y": 59.371,
+      "w": 5.6,
+      "h": 9.998,
+      "z": 4,
+      "hidden": false,
+      "locked": false
+    },
+    "bite-btn": {
+      "x": 90.5,
+      "y": 76,
+      "w": 5.6,
+      "h": 10,
+      "z": 3,
+      "hidden": false,
+      "locked": false
+    },
+    "pickup-btn": {
+      "x": 90.5,
+      "y": 91,
+      "w": 5.6,
+      "h": 10,
+      "z": 2,
+      "hidden": false,
+      "locked": false
+    },
+    "exit-host-btn": {
+      "x": 12.185,
+      "y": 50,
+      "w": 5.6,
+      "h": 10,
+      "z": 1,
+      "hidden": false,
+      "locked": false
+    },
+    "__customFrames": []
   },
-  mobile:{
-    'viewport-frame-top':{x:50,y:8.4,w:100,h:34},
-    'viewport-frame-bottom':{x:50,y:91.6,w:100,h:40},
-    'viewport-frame-left':{x:11,y:50,w:22,h:100},
-    'viewport-frame-right':{x:89,y:50,w:22,h:100},
-    'mode-badge':{x:12,y:5,w:0,h:0},
-    'chaos-box':{x:80,y:9.8,w:32,h:7.2},
-    'rats-box':{x:80,y:18.6,w:32,h:7.2},
-    'rat-city-btn':{x:25,y:5.2,w:33,h:5.4},
-    'hint':{x:50,y:10.2,w:60,h:5.4},
-    'joystick-zone':{x:19,y:84,w:24,h:16},
-    'jump-btn':{x:84,y:61,w:13,h:9},
-    'bite-btn':{x:84,y:76,w:13,h:9},
-    'pickup-btn':{x:84,y:91,w:13,h:9},
-    'exit-host-btn':{x:16,y:91,w:13,h:9}
+  "mobile": {
+    "viewport-frame-top": {
+      "x": 50,
+      "y": 8.4,
+      "w": 100,
+      "h": 34,
+      "z": 14,
+      "hidden": false,
+      "locked": false
+    },
+    "viewport-frame-bottom": {
+      "x": 50,
+      "y": 91.6,
+      "w": 100,
+      "h": 40,
+      "z": 13,
+      "hidden": false,
+      "locked": false
+    },
+    "viewport-frame-left": {
+      "x": 11,
+      "y": 50,
+      "w": 22,
+      "h": 100,
+      "z": 12,
+      "hidden": false,
+      "locked": false
+    },
+    "viewport-frame-right": {
+      "x": 89,
+      "y": 50,
+      "w": 22,
+      "h": 100,
+      "z": 11,
+      "hidden": false,
+      "locked": false
+    },
+    "mode-badge": {
+      "x": 12,
+      "y": 5,
+      "w": 0,
+      "h": 0,
+      "z": 10,
+      "hidden": false,
+      "locked": false
+    },
+    "chaos-box": {
+      "x": 71.48,
+      "y": 16.84,
+      "w": 48.578,
+      "h": 7.416,
+      "z": 9,
+      "hidden": false,
+      "locked": false
+    },
+    "rats-box": {
+      "x": 71.477,
+      "y": 26.083,
+      "w": 48.578,
+      "h": 6.227,
+      "z": 8,
+      "hidden": false,
+      "locked": false
+    },
+    "rat-city-btn": {
+      "x": 50,
+      "y": 5.2,
+      "w": 32.998,
+      "h": 5.399,
+      "z": 7,
+      "hidden": false,
+      "locked": false
+    },
+    "hint": {
+      "x": 50,
+      "y": 10.2,
+      "w": 60,
+      "h": 5.4,
+      "z": 6,
+      "hidden": false,
+      "locked": false
+    },
+    "joystick-zone": {
+      "x": 19,
+      "y": 84,
+      "w": 24,
+      "h": 16,
+      "z": 5,
+      "hidden": false,
+      "locked": false
+    },
+    "jump-btn": {
+      "x": 84,
+      "y": 61,
+      "w": 13,
+      "h": 9,
+      "z": 4,
+      "hidden": false,
+      "locked": false
+    },
+    "bite-btn": {
+      "x": 84,
+      "y": 76,
+      "w": 13,
+      "h": 9,
+      "z": 3,
+      "hidden": false,
+      "locked": false
+    },
+    "pickup-btn": {
+      "x": 84,
+      "y": 91,
+      "w": 13,
+      "h": 9,
+      "z": 2,
+      "hidden": false,
+      "locked": false
+    },
+    "exit-host-btn": {
+      "x": 18.998,
+      "y": 62.627,
+      "w": 13,
+      "h": 9,
+      "z": 1,
+      "hidden": false,
+      "locked": false
+    },
+    "__customFrames": []
   }
 };
 const UI_LAYOUT_TARGET_DEFS=[
