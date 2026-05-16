@@ -213,44 +213,72 @@
     letter-spacing:0.16em;cursor:pointer}
   #temple-flash{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:45;transition:opacity .08s linear}
 
+  body.ui-layout-admin *{cursor:default}
+  #admin-stage{position:fixed;left:0;top:0;width:100vw;height:100vh;transform-origin:left top;transform:scale(var(--admin-zoom,1))}
+  body.admin-stage-active.admin-stage-mobile{background:#000!important}
+  body.admin-stage-active.admin-stage-mobile #admin-stage{outline:1px solid rgba(255,233,112,0.24)}
   .ui-layout-editor{position:fixed;inset:0;z-index:1200;pointer-events:none}
-  .ui-layout-editor::before{content:'';position:absolute;inset:0;background:rgba(12,8,20,0.16)}
-  .ui-layout-toolbar,.ui-layout-panel,.ui-layout-toast,.ui-layout-box{pointer-events:auto}
+  .ui-layout-editor::before{content:'';position:absolute;inset:0;background:rgba(12,8,20,0.12)}
+  .ui-layout-toolbar,.ui-layout-object-panel,.ui-layout-toast,.ui-layout-box{pointer-events:auto}
+  .ui-layout-guide{position:fixed;background:rgba(255,240,106,0.24);pointer-events:none;opacity:0;transition:opacity .08s ease;z-index:1999999}
+  .ui-layout-guide.is-pair{background:rgba(255,151,208,0.40)}
+  .ui-layout-guide.is-visible{opacity:1}
+  .ui-layout-guide.is-snap{background:rgba(124,248,255,0.90);box-shadow:0 0 12px rgba(124,248,255,0.45)}
+  .ui-layout-guide.guide-v{top:0;bottom:0;width:1px}
+  .ui-layout-guide.guide-h{left:0;right:0;height:1px}
   .ui-layout-toolbar{position:fixed;top:16px;right:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-    max-width:min(92vw,680px);padding:10px 12px;border-radius:16px;border:1px solid rgba(255,245,208,0.45);
+    max-width:min(92vw,760px);padding:10px 12px;border-radius:16px;border:1px solid rgba(255,245,208,0.45);
     background:rgba(17,11,28,0.92);box-shadow:0 18px 38px rgba(0,0,0,0.38)}
   .ui-layout-toolbar button{appearance:none;border:none;border-radius:999px;padding:8px 12px;cursor:pointer;
     font:700 11px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.12em;text-transform:uppercase;
     background:#fff1c2;color:#24122d}
-  .ui-layout-toolbar button.is-active{background:#ff8fb8;color:#3b1224}
+  .ui-layout-toolbar button.is-active{background:#7cf8ff;color:#24122d}
   .ui-layout-toolbar .ui-layout-pill{font:700 11px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;color:#fff7d3;
     letter-spacing:0.14em;padding-right:4px}
-  .ui-layout-panel{position:fixed;right:16px;top:78px;width:min(300px,86vw);max-height:min(70vh,720px);overflow:auto;
+  .ui-layout-object-panel{position:fixed;left:16px;top:16px;width:min(340px,calc(100vw - 32px));max-height:min(80vh,760px);overflow:auto;
     border-radius:20px;border:1px solid rgba(255,245,208,0.45);background:rgba(17,11,28,0.94);padding:14px;
-    box-shadow:0 20px 42px rgba(0,0,0,0.42);color:#fff7d3}
-  .ui-layout-panel h3{margin:0 0 10px;font:700 14px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.16em}
-  .ui-layout-panel p{margin:0 0 10px;font:12px/1.4 "Courier New",monospace;color:#d6c6a3}
-  .ui-layout-list{display:flex;flex-direction:column;gap:8px}
-  .ui-layout-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 10px;border-radius:12px;
+    box-shadow:0 20px 42px rgba(0,0,0,0.42);color:#fff7d3;display:flex;flex-direction:column;gap:10px}
+  .ui-layout-object-panel h3{margin:0;font:700 14px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.16em}
+  .ui-layout-object-panel p{margin:0;font:12px/1.4 "Courier New",monospace;color:#d6c6a3}
+  .ui-layout-object-panel-tools{display:flex;gap:6px;flex-wrap:wrap}
+  .ui-layout-object-panel-tools button,.ui-layout-object-row button{appearance:none;border:none;border-radius:999px;padding:7px 10px;
+    background:rgba(255,255,255,0.08);color:#f8efc0;font:700 10px/1 "Courier New",monospace;letter-spacing:0.06em;cursor:pointer}
+  .ui-layout-object-panel-tools button:hover,.ui-layout-object-row button:hover{background:rgba(255,255,255,0.16)}
+  .ui-layout-object-list{display:flex;flex-direction:column;gap:8px}
+  .ui-layout-object-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px;align-items:center;padding:9px 10px;border-radius:12px;
     background:rgba(255,247,211,0.08);border:1px solid transparent;cursor:pointer}
-  .ui-layout-row.is-selected{border-color:#ffe970;background:rgba(255,233,112,0.16)}
-  .ui-layout-row span{font:12px/1.2 "Courier New",monospace}
-  .ui-layout-row code{font-size:10px;color:#ffcfda}
-  .ui-layout-box{position:fixed;border:2px solid #ffe970;box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset,0 0 16px rgba(255,233,112,0.24);
-    background:rgba(255,233,112,0.08)}
-  .ui-layout-box.is-selected{border-color:#ff8fb8;background:rgba(255,143,184,0.12)}
+  .ui-layout-object-row.is-selected{border-color:#7cf8ff;background:rgba(124,248,255,0.12)}
+  .ui-layout-object-row.is-hidden{background:rgba(255,80,80,0.12)}
+  .ui-layout-object-row.is-locked{background:rgba(130,140,166,0.18)}
+  .ui-layout-object-meta{min-width:0}
+  .ui-layout-object-name{display:block;color:#fff7c9;font:12px/1.3 "Courier New",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ui-layout-object-state{display:block;color:#d7cfff;font:10px/1.25 "Courier New",monospace;opacity:0.88}
+  .ui-layout-object-actions,.ui-layout-object-order{display:flex;gap:4px;align-items:center}
+  .ui-layout-box{position:fixed;border:2px solid transparent;box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset,0 0 16px rgba(255,233,112,0.24);
+    background:transparent}
+  .ui-layout-box.selected{border-color:#7cf8ff;background:rgba(124,248,255,0.12)}
+  .ui-layout-box.active{border-color:#ffe970;background:rgba(255,233,112,0.12)}
+  .ui-layout-box.is-hidden.selected,.ui-layout-box.is-hidden.active{border-color:rgba(255,120,120,0.95);background:rgba(255,80,80,0.12)}
+  .ui-layout-box.is-locked.selected,.ui-layout-box.is-locked.active{border-color:rgba(164,176,199,0.92);background:rgba(130,140,166,0.14)}
   .ui-layout-box-label{position:absolute;left:0;top:-24px;padding:4px 8px;border-radius:999px;background:rgba(17,11,28,0.94);
     color:#fff7d3;font:700 10px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.12em;white-space:nowrap}
-  .ui-layout-handle{position:absolute;width:12px;height:12px;border-radius:50%;background:#fff7d3;border:2px solid #24122d}
+  .ui-layout-handle{position:absolute;width:12px;height:12px;border-radius:50%;background:#fff7d3;border:2px solid #24122d;opacity:0;pointer-events:none}
+  .ui-layout-box.selected .ui-layout-handle,.ui-layout-box.active .ui-layout-handle{opacity:1;pointer-events:auto}
   .ui-layout-handle[data-corner="nw"]{left:-8px;top:-8px;cursor:nwse-resize}
+  .ui-layout-handle[data-corner="n"]{left:calc(50% - 6px);top:-8px;cursor:ns-resize}
   .ui-layout-handle[data-corner="ne"]{right:-8px;top:-8px;cursor:nesw-resize}
-  .ui-layout-handle[data-corner="sw"]{left:-8px;bottom:-8px;cursor:nesw-resize}
+  .ui-layout-handle[data-corner="e"]{right:-8px;top:calc(50% - 6px);cursor:ew-resize}
   .ui-layout-handle[data-corner="se"]{right:-8px;bottom:-8px;cursor:nwse-resize}
+  .ui-layout-handle[data-corner="s"]{left:calc(50% - 6px);bottom:-8px;cursor:ns-resize}
+  .ui-layout-handle[data-corner="sw"]{left:-8px;bottom:-8px;cursor:nesw-resize}
+  .ui-layout-handle[data-corner="w"]{left:-8px;top:calc(50% - 6px);cursor:ew-resize}
   .ui-layout-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);padding:10px 14px;border-radius:999px;
     background:rgba(17,11,28,0.94);border:1px solid rgba(255,245,208,0.45);color:#fff7d3;
     font:12px/1 "Courier New",monospace;letter-spacing:0.08em;box-shadow:0 14px 26px rgba(0,0,0,0.35)}
 
   @media (max-width:640px){
+    .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
+    .ui-layout-object-panel{top:86px;left:10px;right:10px;width:auto;max-height:calc(100vh - 98px)}
     #minimap{left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);width:104px;height:104px}
     .hud-box{font-size:10px;padding:8px 10px;min-width:118px;border-radius:20px;
       background:linear-gradient(180deg,rgba(235,246,255,0.28) 0%,rgba(255,205,244,0.24) 100%);
@@ -271,7 +299,6 @@
     .intro-card h1{font-size:16px}
     .intro-copy{font-size:11px}
     .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
-    .ui-layout-panel{top:112px;left:10px;right:10px;width:auto}
   }
 </style>
 </head>
@@ -4692,7 +4719,8 @@ const UI_LAYOUT_DEFAULTS={
     'joystick-zone':{x:12,y:84,w:9.8,h:17.5},
     'jump-btn':{x:90.5,y:61,w:5.6,h:10},
     'bite-btn':{x:90.5,y:76,w:5.6,h:10},
-    'pickup-btn':{x:90.5,y:91,w:5.6,h:10}
+    'pickup-btn':{x:90.5,y:91,w:5.6,h:10},
+    'exit-host-btn':{x:9.5,y:91,w:5.6,h:10}
   },
   mobile:{
     'viewport-frame-top':{x:50,y:8.4,w:100,h:34},
@@ -4706,7 +4734,8 @@ const UI_LAYOUT_DEFAULTS={
     'joystick-zone':{x:19,y:84,w:24,h:16},
     'jump-btn':{x:84,y:61,w:13,h:9},
     'bite-btn':{x:84,y:76,w:13,h:9},
-    'pickup-btn':{x:84,y:91,w:13,h:9}
+    'pickup-btn':{x:84,y:91,w:13,h:9},
+    'exit-host-btn':{x:16,y:91,w:13,h:9}
   }
 };
 const UI_LAYOUT_TARGET_DEFS=[
@@ -4721,11 +4750,36 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'joystick-zone',label:'Joystick'},
   {id:'jump-btn',label:'Jump Button'},
   {id:'bite-btn',label:'Bite Button'},
-  {id:'pickup-btn',label:'Pickup Button'}
+  {id:'pickup-btn',label:'Pickup Button'},
+  {id:'exit-host-btn',label:'Exit Host Button'}
 ];
-const uiLayoutState={active:false,mode:null,config:null,selectedId:null,editor:null,overlays:new Map(),drag:null,toastTimer:null};
+const UI_LAYOUT_COMPARE_PAIRS={
+  'viewport-frame-top':'viewport-frame-bottom',
+  'viewport-frame-bottom':'viewport-frame-top',
+  'viewport-frame-left':'viewport-frame-right',
+  'viewport-frame-right':'viewport-frame-left',
+  'chaos-box':'rats-box',
+  'rats-box':'chaos-box',
+  'jump-btn':'bite-btn',
+  'bite-btn':'pickup-btn',
+  'pickup-btn':'bite-btn',
+  'exit-host-btn':'joystick-zone',
+  'joystick-zone':'exit-host-btn'
+};
+const UI_LAYOUT_SNAP_PX=8;
+const ADMIN_STAGE_DEFAULT_MOBILE_ZOOM=0.65;
+const uiLayoutState={
+  active:false,mode:null,config:null,selectedId:null,selectedIds:[],editor:null,
+  overlays:new Map(),drag:null,toastTimer:null,clipboard:null,forcedMode:null,
+  adminZoom:1,listDrag:null
+};
 const layoutMobileQuery=window.matchMedia('(max-width:640px)');
 function cloneUILayoutConfig(v){ return JSON.parse(JSON.stringify(v)); }
+function getUILayoutAutoMode(){ return layoutMobileQuery.matches?'mobile':'desktop'; }
+function getDefaultUILayoutLayer(id){
+  const idx=UI_LAYOUT_TARGET_DEFS.findIndex(def=>def.id===id);
+  return idx<0?1:(UI_LAYOUT_TARGET_DEFS.length-idx);
+}
 function loadUILayoutConfig(){
   try{
     const raw=localStorage.getItem(UI_LAYOUT_STORAGE_KEY);
@@ -4750,17 +4804,33 @@ function saveUILayoutConfig(){
   localStorage.setItem(UI_LAYOUT_STORAGE_KEY,JSON.stringify(uiLayoutState.config));
   window.__uiLayoutConfig=uiLayoutState.config;
 }
-function getUILayoutMode(){ return uiLayoutState.mode || (layoutMobileQuery.matches?'mobile':'desktop'); }
+function getUILayoutMode(){ return uiLayoutState.mode || uiLayoutState.forcedMode || getUILayoutAutoMode(); }
 function getUILayoutStore(){ return uiLayoutState.config[getUILayoutMode()]; }
 function getUILayoutDef(id){ return UI_LAYOUT_TARGET_DEFS.find(def=>def.id===id)||null; }
 function ensureUILayoutMetrics(def){
   const store=getUILayoutStore();
-  if(!store[def.id]) store[def.id]={...UI_LAYOUT_DEFAULTS[getUILayoutMode()][def.id]};
+  const fallback=UI_LAYOUT_DEFAULTS[getUILayoutMode()][def.id]||{x:50,y:50,w:10,h:10};
+  const current=store[def.id]||{};
+  store[def.id]={
+    ...fallback,
+    ...current,
+    z:Number.isFinite(current.z)?current.z:getDefaultUILayoutLayer(def.id),
+    hidden:!!current.hidden,
+    locked:!!current.locked
+  };
   return store[def.id];
 }
+function getUILayoutLayer(def,metrics){ return Number.isFinite(metrics?.z)?metrics.z:getDefaultUILayoutLayer(def.id); }
 function applyUILayoutMetrics(def,metrics){
   const el=document.getElementById(def.id);
   if(!el) return;
+  if(metrics.hidden){
+    el.dataset.uiLayoutHidden='1';
+    el.style.display='none';
+  }else if(el.dataset.uiLayoutHidden==='1'){
+    delete el.dataset.uiLayoutHidden;
+    el.style.display='';
+  }
   el.style.left=`${metrics.x}%`;
   el.style.top=`${metrics.y}%`;
   el.style.width=`${metrics.w}%`;
@@ -4768,6 +4838,7 @@ function applyUILayoutMetrics(def,metrics){
   el.style.right='auto';
   el.style.bottom='auto';
   el.style.transform='translate(-50%,-50%)';
+  el.style.zIndex=String(getUILayoutLayer(def,metrics));
 }
 function applyUILayoutConfig(){
   if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
@@ -4787,28 +4858,182 @@ function showUILayoutToast(message){
   window.clearTimeout(uiLayoutState.toastTimer);
   uiLayoutState.toastTimer=window.setTimeout(()=>{ if(toast) toast.hidden=true; },900);
 }
-function refreshUILayoutRows(){
-  const list=uiLayoutState.editor?.querySelector('.ui-layout-list');
-  if(!list) return;
-  for(const row of list.querySelectorAll('.ui-layout-row')){
-    row.classList.toggle('is-selected',row.dataset.targetId===uiLayoutState.selectedId);
+function getAdminStageZoom(){ return Number.isFinite(uiLayoutState.adminZoom)?uiLayoutState.adminZoom:1; }
+function getUILayoutViewportBounds(){
+  const stage=document.getElementById('admin-stage');
+  if(uiLayoutState.active && stage){
+    const r=stage.getBoundingClientRect();
+    return {left:r.left,top:r.top,width:r.width,height:r.height};
   }
+  return {left:0,top:0,width:window.innerWidth,height:window.innerHeight};
+}
+function getUILayoutBoxRect(def,metrics){
+  const bounds=getUILayoutViewportBounds();
+  return {
+    left:bounds.left+(metrics.x-metrics.w*0.5)*0.01*bounds.width,
+    top:bounds.top+(metrics.y-metrics.h*0.5)*0.01*bounds.height,
+    width:Math.max(18,metrics.w*0.01*bounds.width),
+    height:Math.max(18,metrics.h*0.01*bounds.height)
+  };
+}
+function buildUILayoutMetricsFromRect(def,metrics,rect){
+  const bounds=getUILayoutViewportBounds();
+  metrics.x=+((((rect.left-bounds.left)+rect.width*0.5)/Math.max(bounds.width,1))*100).toFixed(3);
+  metrics.y=+((((rect.top-bounds.top)+rect.height*0.5)/Math.max(bounds.height,1))*100).toFixed(3);
+  metrics.w=+((rect.width/Math.max(bounds.width,1))*100).toFixed(3);
+  metrics.h=+((rect.height/Math.max(bounds.height,1))*100).toFixed(3);
+}
+function measureUILayoutRect(def,metrics){
+  const el=document.getElementById(def.id);
+  if(el){
+    const r=el.getBoundingClientRect();
+    if(r.width>0 && r.height>0 && getComputedStyle(el).display!=='none') return r;
+  }
+  return getUILayoutBoxRect(def,metrics);
+}
+function getUILayoutOrderedDefs(desc=true){
+  return [...UI_LAYOUT_TARGET_DEFS].sort((a,b)=>{
+    const az=getUILayoutLayer(a,ensureUILayoutMetrics(a));
+    const bz=getUILayoutLayer(b,ensureUILayoutMetrics(b));
+    return desc?(bz-az||0):(az-bz||0);
+  });
+}
+function getUILayoutOrderedIds(desc=true){ return getUILayoutOrderedDefs(desc).map(def=>def.id); }
+function applyUILayoutLayerOrder(orderedIdsDesc){
+  const store=getUILayoutStore();
+  const top=orderedIdsDesc.length;
+  orderedIdsDesc.forEach((id,idx)=>{
+    const def=getUILayoutDef(id);
+    if(!def) return;
+    const metrics={...(ensureUILayoutMetrics(def)||{})};
+    metrics.z=top-idx;
+    store[id]=metrics;
+    applyUILayoutMetrics(def,metrics);
+  });
+  saveUILayoutConfig();
+}
+function getUILayoutStateFlags(metrics){
+  return `${metrics.hidden?'hidden':'visible'} · ${metrics.locked?'locked':'free'} · z${getUILayoutLayer(null,metrics)}`;
+}
+function getUILayoutStateFlagsAscii(metrics){
+  return `${metrics.hidden?'hidden':'visible'} | ${metrics.locked?'locked':'free'} | z${getUILayoutLayer(null,metrics)}`;
+}
+function refreshUILayoutGuides(){
+  const editor=uiLayoutState.editor;
+  if(!editor) return;
+  const guideV=editor.querySelector('.guide-v.base');
+  const guideH=editor.querySelector('.guide-h.base');
+  const pairGuideV=editor.querySelector('.guide-v.pair');
+  const pairGuideH=editor.querySelector('.guide-h.pair');
+  if(!guideV||!guideH||!pairGuideV||!pairGuideH) return;
+  const selectedDef=getUILayoutDef(uiLayoutState.selectedId);
+  if(!uiLayoutState.active||!selectedDef){
+    [guideV,guideH,pairGuideV,pairGuideH].forEach(el=>el.classList.remove('is-visible','is-snap'));
+    return;
+  }
+  const selectedMetrics=ensureUILayoutMetrics(selectedDef);
+  const rect=measureUILayoutRect(selectedDef,selectedMetrics);
+  const bounds=getUILayoutViewportBounds();
+  const cx=rect.left+rect.width*0.5;
+  const cy=rect.top+rect.height*0.5;
+  const centerX=bounds.left+bounds.width*0.5;
+  const centerY=bounds.top+bounds.height*0.5;
+  guideV.style.left=`${centerX}px`;
+  guideH.style.top=`${centerY}px`;
+  guideV.classList.add('is-visible');
+  guideH.classList.add('is-visible');
+  guideV.classList.toggle('is-snap',Math.abs(cx-centerX)<=UI_LAYOUT_SNAP_PX);
+  guideH.classList.toggle('is-snap',Math.abs(cy-centerY)<=UI_LAYOUT_SNAP_PX);
+  const pairId=UI_LAYOUT_COMPARE_PAIRS[selectedDef.id];
+  const pairDef=getUILayoutDef(pairId);
+  if(!pairDef){
+    pairGuideV.classList.remove('is-visible','is-snap');
+    pairGuideH.classList.remove('is-visible','is-snap');
+    return;
+  }
+  const pairRect=measureUILayoutRect(pairDef,ensureUILayoutMetrics(pairDef));
+  const pairCx=pairRect.left+pairRect.width*0.5;
+  const pairCy=pairRect.top+pairRect.height*0.5;
+  pairGuideV.style.left=`${pairCx}px`;
+  pairGuideH.style.top=`${pairCy}px`;
+  pairGuideV.classList.add('is-visible','is-pair');
+  pairGuideH.classList.add('is-visible','is-pair');
+  pairGuideV.classList.toggle('is-snap',Math.abs(cx-pairCx)<=UI_LAYOUT_SNAP_PX);
+  pairGuideH.classList.toggle('is-snap',Math.abs(cy-pairCy)<=UI_LAYOUT_SNAP_PX);
+}
+function syncUILayoutSelectionStyles(){
+  for(const [id,box] of uiLayoutState.overlays.entries()){
+    box.classList.toggle('selected',uiLayoutState.selectedIds.includes(id));
+  }
+  uiLayoutState.editor?.querySelectorAll('.ui-layout-object-row').forEach(row=>{
+    row.classList.toggle('is-selected',uiLayoutState.selectedIds.includes(row.dataset.targetId));
+  });
+}
+function refreshUILayoutObjectPanel(){
+  const list=uiLayoutState.editor?.querySelector('.ui-layout-object-list');
+  if(!list) return;
+  list.innerHTML='';
+  for(const def of getUILayoutOrderedDefs(true)){
+    const metrics=ensureUILayoutMetrics(def);
+    const row=document.createElement('div');
+    row.className='ui-layout-object-row';
+    row.dataset.targetId=def.id;
+    row.classList.toggle('is-selected',uiLayoutState.selectedIds.includes(def.id));
+    row.classList.toggle('is-hidden',!!metrics.hidden);
+    row.classList.toggle('is-locked',!!metrics.locked);
+    row.innerHTML=`<div class="ui-layout-object-meta">
+      <span class="ui-layout-object-name">${def.label}</span>
+      <span class="ui-layout-object-state">${getUILayoutStateFlagsAscii(metrics)}</span>
+    </div>
+    <div class="ui-layout-object-actions">
+      <button type="button" data-action="lock">${metrics.locked?'Unlock':'Lock'}</button>
+      <button type="button" data-action="hide">${metrics.hidden?'Show':'Hide'}</button>
+    </div>
+    <div class="ui-layout-object-order">
+      <button type="button" data-action="up">↑</button>
+      <button type="button" data-action="down">↓</button>
+    </div>`;
+    row.querySelector('[data-action="up"]').textContent='UP';
+    row.querySelector('[data-action="down"]').textContent='DN';
+    row.addEventListener('click',e=>{
+      const action=e.target?.dataset?.action;
+      if(action==='lock'){ e.stopPropagation(); toggleUILayoutLock(def.id); return; }
+      if(action==='hide'){ e.stopPropagation(); toggleUILayoutHidden(def.id); return; }
+      if(action==='up'){ e.stopPropagation(); moveUILayoutLayer(def.id,'up'); return; }
+      if(action==='down'){ e.stopPropagation(); moveUILayoutLayer(def.id,'down'); return; }
+      if(e.shiftKey) setUILayoutSelection(def.id,{additive:true});
+      else setUILayoutSelection(def.id);
+      refreshUILayoutEditor();
+    });
+    list.appendChild(row);
+  }
+  syncUILayoutSelectionStyles();
 }
 function refreshUILayoutEditor(){
   if(!uiLayoutState.active||!uiLayoutState.editor) return;
   for(const def of UI_LAYOUT_TARGET_DEFS){
-    const el=document.getElementById(def.id);
     const box=uiLayoutState.overlays.get(def.id);
-    if(!el||!box) continue;
-    const r=el.getBoundingClientRect();
+    const metrics=ensureUILayoutMetrics(def);
+    if(!box||!metrics) continue;
+    const r=measureUILayoutRect(def,metrics);
     box.style.left=`${r.left}px`;
     box.style.top=`${r.top}px`;
     box.style.width=`${Math.max(r.width,18)}px`;
     box.style.height=`${Math.max(r.height,18)}px`;
-    box.style.display=(r.width<=0||r.height<=0)?'none':'block';
-    box.classList.toggle('is-selected',def.id===uiLayoutState.selectedId);
+    box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
+    box.style.display='block';
+    box.classList.toggle('is-hidden',!!metrics.hidden);
+    box.classList.toggle('is-locked',!!metrics.locked);
+    box.querySelector('.ui-layout-box-label').textContent=`${def.label}${metrics.hidden?' [hidden]':''}`;
   }
-  refreshUILayoutRows();
+  for(const def of getUILayoutOrderedDefs(false)){
+    const box=uiLayoutState.overlays.get(def.id);
+    if(box) uiLayoutState.editor.appendChild(box);
+  }
+  const panel=uiLayoutState.editor.querySelector('.ui-layout-object-panel');
+  if(panel) uiLayoutState.editor.appendChild(panel);
+  refreshUILayoutObjectPanel();
+  refreshUILayoutGuides();
 }
 function exportUILayoutConfig(){
   const block=`const UI_LAYOUT_DEFAULTS=${JSON.stringify(uiLayoutState.config,null,2)};`;
@@ -4819,24 +5044,68 @@ function exportUILayoutConfig(){
 }
 function setUILayoutMode(mode){
   uiLayoutState.mode=mode;
+  uiLayoutState.forcedMode=mode;
   applyUILayoutConfig();
   uiLayoutState.editor?.querySelectorAll('[data-layout-mode]')?.forEach(btn=>{
     btn.classList.toggle('is-active',btn.dataset.layoutMode===mode);
   });
+  setAdminStageModeZoom(mode);
   showUILayoutToast(`Editing ${mode}`);
-}
-function selectUILayoutTarget(id){
-  uiLayoutState.selectedId=id;
   refreshUILayoutEditor();
 }
-function updateUILayoutMetricsFromRect(def,left,top,width,height){
-  const vw=Math.max(window.innerWidth,1);
-  const vh=Math.max(window.innerHeight,1);
+function setUILayoutSelection(id,{additive=false}={}){
+  if(!id){
+    uiLayoutState.selectedId=null;
+    uiLayoutState.selectedIds=[];
+  }else if(additive){
+    const next=new Set(uiLayoutState.selectedIds);
+    if(next.has(id)) next.delete(id);
+    else next.add(id);
+    uiLayoutState.selectedIds=[...next];
+    uiLayoutState.selectedId=uiLayoutState.selectedIds[uiLayoutState.selectedIds.length-1]||null;
+  }else{
+    uiLayoutState.selectedId=id;
+    uiLayoutState.selectedIds=[id];
+  }
+  syncUILayoutSelectionStyles();
+  refreshUILayoutGuides();
+}
+function clampUILayoutRect(rect,bounds){
+  const width=Math.max(18,Math.min(rect.width,bounds.width));
+  const height=Math.max(18,Math.min(rect.height,bounds.height));
+  return {
+    left:clamp(rect.left,bounds.left,bounds.left+bounds.width-width),
+    top:clamp(rect.top,bounds.top,bounds.top+bounds.height-height),
+    width,height
+  };
+}
+function snapUILayoutRect(rect,def){
+  const bounds=getUILayoutViewportBounds();
+  const next=clampUILayoutRect({...rect},bounds);
+  const selectedCx=next.left+next.width*0.5;
+  const selectedCy=next.top+next.height*0.5;
+  const targetXs=[bounds.left,bounds.left+bounds.width*0.5-next.width*0.5,bounds.left+bounds.width-next.width];
+  const targetYs=[bounds.top,bounds.top+bounds.height*0.5-next.height*0.5,bounds.top+bounds.height-next.height];
+  for(const x of targetXs){ if(Math.abs(next.left-x)<=UI_LAYOUT_SNAP_PX){ next.left=x; break; } }
+  for(const y of targetYs){ if(Math.abs(next.top-y)<=UI_LAYOUT_SNAP_PX){ next.top=y; break; } }
+  const pairId=UI_LAYOUT_COMPARE_PAIRS[def.id];
+  const pairDef=getUILayoutDef(pairId);
+  if(pairDef){
+    const pairRect=measureUILayoutRect(pairDef,ensureUILayoutMetrics(pairDef));
+    const pairCx=pairRect.left+pairRect.width*0.5;
+    const pairCy=pairRect.top+pairRect.height*0.5;
+    if(Math.abs(selectedCx-pairCx)<=UI_LAYOUT_SNAP_PX) next.left=pairCx-next.width*0.5;
+    if(Math.abs(selectedCy-pairCy)<=UI_LAYOUT_SNAP_PX) next.top=pairCy-next.height*0.5;
+    if(Math.abs(next.left-pairRect.left)<=UI_LAYOUT_SNAP_PX) next.left=pairRect.left;
+    if(Math.abs((next.left+next.width)-(pairRect.left+pairRect.width))<=UI_LAYOUT_SNAP_PX) next.left=pairRect.left+pairRect.width-next.width;
+    if(Math.abs(next.top-pairRect.top)<=UI_LAYOUT_SNAP_PX) next.top=pairRect.top;
+    if(Math.abs((next.top+next.height)-(pairRect.top+pairRect.height))<=UI_LAYOUT_SNAP_PX) next.top=pairRect.top+pairRect.height-next.height;
+  }
+  return clampUILayoutRect(next,bounds);
+}
+function updateUILayoutMetricsFromRect(def,rect){
   const metrics=ensureUILayoutMetrics(def);
-  metrics.x=+(((left+width*0.5)/vw)*100).toFixed(3);
-  metrics.y=+(((top+height*0.5)/vh)*100).toFixed(3);
-  metrics.w=+((width/vw)*100).toFixed(3);
-  metrics.h=+((height/vh)*100).toFixed(3);
+  buildUILayoutMetricsFromRect(def,metrics,rect);
   applyUILayoutMetrics(def,metrics);
   saveUILayoutConfig();
 }
@@ -4845,80 +5114,218 @@ function handleUILayoutPointerMove(e){
   if(!drag||drag.pointerId!==e.pointerId) return;
   const def=getUILayoutDef(drag.id);
   if(!def) return;
-  let left=drag.left;
-  let top=drag.top;
-  let width=drag.width;
-  let height=drag.height;
-  const dx=e.clientX-drag.startX;
-  const dy=e.clientY-drag.startY;
+  const scale=getAdminStageZoom()||1;
+  const dx=(e.clientX-drag.startX)/scale;
+  const dy=(e.clientY-drag.startY)/scale;
+  let next={...drag.startRect};
   if(drag.mode==='move'){
-    left+=dx;
-    top+=dy;
+    next.left+=dx;
+    next.top+=dy;
   }else{
-    if(drag.corner.includes('e')) width=Math.max(18,drag.width+dx);
-    if(drag.corner.includes('s')) height=Math.max(18,drag.height+dy);
+    if(drag.corner.includes('e')) next.width=Math.max(18,drag.startRect.width+dx);
+    if(drag.corner.includes('s')) next.height=Math.max(18,drag.startRect.height+dy);
     if(drag.corner.includes('w')){
-      left=drag.left+dx;
-      width=Math.max(18,drag.width-dx);
+      next.left=drag.startRect.left+dx;
+      next.width=Math.max(18,drag.startRect.width-dx);
     }
     if(drag.corner.includes('n')){
-      top=drag.top+dy;
-      height=Math.max(18,drag.height-dy);
+      next.top=drag.startRect.top+dy;
+      next.height=Math.max(18,drag.startRect.height-dy);
     }
   }
-  left=clamp(left,0,window.innerWidth-width);
-  top=clamp(top,0,window.innerHeight-height);
-  updateUILayoutMetricsFromRect(def,left,top,width,height);
+  next=snapUILayoutRect(next,def);
+  updateUILayoutMetricsFromRect(def,next);
   refreshUILayoutEditor();
 }
 function handleUILayoutPointerUp(e){
-  if(uiLayoutState.drag && uiLayoutState.drag.pointerId===e.pointerId) uiLayoutState.drag=null;
+  if(uiLayoutState.drag && uiLayoutState.drag.pointerId===e.pointerId){
+    uiLayoutState.overlays.get(uiLayoutState.drag.id)?.classList.remove('active');
+    uiLayoutState.drag=null;
+  }
+}
+function copySelectedUILayoutItem(){
+  const def=getUILayoutDef(uiLayoutState.selectedId);
+  if(!def) return false;
+  uiLayoutState.clipboard=JSON.parse(JSON.stringify(ensureUILayoutMetrics(def)));
+  showUILayoutToast(`Copied ${def.label}`);
+  return true;
+}
+function pasteSelectedUILayoutItem(){
+  const def=getUILayoutDef(uiLayoutState.selectedId);
+  if(!def||!uiLayoutState.clipboard) return false;
+  const metrics={...ensureUILayoutMetrics(def),...JSON.parse(JSON.stringify(uiLayoutState.clipboard)),hidden:false};
+  getUILayoutStore()[def.id]=metrics;
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  showUILayoutToast(`Pasted onto ${def.label}`);
+  return true;
+}
+function toggleUILayoutHidden(id=uiLayoutState.selectedId){
+  const def=getUILayoutDef(id);
+  if(!def) return false;
+  const metrics={...ensureUILayoutMetrics(def)};
+  metrics.hidden=!metrics.hidden;
+  getUILayoutStore()[def.id]=metrics;
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  showUILayoutToast(`${def.label} ${metrics.hidden?'hidden':'shown'}`);
+  return true;
+}
+function toggleUILayoutLock(id=uiLayoutState.selectedId){
+  const def=getUILayoutDef(id);
+  if(!def) return false;
+  const metrics={...ensureUILayoutMetrics(def)};
+  metrics.locked=!metrics.locked;
+  getUILayoutStore()[def.id]=metrics;
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  showUILayoutToast(`${def.label} ${metrics.locked?'locked':'unlocked'}`);
+  return true;
+}
+function moveUILayoutLayer(targetId,direction){
+  const defs=getUILayoutOrderedDefs(true);
+  const index=defs.findIndex(def=>def.id===targetId);
+  const swapIndex=direction==='up'?index-1:index+1;
+  if(index<0||swapIndex<0||swapIndex>=defs.length) return false;
+  const ordered=defs.map(def=>def.id);
+  [ordered[index],ordered[swapIndex]]=[ordered[swapIndex],ordered[index]];
+  applyUILayoutLayerOrder(ordered);
+  refreshUILayoutEditor();
+  showUILayoutToast(`${getUILayoutDef(targetId)?.label||targetId} moved ${direction}`);
+  return true;
+}
+function moveSelectedUILayoutItems(edge){
+  const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[uiLayoutState.selectedId]).filter(Boolean);
+  if(!ids.length) return false;
+  const ordered=getUILayoutOrderedIds(true);
+  const moving=ordered.filter(id=>ids.includes(id));
+  const remaining=ordered.filter(id=>!ids.includes(id));
+  const next=edge==='top'?[...moving,...remaining]:[...remaining,...moving];
+  applyUILayoutLayerOrder(next);
+  refreshUILayoutEditor();
+  showUILayoutToast(`Moved ${moving.length} item(s) to ${edge}`);
+  return true;
+}
+function mirrorSelectedUILayoutItems(axis){
+  const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[uiLayoutState.selectedId]).filter(Boolean);
+  if(!ids.length) return false;
+  for(const id of ids){
+    const def=getUILayoutDef(id);
+    if(!def) continue;
+    const metrics={...ensureUILayoutMetrics(def)};
+    if(metrics.locked) continue;
+    if(axis==='horizontal') metrics.x=+(100-metrics.x).toFixed(3);
+    else metrics.y=+(100-metrics.y).toFixed(3);
+    getUILayoutStore()[id]=metrics;
+    applyUILayoutMetrics(def,metrics);
+  }
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  showUILayoutToast(axis==='horizontal'?'Mirrored horizontally':'Mirrored vertically');
+  return true;
+}
+function ensureAdminStage(){
+  let stage=document.getElementById('admin-stage');
+  if(stage) return stage;
+  stage=document.createElement('div');
+  stage.id='admin-stage';
+  for(const child of [...document.body.children]){
+    if(child.classList?.contains?.('ui-layout-editor')) continue;
+    stage.appendChild(child);
+  }
+  document.body.appendChild(stage);
+  document.body.classList.add('admin-stage-active');
+  return stage;
+}
+function dismantleAdminStage(){
+  const stage=document.getElementById('admin-stage');
+  if(!stage) return;
+  while(stage.firstChild) document.body.appendChild(stage.firstChild);
+  stage.remove();
+  document.body.classList.remove('admin-stage-active','admin-stage-mobile');
+  document.body.style.removeProperty('--admin-zoom');
+}
+function applyAdminStageZoom(){
+  const z=getAdminStageZoom();
+  document.body.style.setProperty('--admin-zoom',String(z));
+  document.body.classList.toggle('admin-stage-mobile',getUILayoutMode()==='mobile');
+}
+function setAdminStageZoom(z){
+  uiLayoutState.adminZoom=clamp(z,0.25,2);
+  applyAdminStageZoom();
+  refreshUILayoutEditor();
+}
+function setAdminStageModeZoom(mode){
+  uiLayoutState.adminZoom=(mode==='mobile')?ADMIN_STAGE_DEFAULT_MOBILE_ZOOM:1;
+  applyAdminStageZoom();
+  refreshUILayoutEditor();
+}
+function handleAdminStageWheel(e){
+  if(!uiLayoutState.active||getUILayoutMode()!=='mobile') return;
+  if(e.target?.closest?.('.ui-layout-editor')) return;
+  e.preventDefault();
+  const factor=Math.exp(-e.deltaY*0.0015);
+  setAdminStageZoom(getAdminStageZoom()*factor);
 }
 function buildUILayoutEditor(){
   const root=document.createElement('div');
   root.className='ui-layout-editor';
-  root.innerHTML=`<div class="ui-layout-toolbar">
+  root.innerHTML=`<div class="ui-layout-guide guide-v base"></div><div class="ui-layout-guide guide-h base"></div><div class="ui-layout-guide guide-v pair is-pair"></div><div class="ui-layout-guide guide-h pair is-pair"></div>
+    <div class="ui-layout-toolbar">
       <span class="ui-layout-pill">Shift+C Layout Admin</span>
       <button type="button" data-layout-mode="desktop">Desktop</button>
       <button type="button" data-layout-mode="mobile">Mobile</button>
+      <button type="button" data-layout-action="zoom-out">-</button>
+      <button type="button" data-layout-action="zoom-reset">100%</button>
+      <button type="button" data-layout-action="zoom-in">+</button>
       <button type="button" data-layout-action="reset">Reset</button>
       <button type="button" data-layout-action="export">Export</button>
       <button type="button" data-layout-action="close">Close</button>
     </div>
-    <div class="ui-layout-panel">
+    <div class="ui-layout-object-panel">
       <h3>Layout Objects</h3>
-      <p>Click an item to select it. Drag the box to move it, drag corners to resize it.</p>
-      <div class="ui-layout-list"></div>
+      <p>Desktop / mobile bucket separated. Wheel or +/- zoom mobile preview. Shift+click multi-select. Ctrl+C / Ctrl+V copies layout. Delete hides. L locks. H toggles show/hide.</p>
+      <div class="ui-layout-object-panel-tools">
+        <button type="button" data-layout-action="copy">Copy</button>
+        <button type="button" data-layout-action="paste">Paste</button>
+        <button type="button" data-layout-action="top">To Top</button>
+        <button type="button" data-layout-action="bottom">To Bottom</button>
+        <button type="button" data-layout-action="mirror-x">Mirror X</button>
+        <button type="button" data-layout-action="mirror-y">Mirror Y</button>
+      </div>
+      <div class="ui-layout-object-list"></div>
     </div>`;
-  const list=root.querySelector('.ui-layout-list');
   for(const def of UI_LAYOUT_TARGET_DEFS){
-    const row=document.createElement('button');
-    row.type='button';
-    row.className='ui-layout-row';
-    row.dataset.targetId=def.id;
-    row.innerHTML=`<span>${def.label}</span><code>#${def.id}</code>`;
-    row.addEventListener('click',()=>selectUILayoutTarget(def.id));
-    list.appendChild(row);
     const box=document.createElement('div');
     box.className='ui-layout-box';
     box.dataset.targetId=def.id;
-    box.innerHTML=`<div class="ui-layout-box-label">${def.label}</div><div class="ui-layout-handle" data-corner="nw"></div><div class="ui-layout-handle" data-corner="ne"></div><div class="ui-layout-handle" data-corner="sw"></div><div class="ui-layout-handle" data-corner="se"></div>`;
+    box.innerHTML=`<div class="ui-layout-box-label">${def.label}</div>
+      <div class="ui-layout-handle" data-corner="nw"></div><div class="ui-layout-handle" data-corner="n"></div>
+      <div class="ui-layout-handle" data-corner="ne"></div><div class="ui-layout-handle" data-corner="e"></div>
+      <div class="ui-layout-handle" data-corner="se"></div><div class="ui-layout-handle" data-corner="s"></div>
+      <div class="ui-layout-handle" data-corner="sw"></div><div class="ui-layout-handle" data-corner="w"></div>`;
     box.addEventListener('pointerdown',e=>{
-      const rect=box.getBoundingClientRect();
       const handle=e.target.closest('.ui-layout-handle');
+      const metrics=ensureUILayoutMetrics(def);
+      if(metrics.locked){
+        showUILayoutToast(`${def.label} is locked`);
+        return;
+      }
+      if(e.shiftKey) setUILayoutSelection(def.id,{additive:true});
+      else setUILayoutSelection(def.id);
       uiLayoutState.drag={
         id:def.id,
         mode:handle?'resize':'move',
-        corner:handle?.dataset.corner||null,
+        corner:handle?.dataset.corner||'se',
         startX:e.clientX,
         startY:e.clientY,
-        left:rect.left,
-        top:rect.top,
-        width:rect.width,
-        height:rect.height,
+        startRect:measureUILayoutRect(def,metrics),
         pointerId:e.pointerId
       };
-      selectUILayoutTarget(def.id);
+      box.classList.add('active');
       box.setPointerCapture?.(e.pointerId);
       e.preventDefault();
       e.stopPropagation();
@@ -4926,41 +5333,76 @@ function buildUILayoutEditor(){
     uiLayoutState.overlays.set(def.id,box);
     root.appendChild(box);
   }
-  root.querySelector('[data-layout-action="reset"]').addEventListener('click',()=>{
-    uiLayoutState.config[getUILayoutMode()]=cloneUILayoutConfig(UI_LAYOUT_DEFAULTS[getUILayoutMode()]);
-    applyUILayoutConfig();
-    saveUILayoutConfig();
-    showUILayoutToast('Reset current layout bucket');
+  root.addEventListener('click',e=>{
+    const action=e.target?.dataset?.layoutAction;
+    if(!action) return;
+    if(action==='reset'){
+      uiLayoutState.config[getUILayoutMode()]=cloneUILayoutConfig(UI_LAYOUT_DEFAULTS[getUILayoutMode()]);
+      applyUILayoutConfig();
+      saveUILayoutConfig();
+      showUILayoutToast('Reset current layout bucket');
+      return;
+    }
+    if(action==='export'){ exportUILayoutConfig(); return; }
+    if(action==='close'){ disableUILayoutEditor(); return; }
+    if(action==='copy'){ copySelectedUILayoutItem(); return; }
+    if(action==='paste'){ pasteSelectedUILayoutItem(); return; }
+    if(action==='top'){ moveSelectedUILayoutItems('top'); return; }
+    if(action==='bottom'){ moveSelectedUILayoutItems('bottom'); return; }
+    if(action==='mirror-x'){ mirrorSelectedUILayoutItems('horizontal'); return; }
+    if(action==='mirror-y'){ mirrorSelectedUILayoutItems('vertical'); return; }
+    if(action==='zoom-out'){ setAdminStageZoom(getAdminStageZoom()*0.9); return; }
+    if(action==='zoom-in'){ setAdminStageZoom(getAdminStageZoom()*1.1); return; }
+    if(action==='zoom-reset'){ setAdminStageModeZoom(getUILayoutMode()); return; }
   });
-  root.querySelector('[data-layout-action="export"]').addEventListener('click',exportUILayoutConfig);
-  root.querySelector('[data-layout-action="close"]').addEventListener('click',disableUILayoutEditor);
   root.querySelectorAll('[data-layout-mode]').forEach(btn=>{
     btn.addEventListener('click',()=>setUILayoutMode(btn.dataset.layoutMode));
   });
   window.addEventListener('pointermove',handleUILayoutPointerMove);
   window.addEventListener('pointerup',handleUILayoutPointerUp);
+  window.addEventListener('pointercancel',handleUILayoutPointerUp);
   return root;
 }
 function nudgeUILayoutSelection(dx,dy){
-  const def=getUILayoutDef(uiLayoutState.selectedId);
-  if(!def) return false;
-  const el=document.getElementById(def.id);
-  if(!el) return false;
-  const r=el.getBoundingClientRect();
-  updateUILayoutMetricsFromRect(def,r.left+dx,r.top+dy,r.width,r.height);
-  refreshUILayoutEditor();
-  return true;
+  const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[uiLayoutState.selectedId]).filter(Boolean);
+  if(!ids.length) return false;
+  let moved=false;
+  for(const id of ids){
+    const def=getUILayoutDef(id);
+    if(!def) continue;
+    const metrics={...ensureUILayoutMetrics(def)};
+    if(metrics.locked) continue;
+    const rect=snapUILayoutRect({
+      ...measureUILayoutRect(def,metrics),
+      left:measureUILayoutRect(def,metrics).left+dx,
+      top:measureUILayoutRect(def,metrics).top+dy
+    },def);
+    buildUILayoutMetricsFromRect(def,metrics,rect);
+    getUILayoutStore()[id]=metrics;
+    applyUILayoutMetrics(def,metrics);
+    moved=true;
+  }
+  if(moved){
+    saveUILayoutConfig();
+    refreshUILayoutEditor();
+  }
+  return moved;
 }
 function enableUILayoutEditor(){
   if(uiLayoutState.active) return;
   uiLayoutState.active=true;
   if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
-  if(!uiLayoutState.mode) uiLayoutState.mode=getUILayoutMode();
+  uiLayoutState.mode=getUILayoutAutoMode();
+  uiLayoutState.forcedMode=uiLayoutState.mode;
+  uiLayoutState.selectedIds=[];
   document.body.classList.add('ui-layout-admin');
+  ensureAdminStage();
+  setAdminStageModeZoom(uiLayoutState.mode);
+  window.addEventListener('wheel',handleAdminStageWheel,{passive:false,capture:true});
   uiLayoutState.editor=buildUILayoutEditor();
   document.body.appendChild(uiLayoutState.editor);
   setUILayoutMode(uiLayoutState.mode);
-  selectUILayoutTarget(uiLayoutState.selectedId||UI_LAYOUT_TARGET_DEFS[0].id);
+  setUILayoutSelection(uiLayoutState.selectedId||UI_LAYOUT_TARGET_DEFS[0].id);
   refreshUILayoutEditor();
   showUILayoutToast('Layout admin enabled');
 }
@@ -4968,12 +5410,19 @@ function disableUILayoutEditor(){
   if(!uiLayoutState.active) return;
   uiLayoutState.active=false;
   document.body.classList.remove('ui-layout-admin');
+  window.removeEventListener('wheel',handleAdminStageWheel,{capture:true});
   window.removeEventListener('pointermove',handleUILayoutPointerMove);
   window.removeEventListener('pointerup',handleUILayoutPointerUp);
+  window.removeEventListener('pointercancel',handleUILayoutPointerUp);
   uiLayoutState.editor?.remove();
   uiLayoutState.editor=null;
   uiLayoutState.overlays.clear();
   uiLayoutState.drag=null;
+  uiLayoutState.selectedIds=[];
+  uiLayoutState.forcedMode=null;
+  uiLayoutState.adminZoom=1;
+  dismantleAdminStage();
+  saveUILayoutConfig();
 }
 function toggleUILayoutEditor(){
   if(uiLayoutState.active) disableUILayoutEditor();
@@ -4982,6 +5431,12 @@ function toggleUILayoutEditor(){
 uiLayoutState.config=loadUILayoutConfig();
 window.__uiLayoutConfig=uiLayoutState.config;
 applyUILayoutConfig();
+layoutMobileQuery.addEventListener?.('change',()=>{
+  if(!uiLayoutState.active){
+    uiLayoutState.mode=getUILayoutAutoMode();
+    applyUILayoutConfig();
+  }
+});
 
 let joyX=0,joyY=0;
 const keys={w:false,a:false,s:false,d:false,up:false,down:false,left:false,right:false};
@@ -5045,11 +5500,43 @@ window.addEventListener('keydown',e=>{
     return;
   }
   if(uiLayoutState.active){
+    if((e.ctrlKey||e.metaKey) && e.code==='KeyC'){
+      e.preventDefault();
+      copySelectedUILayoutItem();
+      return;
+    }
+    if((e.ctrlKey||e.metaKey) && e.code==='KeyV'){
+      e.preventDefault();
+      pasteSelectedUILayoutItem();
+      return;
+    }
     if(e.code==='Escape'){
       e.preventDefault();
       disableUILayoutEditor();
       return;
     }
+    if(e.code==='Delete' || e.code==='Backspace'){
+      e.preventDefault();
+      toggleUILayoutHidden();
+      return;
+    }
+    if(e.code==='KeyH'){
+      e.preventDefault();
+      toggleUILayoutHidden();
+      return;
+    }
+    if(e.code==='KeyL'){
+      e.preventDefault();
+      toggleUILayoutLock();
+      return;
+    }
+    if(e.code==='PageUp'){ e.preventDefault(); moveSelectedUILayoutItems('top'); return; }
+    if(e.code==='PageDown'){ e.preventDefault(); moveSelectedUILayoutItems('bottom'); return; }
+    if(e.code==='BracketLeft'){ e.preventDefault(); mirrorSelectedUILayoutItems('horizontal'); return; }
+    if(e.code==='BracketRight'){ e.preventDefault(); mirrorSelectedUILayoutItems('vertical'); return; }
+    if(e.code==='Minus'){ e.preventDefault(); setAdminStageZoom(getAdminStageZoom()*0.9); return; }
+    if(e.code==='Equal'){ e.preventDefault(); setAdminStageZoom(getAdminStageZoom()*1.1); return; }
+    if(e.code==='Digit0'){ e.preventDefault(); setAdminStageModeZoom(getUILayoutMode()); return; }
     const step=e.shiftKey?10:2;
     if(e.code==='ArrowUp'&&nudgeUILayoutSelection(0,-step)){ e.preventDefault(); return; }
     if(e.code==='ArrowDown'&&nudgeUILayoutSelection(0,step)){ e.preventDefault(); return; }
