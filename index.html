@@ -3031,6 +3031,7 @@ function replaceTempleIdolWithWalkRig(idol){
   const walkAct=inst.actions?.walk||inst.actions?.run||inst.actions?.idle;
   if(walkAct){walkAct.reset();walkAct.time=0;walkAct.play()}
   realignActorFeet(inst);
+}
 function generateTempleChunk(idx,xBase,opts={}){
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
