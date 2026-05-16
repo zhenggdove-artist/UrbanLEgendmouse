@@ -627,10 +627,15 @@ function resolveIdolGroundY(idol){
 // metres up & forward of outer.position.
 function stripRootMotion(clip){
   if(!clip||!Array.isArray(clip.tracks))return clip;
+  // Lock EVERY position track to its first frame. Mixamo "Orc Idle" /
+  // "Walking" exports bake heavy root-bone translation into their
+  // animation tracks (especially Y bob and forward X drift). Bone names
+  // vary by exporter — instead of trying to identify the root bone we
+  // just neutralise all positional motion. Bone rotations (which drive
+  // the visible pose changes) are untouched.
   for(const t of clip.tracks){
     const n=(t.name||'').toLowerCase();
     if(!n.endsWith('.position'))continue;
-    if(!(n.includes('hips')||n.includes('root')||n.includes('armature')))continue;
     if(!t.values||t.values.length<3)continue;
     const x=t.values[0], y=t.values[1], z=t.values[2];
     for(let i=0;i<t.values.length;i+=3){
@@ -649,18 +654,29 @@ function stripRootMotion(clip){
 // otherwise leave the visible mesh floating ~2-3 m above outer.y.
 function realignActorFeet(inst){
   if(!inst?.outer||!inst.root)return;
-  if(inst.mixer) inst.mixer.update(0);
-  const sx=inst.outer.position.x, sy=inst.outer.position.y, sz=inst.outer.position.z;
-  const srx=inst.outer.rotation.x, sry=inst.outer.rotation.y, srz=inst.outer.rotation.z;
-  inst.outer.position.set(0,0,0);
-  inst.outer.rotation.set(0,0,0);
+  // Box3.setFromObject on a SkinnedMesh returns the bind-pose vertex
+  // extent — it does NOT reflect skeletal deformation. So measuring the
+  // bbox after an animation has played gives the wrong answer. Instead
+  // read the foot / toe bone world positions directly: those track
+  // exactly where the skinned vertices end up at the soles.
   inst.outer.updateMatrixWorld(true);
-  const bbox=new THREE.Box3().setFromObject(inst.outer);
-  if(Number.isFinite(bbox.min.y)){
-    inst.root.position.y-=bbox.min.y;
-  }
-  inst.outer.rotation.set(srx,sry,srz);
-  inst.outer.position.set(sx,sy,sz);
+  let lowestBoneY=Infinity;
+  const probe=new THREE.Vector3();
+  inst.root.traverse(o=>{
+    if(!o.isBone)return;
+    const n=(o.name||'').toLowerCase();
+    if(!(n.includes('foot')||n.includes('toe')))return;
+    o.getWorldPosition(probe);
+    if(probe.y<lowestBoneY) lowestBoneY=probe.y;
+  });
+  if(!Number.isFinite(lowestBoneY))return;
+  const outerWorld=new THREE.Vector3();
+  inst.outer.getWorldPosition(outerWorld);
+  // Foot/toe bone sits a few cm above the actual sole — subtract a small
+  // bias so the visible sole touches outer.y rather than the ankle.
+  const FOOT_BONE_TO_SOLE=0.06;
+  const delta=(lowestBoneY-outerWorld.y)-FOOT_BONE_TO_SOLE;
+  inst.root.position.y-=delta;
   inst.outer.updateMatrixWorld(true);
 }
 // The walkable corridor — wide enough that the player can wander between
@@ -3030,6 +3046,7 @@ function replaceTempleIdolWithWalkRig(idol){
   // the idol doesn't pop ~2 m into the air on awakening.
   const walkAct=inst.actions?.walk||inst.actions?.run||inst.actions?.idle;
   if(walkAct){walkAct.reset();walkAct.time=0;walkAct.play()}
+  if(inst.mixer) inst.mixer.update(0);
   realignActorFeet(inst);
 }
 function generateTempleChunk(idx,xBase,opts={}){
@@ -3778,7 +3795,7 @@ function syncParasiteOverlay(host,dt,mx=0,my=0){
   if(host.inst?.headBone){
     const headWorld=new THREE.Vector3();
     host.inst.headBone.getWorldPosition(headWorld);
-    headWorld.y-=0.36;
+    headWorld.y-=0.11;
     const localPos=host.root.worldToLocal(headWorld);
     host.parasiteOverlay.position.copy(localPos);
   }
@@ -3951,6 +3968,11 @@ function tickTempleIdolProcession(idol,dt){
   }
   tickTempleIdolKills(idol);
   tickActor(idol,dt);
+  // After the mixer advanced this frame, re-anchor the visible mesh so
+  // the feet keep landing exactly at outer.y. Without this, the Mixamo
+  // walk clip's residual Hips drift slowly pulls the model upward over
+  // a few seconds of procession.
+  realignActorFeet(idol.inst);
 }
 function tickTempleIdolRoam(idol,dt){
   idol.behaviour='procession';
@@ -3982,6 +4004,7 @@ function tickTempleIdolRoam(idol,dt){
   softClampTempleX(idol.root.position);
   tickTempleIdolKills(idol);
   tickActor(idol,dt);
+  realignActorFeet(idol.inst);
 }
 function tickTempleEvent(dt){
   const idol=game.templeEvent.idol;
