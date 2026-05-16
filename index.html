@@ -4739,7 +4739,6 @@ function nearestChaosSpot(pos){
 // ===== Input — joystick + keyboard (verbatim 都市傳說2) =====
 // ===== UI layout admin (Shift+C) =====
 const UI_LAYOUT_STORAGE_KEY='urbanLegendMouseUILayoutV1';
-Replace index.html lines 4742-4775 with the block below.
 
 const UI_LAYOUT_DEFAULTS={
   "desktop": {
@@ -5495,22 +5494,9 @@ function refreshUILayoutEditor(){
 }
 async function exportUILayoutConfig(){
   const block=`const UI_LAYOUT_DEFAULTS=${JSON.stringify(uiLayoutState.config,null,2)};`;
-  let instruction='Replace the UI_LAYOUT_DEFAULTS block in index.html with the block below.';
-  try{
-    const source=await fetch(window.location.href,{cache:'no-store'}).then(r=>r.text());
-    const lines=source.split(/\r?\n/);
-    const startLine=lines.findIndex(line=>line.includes('const UI_LAYOUT_DEFAULTS='))+1;
-    const endAnchor=lines.findIndex((line,idx)=>idx>=Math.max(0,startLine-1) && line.includes('const UI_LAYOUT_TARGET_DEFS='));
-    if(startLine>0 && endAnchor>=0){
-      instruction=`Replace index.html lines ${startLine}-${endAnchor} with the block below.`;
-    }
-  }catch(err){
-    console.warn('[layout export] line lookup failed',err);
-  }
-  const payload=`${instruction}\n\n${block}`;
-  navigator.clipboard?.writeText(payload).then(
-    ()=>showUILayoutToast('Layout export copied with line range'),
-    ()=>window.prompt('Copy layout config',payload)
+  navigator.clipboard?.writeText(block).then(
+    ()=>showUILayoutToast('Layout config copied'),
+    ()=>window.prompt('Copy layout config',block)
   );
 }
 function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
