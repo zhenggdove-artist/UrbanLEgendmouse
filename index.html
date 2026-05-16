@@ -214,8 +214,15 @@
   #temple-flash{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:45;transition:opacity .08s linear}
 
   body.ui-layout-admin *{cursor:default}
-  #admin-stage{position:fixed;left:0;top:0;width:100vw;height:100vh;transform-origin:left top;transform:scale(var(--admin-zoom,1))}
-  body.admin-stage-active.admin-stage-mobile{background:#000!important}
+  #admin-stage{position:fixed;left:50%;top:50%;
+    width:min(calc(100vw - 96px),1600px);height:min(calc(100vh - 96px),920px);
+    transform-origin:center center;transform:translate(-50%,-50%) scale(var(--admin-zoom,1));
+    background:#000;outline:1px solid rgba(255,233,112,0.18);
+    box-shadow:0 24px 70px rgba(0,0,0,0.58),0 0 0 9999px rgba(0,0,0,0.52)}
+  body.admin-stage-active{background:#000!important}
+  body.admin-stage-active #admin-stage{
+    overflow:hidden;border-radius:18px
+  }
   body.admin-stage-active.admin-stage-mobile #admin-stage{
     left:50%;top:50%;width:390px;height:844px;transform-origin:center center;
     transform:translate(-50%,-50%) scale(var(--admin-zoom,1));
@@ -291,6 +298,7 @@
     font:12px/1 "Courier New",monospace;letter-spacing:0.08em;box-shadow:0 14px 26px rgba(0,0,0,0.35)}
 
   @media (max-width:640px){
+    #admin-stage{width:calc(100vw - 32px);height:calc(100vh - 32px);border-radius:16px}
     .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
     .ui-layout-object-panel{top:86px;left:10px;right:10px;width:auto;max-height:calc(100vh - 98px)}
     #minimap{left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);width:104px;height:104px}
