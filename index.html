@@ -260,6 +260,15 @@
     color:#fff7d3;font:700 10px/1 "Courier New",monospace;letter-spacing:0.08em;cursor:pointer}
   .ui-layout-object-panel-chrome button:hover{background:rgba(255,255,255,0.18)}
   .ui-layout-object-panel-body{display:flex;flex-direction:column;gap:10px}
+  .ui-layout-object-panel-resize{position:absolute;pointer-events:auto;background:transparent}
+  .ui-layout-object-panel-resize[data-edge="n"]{left:10px;right:10px;top:-6px;height:12px;cursor:ns-resize}
+  .ui-layout-object-panel-resize[data-edge="e"]{top:10px;bottom:10px;right:-6px;width:12px;cursor:ew-resize}
+  .ui-layout-object-panel-resize[data-edge="s"]{left:10px;right:10px;bottom:-6px;height:12px;cursor:ns-resize}
+  .ui-layout-object-panel-resize[data-edge="w"]{top:10px;bottom:10px;left:-6px;width:12px;cursor:ew-resize}
+  .ui-layout-object-panel-resize[data-edge="ne"]{right:-8px;top:-8px;width:16px;height:16px;cursor:nesw-resize}
+  .ui-layout-object-panel-resize[data-edge="se"]{right:-8px;bottom:-8px;width:16px;height:16px;cursor:nwse-resize}
+  .ui-layout-object-panel-resize[data-edge="sw"]{left:-8px;bottom:-8px;width:16px;height:16px;cursor:nesw-resize}
+  .ui-layout-object-panel-resize[data-edge="nw"]{left:-8px;top:-8px;width:16px;height:16px;cursor:nwse-resize}
   .ui-layout-object-panel-tools{display:flex;gap:6px;flex-wrap:wrap}
   .ui-layout-object-panel-tools button,.ui-layout-object-row button{appearance:none;border:none;border-radius:999px;padding:7px 10px;
     background:rgba(255,255,255,0.08);color:#f8efc0;font:700 10px/1 "Courier New",monospace;letter-spacing:0.06em;cursor:pointer}
@@ -5062,7 +5071,13 @@ function captureUILayoutObjectPanelScroll(){
 }
 function restoreUILayoutObjectPanelScroll(){
   const list=uiLayoutState.editor?.querySelector('.ui-layout-object-list');
-  if(list) list.scrollTop=uiLayoutState.objectPanelScrollTop||0;
+  if(!list) return;
+  const target=uiLayoutState.objectPanelScrollTop||0;
+  list.scrollTop=target;
+  requestAnimationFrame(()=>{
+    const liveList=uiLayoutState.editor?.querySelector('.ui-layout-object-list');
+    if(liveList) liveList.scrollTop=target;
+  });
 }
 function clampUILayoutPanelRect(rect){
   const width=Math.max(280,Math.min(rect.width,window.innerWidth-20));
@@ -5084,6 +5099,20 @@ function applyUILayoutObjectPanelRect(){
   panel.classList.toggle('is-collapsed',!!uiLayoutState.objectPanelCollapsed);
   const collapseBtn=panel.querySelector('[data-layout-action="collapse"]');
   if(collapseBtn) collapseBtn.textContent=uiLayoutState.objectPanelCollapsed?'+':'_';
+}
+function resizeUILayoutPanelRect(startRect,edge,dx,dy){
+  const next={...startRect};
+  if(edge.includes('e')) next.width=startRect.width+dx;
+  if(edge.includes('s')) next.height=startRect.height+dy;
+  if(edge.includes('w')){
+    next.left=startRect.left+dx;
+    next.width=startRect.width-dx;
+  }
+  if(edge.includes('n')){
+    next.top=startRect.top+dy;
+    next.height=startRect.height-dy;
+  }
+  return clampUILayoutPanelRect(next);
 }
 function refreshUILayoutGuides(){
   const editor=uiLayoutState.editor;
@@ -5203,7 +5232,7 @@ function refreshUILayoutEditor(){
     box.style.width=`${Math.max(r.width,18)}px`;
     box.style.height=`${Math.max(r.height,18)}px`;
     box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
-    box.style.display='block';
+    box.style.display=metrics.hidden?'none':'block';
     box.classList.toggle('is-hidden',!!metrics.hidden);
     box.classList.toggle('is-locked',!!metrics.locked);
     box.querySelector('.ui-layout-box-label').textContent=`${def.label}${metrics.hidden?' [hidden]':''}`;
@@ -5299,11 +5328,13 @@ function handleUILayoutPointerMove(e){
   if(uiLayoutState.panelDrag && uiLayoutState.panelDrag.pointerId===e.pointerId){
     const dx=e.clientX-uiLayoutState.panelDrag.startX;
     const dy=e.clientY-uiLayoutState.panelDrag.startY;
-    uiLayoutState.panelRect=clampUILayoutPanelRect({
-      ...uiLayoutState.panelDrag.startRect,
-      left:uiLayoutState.panelDrag.startRect.left+dx,
-      top:uiLayoutState.panelDrag.startRect.top+dy
-    });
+    uiLayoutState.panelRect=uiLayoutState.panelDrag.edge
+      ? resizeUILayoutPanelRect(uiLayoutState.panelDrag.startRect,uiLayoutState.panelDrag.edge,dx,dy)
+      : clampUILayoutPanelRect({
+          ...uiLayoutState.panelDrag.startRect,
+          left:uiLayoutState.panelDrag.startRect.left+dx,
+          top:uiLayoutState.panelDrag.startRect.top+dy
+        });
     applyUILayoutObjectPanelRect();
     return;
   }
@@ -5611,6 +5642,14 @@ function buildUILayoutEditor(){
         </div>
         <div class="ui-layout-object-list"></div>
       </div>
+      <div class="ui-layout-object-panel-resize" data-edge="n"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="e"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="s"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="w"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="ne"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="se"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="sw"></div>
+      <div class="ui-layout-object-panel-resize" data-edge="nw"></div>
     </div>`;
   root.querySelector('[data-layout-frame-input]')?.addEventListener('change',e=>{
     const file=e.target.files?.[0];
@@ -5621,12 +5660,14 @@ function buildUILayoutEditor(){
   panel?.querySelector('.ui-layout-object-list')?.addEventListener('scroll',captureUILayoutObjectPanelScroll);
   panel?.addEventListener('pointerdown',e=>{
     if(e.target?.closest?.('[data-layout-action]')) return;
-    if(!e.target?.closest?.('.ui-layout-object-panel-header')) return;
+    const resizeHandle=e.target?.closest?.('.ui-layout-object-panel-resize');
+    if(!resizeHandle && !e.target?.closest?.('.ui-layout-object-panel-header')) return;
     uiLayoutState.panelDrag={
       pointerId:e.pointerId,
       startX:e.clientX,
       startY:e.clientY,
-      startRect:{...uiLayoutState.panelRect}
+      startRect:{...uiLayoutState.panelRect},
+      edge:resizeHandle?.dataset.edge||null
     };
     panel.setPointerCapture?.(e.pointerId);
     e.preventDefault();
