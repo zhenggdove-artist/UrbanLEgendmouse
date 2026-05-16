@@ -73,9 +73,9 @@
   #rats-box{left:84%;top:18%}
   #rat-city-btn{position:fixed;left:50%;top:8.4%;transform:translate(-50%,-50%);z-index:15;
     appearance:none;border:none;border-radius:999px;padding:10px 22px;cursor:pointer;
-    background:linear-gradient(180deg,rgba(255,244,192,0.96),rgba(255,180,120,0.94));
+    background:transparent;
     color:#3b1420;font:700 18px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.28em;
-    text-transform:uppercase;box-shadow:0 16px 30px rgba(0,0,0,0.34)}
+    text-transform:uppercase;box-shadow:none}
   #rat-city-panel{position:fixed;top:78px;left:50%;transform:translateX(-50%);z-index:16;
     width:min(360px,calc(100vw - 28px));padding:16px 18px;border-radius:18px;display:none;
     border:1px solid rgba(255,244,192,0.45);background:rgba(20,12,25,0.92);box-shadow:0 20px 42px rgba(0,0,0,0.45)}
@@ -160,6 +160,16 @@
     color:#fff;font:700 12px/1 "HydrogenWhiskey","Trebuchet MS",sans-serif;letter-spacing:0.08em;
     cursor:pointer;touch-action:none;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,0.45),0 8px 18px rgba(0,0,0,0.35);overflow:visible;isolation:isolate}
+  .ui-art-host{position:relative}
+  .ui-art-label{position:relative;z-index:1;display:inline-block}
+  .ui-art-host.has-art .ui-art-label{opacity:0}
+  .ui-art-layer{position:absolute;left:50%;top:50%;width:72%;height:28%;transform:translate(-50%,-50%);
+    display:none;pointer-events:none;object-fit:contain;z-index:3;max-width:none;max-height:none}
+  .ui-art-host.has-art .ui-art-layer{display:block}
+  #chaos-box,#rats-box{overflow:visible}
+  #chaos-box .ui-art-layer,#rats-box .ui-art-layer{top:28%;width:54%;height:22%}
+  #rat-city-btn .ui-art-layer{width:82%;height:72%}
+  #jump-btn .ui-art-layer,#bite-btn .ui-art-layer,#pickup-btn .ui-art-layer,#exit-host-btn .ui-art-layer{width:68%;height:28%}
   .action-btn::before{content:none;position:absolute;left:50%;top:50%;
     width:192%;height:192%;transform:translate(calc(-50% + 4px),calc(-50% + 4px));
     background:url("./ui/img/action_frame_overlay.png") center/contain no-repeat;
@@ -270,6 +280,11 @@
   .ui-layout-object-panel-resize[data-edge="sw"]{left:-8px;bottom:-8px;width:16px;height:16px;cursor:nesw-resize}
   .ui-layout-object-panel-resize[data-edge="nw"]{left:-8px;top:-8px;width:16px;height:16px;cursor:nwse-resize}
   .ui-layout-object-panel-tools{display:flex;gap:6px;flex-wrap:wrap}
+  .ui-layout-object-panel-tools input[type="color"]{appearance:none;border:none;width:34px;height:34px;padding:0;border-radius:999px;
+    background:transparent;cursor:pointer}
+  .ui-layout-object-panel-tools input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+  .ui-layout-object-panel-tools input[type="color"]::-webkit-color-swatch{border:none;border-radius:999px}
+  .ui-layout-object-panel-tools input[type="color"]::-moz-color-swatch{border:none;border-radius:999px}
   .ui-layout-object-panel-tools button,.ui-layout-object-row button{appearance:none;border:none;border-radius:999px;padding:7px 10px;
     background:rgba(255,255,255,0.08);color:#f8efc0;font:700 10px/1 "Courier New",monospace;letter-spacing:0.06em;cursor:pointer}
   .ui-layout-object-panel-tools button:hover,.ui-layout-object-row button:hover{background:rgba(255,255,255,0.16)}
@@ -348,11 +363,11 @@
 <div id="hud">
   <div class="hud-box" id="mode-badge">CONTROL · RAT</div>
   <div class="hud-box meter" id="host-life-box"><span class="label">HOST LIFE</span><div class="bar"><div class="fill" id="host-life-fill"></div></div></div>
-  <div class="hud-box meter" id="chaos-box">CHAOS <span id="chaos-score">0</span><div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
-  <div class="hud-box meter rats" id="rats-box">RATS <span id="rat-count">1</span>
+  <div class="hud-box meter ui-art-host" id="chaos-box"><span class="ui-art-label">CHAOS</span> <span id="chaos-score">0</span><img id="chaos-box-art" class="ui-art-layer" alt=""><div class="bar"><div class="fill" id="chaos-fill"></div></div></div>
+  <div class="hud-box meter rats ui-art-host" id="rats-box"><span class="ui-art-label">RATS</span> <span id="rat-count">1</span><img id="rats-box-art" class="ui-art-layer" alt="">
     <div class="bar"><div class="fill" id="rat-fill"></div></div></div>
 </div>
-<button id="rat-city-btn" type="button">RAT CITY</button>
+<button id="rat-city-btn" class="ui-art-host" type="button"><span class="ui-art-label">RAT CITY</span><img id="rat-city-btn-art" class="ui-art-layer" alt=""></button>
 <div id="rat-city-panel">
   <h3>RAT CITY</h3>
   <p>Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.</p>
@@ -405,10 +420,10 @@
 
 <div id="game-controls">
   <div id="joystick-zone"><div id="joystick-base"></div><div id="joystick-stick"></div></div>
-  <button id="jump-btn" class="action-btn" aria-label="Jump">JUMP</button>
-  <button id="bite-btn" class="action-btn" aria-label="Bite">BITE</button>
-  <button id="pickup-btn" class="action-btn" aria-label="Pick up">PICK UP</button>
-  <button id="exit-host-btn" class="action-btn" aria-label="Abandon host">DROP HOST</button>
+  <button id="jump-btn" class="action-btn ui-art-host" aria-label="Jump"><span class="ui-art-label">JUMP</span><img id="jump-btn-art" class="ui-art-layer" alt=""></button>
+  <button id="bite-btn" class="action-btn ui-art-host" aria-label="Bite"><span class="ui-art-label">BITE</span><img id="bite-btn-art" class="ui-art-layer" alt=""></button>
+  <button id="pickup-btn" class="action-btn ui-art-host" aria-label="Pick up"><span class="ui-art-label">PICK UP</span><img id="pickup-btn-art" class="ui-art-layer" alt=""></button>
+  <button id="exit-host-btn" class="action-btn ui-art-host" aria-label="Abandon host"><span class="ui-art-label">DROP HOST</span><img id="exit-host-btn-art" class="ui-art-layer" alt=""></button>
 </div>
 
 <div id="rats-win">
@@ -778,7 +793,7 @@ const game={
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
     altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
     gathering:false,started:false,awakened:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
-    glowCooldown:0,flashStrength:0
+    glowCooldown:0,flashStrength:0,keyLight:null,rimLight:null,lightTarget:null
   },
   ratCityMode:false,
   ratCityAngle:0,
@@ -881,6 +896,7 @@ function loadTempleIdolAssetsLegacy(){
     TEMPLE_IDOL_SKIN.normal=null;
     TEMPLE_IDOL_SKIN.roughness=null;
     TEMPLE_IDOL_SKIN.metal=null;
+    TEMPLE_IDOL_SKIN.materialKind='standard';
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({
         altarPos:game.templeEvent.altarPos,
@@ -923,7 +939,7 @@ function loadTempleIdolAssets(){
     TEMPLE_IDOL_SKIN.roughness=roughTex;
     TEMPLE_IDOL_SKIN.metal=metalTex;
     TEMPLE_IDOL_SKIN.flipY=true;
-    TEMPLE_IDOL_SKIN.materialKind='basic';
+    TEMPLE_IDOL_SKIN.materialKind='standard';
     if(game.templeEvent.root && !game.templeEvent.idol){
       spawnTempleIdol({
         altarPos:game.templeEvent.altarPos,
@@ -3049,6 +3065,26 @@ function spawnTempleIdol(plazaInfo){
     streetPos:plazaInfo.streetPos?.clone?.()||new THREE.Vector3(),
     killRadius:TEMPLE_IDOL_KILL_RADIUS,roamTarget:null,roamTimer:0
   };
+  if(!game.templeEvent.lightTarget){
+    game.templeEvent.lightTarget=new THREE.Object3D();
+    scene.add(game.templeEvent.lightTarget);
+  }
+  game.templeEvent.lightTarget.position.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
+  if(!game.templeEvent.keyLight){
+    const key=new THREE.DirectionalLight('#ffd98a',1.1);
+    key.position.set(5.5,8.5,6.5);
+    key.target=game.templeEvent.lightTarget;
+    scene.add(key);
+    scene.add(key.target);
+    game.templeEvent.keyLight=key;
+  }
+  if(!game.templeEvent.rimLight){
+    const rim=new THREE.DirectionalLight('#8ec7ff',0.38);
+    rim.position.set(-4.2,5.2,-5.6);
+    rim.target=game.templeEvent.lightTarget;
+    scene.add(rim);
+    game.templeEvent.rimLight=rim;
+  }
   setTempleIdolPhaseMaterials(idolActor,'gold');
   const idleAct=inst.actions?.idle||inst.actions?.walk||inst.actions?.run;
   if(idleAct){
@@ -3877,25 +3913,49 @@ function setHostHeadMasked(host,masked){
   headBone.updateMatrixWorld(true);
 }
 function buildTempleIdolMaterial(src,mode='awake'){
-  if(mode==='awake'){
-    return Array.isArray(src)?src.map(m=>m.clone()):src.clone();
+  const source=src?.clone ? src.clone() : new THREE.MeshStandardMaterial();
+  let mat;
+  if(source.isMeshStandardMaterial || source.isMeshPhysicalMaterial || source.isMeshPhongMaterial || source.isMeshLambertMaterial){
+    mat=source;
+  }else{
+    mat=new THREE.MeshStandardMaterial();
+    if(source?.map) mat.map=source.map;
+    if(source?.color) mat.color.copy(source.color);
+    if(source?.transparent!==undefined) mat.transparent=source.transparent;
+    if(source?.opacity!==undefined) mat.opacity=source.opacity;
+    if(source?.alphaTest!==undefined) mat.alphaTest=source.alphaTest;
+    if(source?.side!==undefined) mat.side=source.side;
   }
-  const mat=new THREE.MeshBasicMaterial();
-  mat.color.copy(src?.color||new THREE.Color('#ffffff'));
-  if(src?.map){
-    mat.map=src.map;
+  if(mat.map){
     pixelate(mat.map);
     mat.map.colorSpace=THREE.SRGBColorSpace;
   }
-  if(src?.transparent!==undefined) mat.transparent=src.transparent;
-  if(src?.opacity!==undefined) mat.opacity=src.opacity;
-  if(src?.alphaTest!==undefined) mat.alphaTest=src.alphaTest;
-  if(src?.side!==undefined) mat.side=src.side;
+  if(mode==='awake'){
+    if('metalness' in mat) mat.metalness=Math.max(0.08,mat.metalness??0.08);
+    if('roughness' in mat) mat.roughness=Math.min(0.92,mat.roughness??0.82);
+    if('emissive' in mat){
+      mat.emissive.setRGB(0.04,0.03,0.02);
+      mat.emissiveIntensity=0.28;
+    }
+    mat.needsUpdate=true;
+    return mat;
+  }
   if(mode==='gold'){
-    mat.map=null;
-    mat.color.set('#dcb34f');
+    if(mat.color) mat.color.set('#d5ac4b');
+    if('metalness' in mat) mat.metalness=0.88;
+    if('roughness' in mat) mat.roughness=0.42;
+    if('emissive' in mat){
+      mat.emissive.set('#3a2a10');
+      mat.emissiveIntensity=0.18;
+    }
   }else if(mode==='flash'){
-    mat.color.set('#fff7df');
+    if(mat.color) mat.color.set('#fff1c9');
+    if('metalness' in mat) mat.metalness=0.62;
+    if('roughness' in mat) mat.roughness=0.24;
+    if('emissive' in mat){
+      mat.emissive.set('#fff1b8');
+      mat.emissiveIntensity=0.72;
+    }
   }
   mat.needsUpdate=true;
   return mat;
@@ -4121,8 +4181,8 @@ function tickTempleEvent(dt){
       // collision body of the altar is x=[altarEdgeTop.x±halfX] but we
       // approximate by sliding to altarEdgeTop's XZ at GROUND_Y_OFFSET so
       // rats arrive at the altar mesh BEFORE any vertical lift starts.
-      const altarFootX=altarEdgeTop.x;
-      const altarFootZ=altarEdgeTop.z;
+      const altarFootX=altarFront.x;
+      const altarFootZ=altarFront.z;
       if(climb<0.22){
         const radius=lerp(6.8,2.4,climb/0.22);
         targetX=altarFront.x+Math.cos(ringAngle)*radius;
@@ -4143,8 +4203,8 @@ function tickTempleEvent(dt){
         targetY=lerp(GROUND_Y_OFFSET,altarEdgeTop.y+0.05,lift);
       }else if(climb<0.74){
         const topLift=(climb-0.55)/0.19;
-        targetX=lerp(altarEdgeTop.x,altarTop.x,topLift)+Math.cos(ringAngle)*1.05;
-        targetZ=lerp(altarEdgeTop.z,altarTop.z,topLift)+Math.sin(ringAngle)*0.65;
+        targetX=lerp(altarFootX,altarTop.x,topLift)+Math.cos(ringAngle)*1.05;
+        targetZ=lerp(altarFootZ,altarTop.z,topLift)+Math.sin(ringAngle)*0.65;
         targetY=lerp(altarEdgeTop.y+0.05,altarTop.y+0.08,topLift);
       }else{
         const crest=(climb-0.74)/0.26;
@@ -5007,15 +5067,32 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'viewport-frame-right',label:'Frame Right'},
   {id:'mode-badge',label:'Mode Badge'},
   {id:'chaos-box',label:'Chaos Box'},
+  {id:'chaos-box-art',label:'Chaos Art',isSkinArt:true,parentId:'chaos-box'},
   {id:'rats-box',label:'Rats Box'},
+  {id:'rats-box-art',label:'Rats Art',isSkinArt:true,parentId:'rats-box'},
   {id:'rat-city-btn',label:'Rat City Button'},
+  {id:'rat-city-btn-art',label:'Rat City Art',isSkinArt:true,parentId:'rat-city-btn'},
   {id:'hint',label:'Hint'},
   {id:'joystick-zone',label:'Joystick'},
   {id:'jump-btn',label:'Jump Button'},
+  {id:'jump-btn-art',label:'Jump Art',isSkinArt:true,parentId:'jump-btn'},
   {id:'bite-btn',label:'Bite Button'},
+  {id:'bite-btn-art',label:'Bite Art',isSkinArt:true,parentId:'bite-btn'},
   {id:'pickup-btn',label:'Pickup Button'},
-  {id:'exit-host-btn',label:'Exit Host Button'}
+  {id:'pickup-btn-art',label:'Pickup Art',isSkinArt:true,parentId:'pickup-btn'},
+  {id:'exit-host-btn',label:'Exit Host Button'},
+  {id:'exit-host-btn-art',label:'Drop Host Art',isSkinArt:true,parentId:'exit-host-btn'}
 ];
+const UI_LAYOUT_ART_TARGETS={
+  'chaos-box':'chaos-box-art',
+  'rats-box':'rats-box-art',
+  'rat-city-btn':'rat-city-btn-art',
+  'jump-btn':'jump-btn-art',
+  'bite-btn':'bite-btn-art',
+  'pickup-btn':'pickup-btn-art',
+  'exit-host-btn':'exit-host-btn-art'
+};
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','jump-btn','bite-btn','pickup-btn','exit-host-btn']);
 const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-top':'viewport-frame-bottom',
   'viewport-frame-bottom':'viewport-frame-top',
@@ -5124,11 +5201,37 @@ function getUILayoutCustomFrameDefs(){
     isCustomFrame:true
   }));
 }
+function getDefaultUILayoutSkinArtMetrics(def){
+  if(def.id==='rat-city-btn-art') return {x:50,y:50,w:82,h:72,z:getDefaultUILayoutLayer(def.id),hidden:false,locked:false,src:''};
+  if(def.id==='chaos-box-art' || def.id==='rats-box-art') return {x:50,y:28,w:54,h:22,z:getDefaultUILayoutLayer(def.id),hidden:false,locked:false,src:''};
+  return {x:50,y:50,w:68,h:28,z:getDefaultUILayoutLayer(def.id),hidden:false,locked:false,src:''};
+}
 function getUILayoutDef(id){ return getUILayoutDefs().find(def=>def.id===id)||null; }
 function getUILayoutCustomFrameById(id){
   return getUILayoutFrameStore().find(frame=>frame.id===id)||null;
 }
 function getUILayoutCustomFrameElementId(id){ return `ui-layout-custom-frame-${id}`; }
+function getUILayoutBoundsForDef(def){
+  if(def?.isSkinArt){
+    const parent=document.getElementById(def.parentId);
+    if(parent){
+      const r=parent.getBoundingClientRect();
+      return {left:r.left,top:r.top,width:Math.max(r.width,1),height:Math.max(r.height,1)};
+    }
+  }
+  return getUILayoutViewportBounds();
+}
+function getUILayoutSkinTargetId(id){
+  if(UI_LAYOUT_ART_TARGETS[id]) return UI_LAYOUT_ART_TARGETS[id];
+  return getUILayoutDef(id)?.isSkinArt?id:null;
+}
+function getUILayoutParentTargetId(id){
+  const def=getUILayoutDef(id);
+  return def?.isSkinArt?def.parentId:id;
+}
+function isUILayoutStylableTargetId(id){
+  return UI_LAYOUT_STYLABLE_TARGETS.has(getUILayoutParentTargetId(id));
+}
 function syncUILayoutCustomFrames(){
   const stage=document.getElementById('admin-stage')||document.body;
   const activeIds=new Set();
@@ -5170,6 +5273,19 @@ function ensureUILayoutMetrics(def){
     frame.label=frame.label||'Frame';
     return frame;
   }
+  if(def.isSkinArt){
+    const fallback=getDefaultUILayoutSkinArtMetrics(def);
+    const current=store[def.id]||{};
+    store[def.id]={
+      ...fallback,
+      ...current,
+      z:Number.isFinite(current.z)?current.z:getDefaultUILayoutLayer(def.id),
+      hidden:!!current.hidden,
+      locked:!!current.locked,
+      src:typeof current.src==='string'?current.src:(fallback.src||'')
+    };
+    return store[def.id];
+  }
   const fallback=UI_LAYOUT_DEFAULTS[getUILayoutMode()][def.id]||{x:50,y:50,w:10,h:10};
   const current=store[def.id]||{};
   store[def.id]={
@@ -5193,9 +5309,37 @@ function setUILayoutMetrics(def,metrics){
   return getUILayoutStore()[def.id];
 }
 function getUILayoutLayer(def,metrics){ return Number.isFinite(metrics?.z)?metrics.z:getDefaultUILayoutLayer(def.id); }
+function applyUILayoutSkinArt(def,metrics){
+  const el=document.getElementById(def.id);
+  const parent=document.getElementById(def.parentId);
+  if(!el || !parent) return;
+  const hasSrc=!!metrics.src;
+  parent.classList.toggle('has-art',hasSrc && !metrics.hidden);
+  el.src=hasSrc?metrics.src:'';
+  el.style.display=(hasSrc && !metrics.hidden)?'block':'none';
+  el.style.left=`${metrics.x}%`;
+  el.style.top=`${metrics.y}%`;
+  el.style.width=`${metrics.w}%`;
+  el.style.height=`${metrics.h}%`;
+  el.style.zIndex=String(getUILayoutLayer(def,metrics));
+}
+function applyUILayoutVisual(def,metrics,el){
+  if(!el || !isUILayoutStylableTargetId(def.id)) return;
+  const color=metrics.bgColor||'';
+  if(def.id==='rat-city-btn'){
+    el.style.background=color||'transparent';
+    el.style.boxShadow=color?'0 16px 30px rgba(0,0,0,0.24)':'none';
+    return;
+  }
+  el.style.background=color||'';
+}
 function applyUILayoutMetrics(def,metrics){
   if(def.isCustomFrame){
     syncUILayoutCustomFrames();
+    return;
+  }
+  if(def.isSkinArt){
+    applyUILayoutSkinArt(def,metrics);
     return;
   }
   const el=document.getElementById(def.id);
@@ -5215,6 +5359,7 @@ function applyUILayoutMetrics(def,metrics){
   el.style.bottom='auto';
   el.style.transform='translate(-50%,-50%)';
   el.style.zIndex=String(getUILayoutLayer(def,metrics));
+  applyUILayoutVisual(def,metrics,el);
 }
 function applyUILayoutConfig(){
   if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
@@ -5245,7 +5390,7 @@ function getUILayoutViewportBounds(){
   return {left:0,top:0,width:window.innerWidth,height:window.innerHeight};
 }
 function getUILayoutBoxRect(def,metrics){
-  const bounds=getUILayoutViewportBounds();
+  const bounds=getUILayoutBoundsForDef(def);
   return {
     left:bounds.left+(metrics.x-metrics.w*0.5)*0.01*bounds.width,
     top:bounds.top+(metrics.y-metrics.h*0.5)*0.01*bounds.height,
@@ -5254,7 +5399,7 @@ function getUILayoutBoxRect(def,metrics){
   };
 }
 function buildUILayoutMetricsFromRect(def,metrics,rect){
-  const bounds=getUILayoutViewportBounds();
+  const bounds=getUILayoutBoundsForDef(def);
   metrics.x=+((((rect.left-bounds.left)+rect.width*0.5)/Math.max(bounds.width,1))*100).toFixed(3);
   metrics.y=+((((rect.top-bounds.top)+rect.height*0.5)/Math.max(bounds.height,1))*100).toFixed(3);
   metrics.w=+((rect.width/Math.max(bounds.width,1))*100).toFixed(3);
@@ -5470,13 +5615,14 @@ function refreshUILayoutEditor(){
     const isSelected=uiLayoutState.selectedIds.includes(def.id);
     const isActive=uiLayoutState.drag?.id===def.id;
     const panelOnly=isUILayoutPanelOnlyDef(def);
+    const hideEmptyArt=def.isSkinArt && !metrics.src && !isSelected && !isActive;
     const r=measureUILayoutRect(def,metrics);
     box.style.left=`${r.left}px`;
     box.style.top=`${r.top}px`;
     box.style.width=`${Math.max(r.width,18)}px`;
     box.style.height=`${Math.max(r.height,18)}px`;
     box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
-    box.style.display=(metrics.hidden || (panelOnly && !isSelected && !isActive))?'none':'block';
+    box.style.display=(metrics.hidden || hideEmptyArt || (panelOnly && !isSelected && !isActive))?'none':'block';
     box.classList.toggle('panel-only',panelOnly);
     box.classList.toggle('is-hidden',!!metrics.hidden);
     box.classList.toggle('is-locked',!!metrics.locked);
@@ -5491,6 +5637,7 @@ function refreshUILayoutEditor(){
   applyUILayoutObjectPanelRect();
   refreshUILayoutObjectPanel();
   refreshUILayoutGuides();
+  syncUILayoutColorInput();
 }
 async function exportUILayoutConfig(){
   const block=`const UI_LAYOUT_DEFAULTS=${JSON.stringify(uiLayoutState.config,null,2)};`;
@@ -5517,7 +5664,7 @@ function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
     corner,
     startX:e.clientX,
     startY:e.clientY,
-    startRect:measureUILayoutRect(def,metrics),
+    startRect:getUILayoutBoxRect(def,metrics),
     pointerId:e.pointerId
   };
   uiLayoutState.overlays.get(def.id)?.classList.add('active');
@@ -5526,9 +5673,15 @@ function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
 function handleUILayoutDirectTargetPointerDown(e){
   if(!uiLayoutState.active) return;
   if(e.target?.closest?.('.ui-layout-editor')) return;
-  const target=e.target?.closest?.('[id]');
-  if(!target?.id) return;
-  const def=getUILayoutDef(target.id);
+  let node=e.target;
+  let def=null;
+  while(node && node!==document.body){
+    if(node.id){
+      def=getUILayoutDef(node.id);
+      if(def) break;
+    }
+    node=node.parentElement;
+  }
   if(!def || isUILayoutPanelOnlyDef(def)) return;
   if(beginUILayoutPointerDrag(def.id,e,{mode:'move'})){
     e.preventDefault();
@@ -5563,13 +5716,15 @@ function setUILayoutSelection(id,{additive=false}={}){
   }
   syncUILayoutSelectionStyles();
   refreshUILayoutGuides();
+  syncUILayoutColorInput();
   restoreUILayoutObjectPanelScroll();
 }
 function clampUILayoutRect(rect,bounds){
   const width=Math.max(18,Math.min(rect.width,bounds.width));
   const height=Math.max(18,Math.min(rect.height,bounds.height));
-  const marginX=Math.max(48,(window.innerWidth-bounds.width)*0.5);
-  const marginY=Math.max(48,(window.innerHeight-bounds.height)*0.5);
+  const allowOuterMargin=(bounds.width===window.innerWidth && bounds.height===window.innerHeight);
+  const marginX=allowOuterMargin?Math.max(48,(window.innerWidth-bounds.width)*0.5):0;
+  const marginY=allowOuterMargin?Math.max(48,(window.innerHeight-bounds.height)*0.5):0;
   return {
     left:clamp(rect.left,bounds.left-marginX,bounds.left+bounds.width-width+marginX),
     top:clamp(rect.top,bounds.top-marginY,bounds.top+bounds.height-height+marginY),
@@ -5577,7 +5732,7 @@ function clampUILayoutRect(rect,bounds){
   };
 }
 function snapUILayoutRect(rect,def){
-  const bounds=getUILayoutViewportBounds();
+  const bounds=getUILayoutBoundsForDef(def);
   const next=clampUILayoutRect({...rect},bounds);
   const selectedCx=next.left+next.width*0.5;
   const selectedCy=next.top+next.height*0.5;
@@ -5796,6 +5951,61 @@ function handleUILayoutFrameImport(file){
   };
   reader.readAsDataURL(file);
 }
+function promptUILayoutArtImport(){
+  uiLayoutState.editor?.querySelector('[data-layout-art-input]')?.click();
+}
+function handleUILayoutArtImport(file){
+  if(!file) return;
+  const targetId=getUILayoutSkinTargetId(uiLayoutState.selectedId);
+  const def=getUILayoutDef(targetId);
+  if(!def?.isSkinArt) return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    pushUILayoutHistory('import art');
+    const metrics={...ensureUILayoutMetrics(def),src:String(reader.result||''),hidden:false};
+    setUILayoutMetrics(def,metrics);
+    applyUILayoutMetrics(def,metrics);
+    saveUILayoutConfig();
+    setUILayoutSelection(def.id);
+    refreshUILayoutEditor();
+    showUILayoutToast(`${def.label} imported`);
+  };
+  reader.readAsDataURL(file);
+}
+function clearUILayoutArt(){
+  const targetId=getUILayoutSkinTargetId(uiLayoutState.selectedId);
+  const def=getUILayoutDef(targetId);
+  if(!def?.isSkinArt) return false;
+  pushUILayoutHistory('clear art');
+  const metrics={...ensureUILayoutMetrics(def),src:''};
+  setUILayoutMetrics(def,metrics);
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  showUILayoutToast(`${def.label} cleared`);
+  return true;
+}
+function setSelectedUILayoutBgColor(color){
+  const targetId=getUILayoutParentTargetId(uiLayoutState.selectedId);
+  const def=getUILayoutDef(targetId);
+  if(!def || !isUILayoutStylableTargetId(targetId)) return false;
+  pushUILayoutHistory('set color');
+  const metrics={...ensureUILayoutMetrics(def),bgColor:color||''};
+  setUILayoutMetrics(def,metrics);
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  return true;
+}
+function syncUILayoutColorInput(){
+  const input=uiLayoutState.editor?.querySelector('[data-layout-bg-color]');
+  if(!input) return;
+  const def=getUILayoutDef(getUILayoutParentTargetId(uiLayoutState.selectedId));
+  const metrics=def?ensureUILayoutMetrics(def):null;
+  const color=(metrics?.bgColor && /^#(?:[0-9a-fA-F]{6})$/.test(metrics.bgColor))?metrics.bgColor:'#ffffff';
+  input.value=color;
+  input.disabled=!def || !isUILayoutStylableTargetId(def.id);
+}
 function ensureAdminStage(){
   let stage=document.getElementById('admin-stage');
   if(stage) return stage;
@@ -5874,6 +6084,7 @@ function buildUILayoutEditor(){
   root.className='ui-layout-editor';
   root.innerHTML=`<div class="ui-layout-guide guide-v base"></div><div class="ui-layout-guide guide-h base"></div><div class="ui-layout-guide guide-v pair is-pair"></div><div class="ui-layout-guide guide-h pair is-pair"></div>
     <input type="file" accept="image/*" data-layout-frame-input hidden>
+    <input type="file" accept="image/*" data-layout-art-input hidden>
     <div class="ui-layout-toolbar">
       <span class="ui-layout-pill">Shift+C Layout Admin</span>
       <button type="button" data-layout-mode="desktop">Desktop</button>
@@ -5903,6 +6114,10 @@ function buildUILayoutEditor(){
           <button type="button" data-layout-action="bottom">To Bottom</button>
           <button type="button" data-layout-action="mirror-x">Mirror X</button>
           <button type="button" data-layout-action="mirror-y">Mirror Y</button>
+          <button type="button" data-layout-action="import-art">Import Art</button>
+          <button type="button" data-layout-action="clear-art">Clear Art</button>
+          <input type="color" value="#ffffff" data-layout-bg-color title="Background colour">
+          <button type="button" data-layout-action="clear-color">Clear Color</button>
           <button type="button" data-layout-action="import-frame">Import Frame</button>
         </div>
         <div class="ui-layout-object-list"></div>
@@ -5920,6 +6135,14 @@ function buildUILayoutEditor(){
     const file=e.target.files?.[0];
     handleUILayoutFrameImport(file);
     e.target.value='';
+  });
+  root.querySelector('[data-layout-art-input]')?.addEventListener('change',e=>{
+    const file=e.target.files?.[0];
+    handleUILayoutArtImport(file);
+    e.target.value='';
+  });
+  root.querySelector('[data-layout-bg-color]')?.addEventListener('input',e=>{
+    setSelectedUILayoutBgColor(e.target.value);
   });
   const panel=root.querySelector('.ui-layout-object-panel');
   panel?.addEventListener('scroll',captureUILayoutObjectPanelScroll);
@@ -5958,6 +6181,9 @@ function buildUILayoutEditor(){
     if(action==='bottom'){ moveSelectedUILayoutItems('bottom'); return; }
     if(action==='mirror-x'){ mirrorSelectedUILayoutItems('horizontal'); return; }
     if(action==='mirror-y'){ mirrorSelectedUILayoutItems('vertical'); return; }
+    if(action==='import-art'){ promptUILayoutArtImport(); return; }
+    if(action==='clear-art'){ clearUILayoutArt(); return; }
+    if(action==='clear-color'){ setSelectedUILayoutBgColor(''); syncUILayoutColorInput(); return; }
     if(action==='import-frame'){ promptUILayoutFrameImport(); return; }
     if(action==='collapse'){
       uiLayoutState.objectPanelCollapsed=!uiLayoutState.objectPanelCollapsed;
@@ -6017,7 +6243,7 @@ function enableUILayoutEditor(){
   uiLayoutState.editor=buildUILayoutEditor();
   document.body.appendChild(uiLayoutState.editor);
   setUILayoutMode(uiLayoutState.mode);
-  setUILayoutSelection(uiLayoutState.selectedId||UI_LAYOUT_TARGET_DEFS[0].id);
+  setUILayoutSelection(uiLayoutState.selectedId||UI_LAYOUT_TARGET_DEFS.find(def=>!isUILayoutPanelOnlyDef(def) && !def.isSkinArt)?.id||UI_LAYOUT_TARGET_DEFS[0].id);
   refreshUILayoutEditor();
   uiLayoutState.history=[];
   uiLayoutState.historyIndex=-1;
@@ -6338,10 +6564,13 @@ const hintEl=document.getElementById('hint');
 const biteLockEl=document.getElementById('bite-lock');
 let hintTimer=0;
 function showHint(t,sec=2.2){return;}
+function setUIArtHostLabel(el,text){
+  el?.querySelector('.ui-art-label')?.replaceChildren(document.createTextNode(text));
+}
 function updateActionButtons(){
   const isHost=game.controlMode==='host';
-  jumpBtn.textContent='JUMP';
-  biteBtn.textContent=isHost?'ATTACK':'BITE';
+  setUIArtHostLabel(jumpBtn,'JUMP');
+  setUIArtHostLabel(biteBtn,isHost?'ATTACK':'BITE');
   biteBtn.setAttribute('aria-label',isHost?'Attack':'Bite');
   exitHostBtn.style.display=isHost?'block':'none';
   if(isHost){
@@ -6349,13 +6578,13 @@ function updateActionButtons(){
     pickupBtn.style.display='block';
     if(host?.heldProp && host.throwCharging){
       const pct=Math.round(clamp(host.throwCharge/HOST_THROW_CHARGE_MAX,0,1)*100);
-      pickupBtn.textContent='THROW '+pct+'%';
+      setUIArtHostLabel(pickupBtn,'THROW '+pct+'%');
     }else{
-      pickupBtn.textContent=(host?.heldProp)?'THROW':'PICK UP';
+      setUIArtHostLabel(pickupBtn,(host?.heldProp)?'THROW':'PICK UP');
     }
   }else{
     pickupBtn.style.display='none';
-    pickupBtn.textContent='PICK UP';
+    setUIArtHostLabel(pickupBtn,'PICK UP');
   }
 }
 function nearestBiteableHuman(rat){
@@ -7297,6 +7526,8 @@ function tickFollowerRats(dt){
       const climb=clamp(game.templeEvent.swarmProgress*1.06,0,1);
       const angle=phase+gameTime*0.8;
       let targetX, targetZ, climbY;
+      const altarFootX=game.templeEvent.altarFrontPos.x;
+      const altarFootZ=game.templeEvent.altarFrontPos.z;
       if(climb<0.28){
         const radius=lerp(6.6,2.0,climb/0.28);
         targetX=game.templeEvent.altarFrontPos.x+Math.cos(angle)*radius;
@@ -7304,13 +7535,13 @@ function tickFollowerRats(dt){
         climbY=GROUND_Y_OFFSET;
       }else if(climb<0.52){
         const step=(climb-0.28)/0.24;
-        targetX=lerp(game.templeEvent.altarFrontPos.x,game.templeEvent.altarEdgeTopPos.x,step)+Math.cos(angle)*0.7;
-        targetZ=lerp(game.templeEvent.altarFrontPos.z,game.templeEvent.altarEdgeTopPos.z,step)+Math.sin(angle)*0.42;
+        targetX=altarFootX+Math.cos(angle)*0.55;
+        targetZ=altarFootZ+Math.sin(angle)*0.32;
         climbY=lerp(GROUND_Y_OFFSET,game.templeEvent.altarEdgeTopPos.y+0.05,step);
       }else if(climb<0.74){
         const topStep=(climb-0.52)/0.22;
-        targetX=lerp(game.templeEvent.altarEdgeTopPos.x,game.templeEvent.altarTopPos.x,topStep)+Math.cos(angle)*0.95;
-        targetZ=lerp(game.templeEvent.altarEdgeTopPos.z,game.templeEvent.altarTopPos.z,topStep)+Math.sin(angle)*0.58;
+        targetX=lerp(altarFootX,game.templeEvent.altarTopPos.x,topStep)+Math.cos(angle)*0.95;
+        targetZ=lerp(altarFootZ,game.templeEvent.altarTopPos.z,topStep)+Math.sin(angle)*0.58;
         climbY=lerp(game.templeEvent.altarEdgeTopPos.y+0.05,game.templeEvent.altarTopPos.y+0.06,topStep);
       }else{
         const top=(climb-0.74)/0.26;
