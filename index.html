@@ -285,6 +285,8 @@
   .ui-layout-object-actions,.ui-layout-object-order{display:flex;gap:4px;align-items:center}
   .ui-layout-box{position:fixed;border:2px solid transparent;box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset,0 0 16px rgba(255,233,112,0.24);
     background:transparent;touch-action:none;user-select:none}
+  .ui-layout-box.panel-only{pointer-events:none}
+  .ui-layout-box.panel-only.selected,.ui-layout-box.panel-only.active{pointer-events:auto}
   .ui-layout-box.selected{border-color:#7cf8ff;background:rgba(124,248,255,0.12)}
   .ui-layout-box.active{border-color:#ffe970;background:rgba(255,233,112,0.12)}
   .ui-layout-box.is-hidden.selected,.ui-layout-box.is-hidden.active{border-color:rgba(255,120,120,0.95);background:rgba(255,80,80,0.12)}
@@ -4746,6 +4748,7 @@ const UI_LAYOUT_DEFAULTS={
     'mode-badge':{x:11,y:9.8,w:10.5,h:5.5},
     'chaos-box':{x:82,y:9.8,w:13.2,h:6.6},
     'rats-box':{x:82,y:17.2,w:13.2,h:6.6},
+    'rat-city-btn':{x:50,y:8.4,w:12.5,h:5.8},
     'hint':{x:50,y:8,w:28,h:4.8},
     'joystick-zone':{x:12,y:84,w:9.8,h:17.5},
     'jump-btn':{x:90.5,y:61,w:5.6,h:10},
@@ -4761,6 +4764,7 @@ const UI_LAYOUT_DEFAULTS={
     'mode-badge':{x:12,y:5,w:0,h:0},
     'chaos-box':{x:80,y:9.8,w:32,h:7.2},
     'rats-box':{x:80,y:18.6,w:32,h:7.2},
+    'rat-city-btn':{x:25,y:5.2,w:33,h:5.4},
     'hint':{x:50,y:10.2,w:60,h:5.4},
     'joystick-zone':{x:19,y:84,w:24,h:16},
     'jump-btn':{x:84,y:61,w:13,h:9},
@@ -4777,6 +4781,7 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'mode-badge',label:'Mode Badge'},
   {id:'chaos-box',label:'Chaos Box'},
   {id:'rats-box',label:'Rats Box'},
+  {id:'rat-city-btn',label:'Rat City Button'},
   {id:'hint',label:'Hint'},
   {id:'joystick-zone',label:'Joystick'},
   {id:'jump-btn',label:'Jump Button'},
@@ -5065,18 +5070,24 @@ function getUILayoutStateFlags(metrics){
 function getUILayoutStateFlagsAscii(metrics){
   return `${metrics.hidden?'hidden':'visible'} | ${metrics.locked?'locked':'free'} | z${getUILayoutLayer(null,metrics)}`;
 }
+function isUILayoutPanelOnlyDef(def){
+  return !!def?.id && def.id.startsWith('viewport-frame-');
+}
+function getUILayoutObjectPanelScrollTarget(){
+  return uiLayoutState.editor?.querySelector('.ui-layout-object-panel')||null;
+}
 function captureUILayoutObjectPanelScroll(){
-  const list=uiLayoutState.editor?.querySelector('.ui-layout-object-list');
-  if(list) uiLayoutState.objectPanelScrollTop=list.scrollTop;
+  const panel=getUILayoutObjectPanelScrollTarget();
+  if(panel) uiLayoutState.objectPanelScrollTop=panel.scrollTop;
 }
 function restoreUILayoutObjectPanelScroll(){
-  const list=uiLayoutState.editor?.querySelector('.ui-layout-object-list');
-  if(!list) return;
+  const panel=getUILayoutObjectPanelScrollTarget();
+  if(!panel) return;
   const target=uiLayoutState.objectPanelScrollTop||0;
-  list.scrollTop=target;
+  panel.scrollTop=target;
   requestAnimationFrame(()=>{
-    const liveList=uiLayoutState.editor?.querySelector('.ui-layout-object-list');
-    if(liveList) liveList.scrollTop=target;
+    const livePanel=getUILayoutObjectPanelScrollTarget();
+    if(livePanel) livePanel.scrollTop=target;
   });
 }
 function clampUILayoutPanelRect(rect){
@@ -5234,6 +5245,7 @@ function refreshUILayoutEditor(){
     box.style.height=`${Math.max(r.height,18)}px`;
     box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
     box.style.display=metrics.hidden?'none':'block';
+    box.classList.toggle('panel-only',isUILayoutPanelOnlyDef(def));
     box.classList.toggle('is-hidden',!!metrics.hidden);
     box.classList.toggle('is-locked',!!metrics.locked);
     box.querySelector('.ui-layout-box-label').textContent=`${def.label}${metrics.hidden?' [hidden]':''}`;
@@ -5248,11 +5260,24 @@ function refreshUILayoutEditor(){
   refreshUILayoutObjectPanel();
   refreshUILayoutGuides();
 }
-function exportUILayoutConfig(){
+async function exportUILayoutConfig(){
   const block=`const UI_LAYOUT_DEFAULTS=${JSON.stringify(uiLayoutState.config,null,2)};`;
-  navigator.clipboard?.writeText(block).then(
-    ()=>showUILayoutToast('Layout config copied'),
-    ()=>window.prompt('Copy layout config',block)
+  let instruction='Replace the UI_LAYOUT_DEFAULTS block in index.html with the block below.';
+  try{
+    const source=await fetch(window.location.href,{cache:'no-store'}).then(r=>r.text());
+    const lines=source.split(/\r?\n/);
+    const startLine=lines.findIndex(line=>line.includes('const UI_LAYOUT_DEFAULTS='))+1;
+    const endAnchor=lines.findIndex((line,idx)=>idx>=Math.max(0,startLine-1) && line.includes('const UI_LAYOUT_TARGET_DEFS='));
+    if(startLine>0 && endAnchor>=0){
+      instruction=`Replace index.html lines ${startLine}-${endAnchor} with the block below.`;
+    }
+  }catch(err){
+    console.warn('[layout export] line lookup failed',err);
+  }
+  const payload=`${instruction}\n\n${block}`;
+  navigator.clipboard?.writeText(payload).then(
+    ()=>showUILayoutToast('Layout export copied with line range'),
+    ()=>window.prompt('Copy layout config',payload)
   );
 }
 function setUILayoutMode(mode){
@@ -5660,7 +5685,7 @@ function buildUILayoutEditor(){
     e.target.value='';
   });
   const panel=root.querySelector('.ui-layout-object-panel');
-  panel?.querySelector('.ui-layout-object-list')?.addEventListener('scroll',captureUILayoutObjectPanelScroll);
+  panel?.addEventListener('scroll',captureUILayoutObjectPanelScroll);
   panel?.addEventListener('pointerdown',e=>{
     if(e.target?.closest?.('[data-layout-action]')) return;
     const resizeHandle=e.target?.closest?.('.ui-layout-object-panel-resize');
