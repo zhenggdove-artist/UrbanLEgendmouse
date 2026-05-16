@@ -619,6 +619,50 @@ function resolveIdolGroundY(idol){
   }
   return best;
 }
+// Replace every keyframe of an AnimationClip's hip / root translation
+// tracks with its FIRST frame value, so the bone no longer drifts the
+// whole mesh through space when the clip plays. Used for the temple
+// idol's Mixamo Walking/Orc clips, which bake root motion into the
+// animation and would otherwise translate the visible mesh several
+// metres up & forward of outer.position.
+function stripRootMotion(clip){
+  if(!clip||!Array.isArray(clip.tracks))return clip;
+  for(const t of clip.tracks){
+    const n=(t.name||'').toLowerCase();
+    if(!n.endsWith('.position'))continue;
+    if(!(n.includes('hips')||n.includes('root')||n.includes('armature')))continue;
+    if(!t.values||t.values.length<3)continue;
+    const x=t.values[0], y=t.values[1], z=t.values[2];
+    for(let i=0;i<t.values.length;i+=3){
+      t.values[i]=x;
+      t.values[i+1]=y;
+      t.values[i+2]=z;
+    }
+  }
+  return clip;
+}
+// Re-measure the visible feet position of an actor AFTER its first
+// animation frame has been applied and shift the inner root so the
+// lowest mesh vertex sits at outer.y. The default bbox alignment inside
+// buildSkinnedActor is computed at bind pose only — Mixamo "Orc" /
+// "Walking" rigs bake a vertical offset into frame 0 which would
+// otherwise leave the visible mesh floating ~2-3 m above outer.y.
+function realignActorFeet(inst){
+  if(!inst?.outer||!inst.root)return;
+  if(inst.mixer) inst.mixer.update(0);
+  const sx=inst.outer.position.x, sy=inst.outer.position.y, sz=inst.outer.position.z;
+  const srx=inst.outer.rotation.x, sry=inst.outer.rotation.y, srz=inst.outer.rotation.z;
+  inst.outer.position.set(0,0,0);
+  inst.outer.rotation.set(0,0,0);
+  inst.outer.updateMatrixWorld(true);
+  const bbox=new THREE.Box3().setFromObject(inst.outer);
+  if(Number.isFinite(bbox.min.y)){
+    inst.root.position.y-=bbox.min.y;
+  }
+  inst.outer.rotation.set(srx,sry,srz);
+  inst.outer.position.set(sx,sy,sz);
+  inst.outer.updateMatrixWorld(true);
+}
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
 const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
@@ -794,6 +838,8 @@ function loadTempleIdolAssets(){
     templeIdolWalkSource=idolWalkFBX;
     templeIdolIdleClip=idolIdleFBX.animations?.[0]||null;
     templeIdolWalkClip=idolWalkFBX.animations?.[0]||idolIdleFBX.animations?.[0]||null;
+    stripRootMotion(templeIdolIdleClip);
+    stripRootMotion(templeIdolWalkClip);
     TEMPLE_IDOL_SKIN.base=baseTex;
     TEMPLE_IDOL_SKIN.normal=normalTex;
     TEMPLE_IDOL_SKIN.roughness=roughTex;
@@ -2914,6 +2960,7 @@ function spawnTempleIdol(plazaInfo){
     act.time=0;
   }
   inst.mixer.update(0);
+  realignActorFeet(inst);
   const idolActor={
     kind:'human',
     root,inst,curSpeed:0,animState:'idle',actionTimer:0,actionName:null,
@@ -2978,7 +3025,12 @@ function replaceTempleIdolWithWalkRig(idol){
   idol.inst=inst;
   idol.originalMaterials=originalMaterials;
   idol.animState='walk';
-}
+  // The walk rig has its own bind-pose offset — Mixamo "Walking" bakes
+  // a vertical translation into frame 0. Force a feet realignment so
+  // the idol doesn't pop ~2 m into the air on awakening.
+  const walkAct=inst.actions?.walk||inst.actions?.run||inst.actions?.idle;
+  if(walkAct){walkAct.reset();walkAct.time=0;walkAct.play()}
+  realignActorFeet(inst);
 function generateTempleChunk(idx,xBase,opts={}){
   const chunk={idx,meshes:[],props:[],humans:[]};
   _activeChunk=chunk;
@@ -3544,7 +3596,7 @@ function buildHuman({position,role='wanderer'}={}){
     ph.position.y=0.95;root.add(ph);
   const status=attachHumanStatusProps(root);
   status.parasiteOverlay.position.set(0,1.45,0.05);
-  status.parasiteOverlay.scale.set(1.93,1.93,1);
+  status.parasiteOverlay.scale.set(1.158,1.158,1);
   scene.add(root);
   return {kind:'human',role,root,inst:null,shoulderRat:ph,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
       vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
@@ -3578,7 +3630,7 @@ function buildHuman({position,role='wanderer'}={}){
   }
   const status=attachHumanStatusProps(root);
   status.parasiteOverlay.position.set(0.02,HOST_HEAD_OVERLAY_Y-0.5,0.08);
-  status.parasiteOverlay.scale.set(1.93,1.93,1);
+  status.parasiteOverlay.scale.set(1.158,1.158,1);
   return {kind:'human',role,root,inst,shoulderRat,bloodPool:status.bloodPool,cleanBar:status.cleanBar,parasiteOverlay:status.parasiteOverlay,parasiteAnim:{state:'idle',frame:0,timer:0},
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
