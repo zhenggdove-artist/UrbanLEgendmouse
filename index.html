@@ -793,7 +793,12 @@ const game={
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
     altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
     gathering:false,started:false,awakened:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
-    glowCooldown:0,flashStrength:0,keyLight:null,rimLight:null,lightTarget:null
+    glowCooldown:0,flashStrength:0,keyLight:null,rimLight:null,lightTarget:null,
+    // Loop portals make the two end-of-street temples conceptually the same
+    // temple. We spawn a decorative twin idol at the non-event temple so
+    // both ends always show the gilded statue. The twin never animates and
+    // is removed once the primary idol awakens and walks off the altar.
+    secondaryIdols:[],pendingSecondaryPlazas:[]
   },
   ratCityMode:false,
   ratCityAngle:0,
@@ -908,6 +913,7 @@ function loadTempleIdolAssetsLegacy(){
         processionPath:game.templeEvent.processionPath
       });
     }
+    flushPendingDecorativeTempleIdols();
     return true;
   }).catch(err=>{
     console.error('[temple-idol] load failed',err);
@@ -915,6 +921,14 @@ function loadTempleIdolAssetsLegacy(){
     throw err;
   });
   return templeIdolLoadPromise;
+}
+function flushPendingDecorativeTempleIdols(){
+  if(!templeIdolSource||!templeIdolIdleClip||!templeIdolWalkClip)return;
+  if(game.templeEvent.awakened)return;
+  const pending=game.templeEvent.pendingSecondaryPlazas.splice(0);
+  for(const snapshot of pending){
+    spawnTempleIdol(snapshot,{decorative:true});
+  }
 }
 
 function loadTempleIdolAssets(){
@@ -951,6 +965,7 @@ function loadTempleIdolAssets(){
         processionPath:game.templeEvent.processionPath
       });
     }
+    flushPendingDecorativeTempleIdols();
     return true;
   }).catch(err=>{
     console.error('[temple-idol] load failed',err);
@@ -3021,7 +3036,34 @@ function buildMiniPlaza(xBase,width=CHUNK_SIZE){
     buildTable(xBase+rand(4,width-4),rand(-3.8,3.8));
   }
 }
-function spawnTempleIdol(plazaInfo){
+function ensureTempleIdolLights(){
+  // The temple idols sit at world x = -222 (chunk A) and x = +162 (chunk B).
+  // DirectionalLights are parallel rays — only the direction (target -
+  // position) matters, not the absolute placement. So we anchor both
+  // light + target near the world origin and let the same lights wash
+  // every temple altar from the same upper-front-right angle.
+  if(!game.templeEvent.lightTarget){
+    game.templeEvent.lightTarget=new THREE.Object3D();
+    game.templeEvent.lightTarget.position.set(0,1.9,0);
+    scene.add(game.templeEvent.lightTarget);
+  }
+  if(!game.templeEvent.keyLight){
+    const key=new THREE.DirectionalLight('#ffe2a2',1.45);
+    key.position.set(5.5,8.5,6.5);
+    key.target=game.templeEvent.lightTarget;
+    scene.add(key);
+    scene.add(key.target);
+    game.templeEvent.keyLight=key;
+  }
+  if(!game.templeEvent.rimLight){
+    const rim=new THREE.DirectionalLight('#a4cfff',0.55);
+    rim.position.set(-4.2,5.2,-5.6);
+    rim.target=game.templeEvent.lightTarget;
+    scene.add(rim);
+    game.templeEvent.rimLight=rim;
+  }
+}
+function spawnTempleIdol(plazaInfo,{decorative=false}={}){
   if(!templeIdolSource||!templeIdolIdleClip||!templeIdolWalkClip)return null;
   const idolVariant=makeHumanVariant({
     source:templeIdolIdleSource||templeIdolSource,
@@ -3059,32 +3101,13 @@ function spawnTempleIdol(plazaInfo){
     kind:'human',
     root,inst,curSpeed:0,animState:'idle',actionTimer:0,actionName:null,
     behaviour:'idle',controllable:false,isAir:false,panicTimer:0,moveInputX:0,moveInputY:0,
-    originalMaterials,awakened:false,
+    originalMaterials,awakened:false,decorative,
     processIndex:0,processionPath:(plazaInfo.processionPath||[]).map(p=>p.clone()),
     doorwayPos:plazaInfo.doorwayPos?.clone?.()||new THREE.Vector3(),
     streetPos:plazaInfo.streetPos?.clone?.()||new THREE.Vector3(),
     killRadius:TEMPLE_IDOL_KILL_RADIUS,roamTarget:null,roamTimer:0
   };
-  if(!game.templeEvent.lightTarget){
-    game.templeEvent.lightTarget=new THREE.Object3D();
-    scene.add(game.templeEvent.lightTarget);
-  }
-  game.templeEvent.lightTarget.position.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
-  if(!game.templeEvent.keyLight){
-    const key=new THREE.DirectionalLight('#ffd98a',1.1);
-    key.position.set(5.5,8.5,6.5);
-    key.target=game.templeEvent.lightTarget;
-    scene.add(key);
-    scene.add(key.target);
-    game.templeEvent.keyLight=key;
-  }
-  if(!game.templeEvent.rimLight){
-    const rim=new THREE.DirectionalLight('#8ec7ff',0.38);
-    rim.position.set(-4.2,5.2,-5.6);
-    rim.target=game.templeEvent.lightTarget;
-    scene.add(rim);
-    game.templeEvent.rimLight=rim;
-  }
+  ensureTempleIdolLights();
   setTempleIdolPhaseMaterials(idolActor,'gold');
   const idleAct=inst.actions?.idle||inst.actions?.walk||inst.actions?.run;
   if(idleAct){
@@ -3093,18 +3116,57 @@ function spawnTempleIdol(plazaInfo){
     idleAct.time=0;
     idleAct.play();
   }
-  game.templeEvent.idol=idolActor;
-  game.templeEvent.idolActor=idolActor;
   idolActor.baseY=0;
   root.position.y=resolveIdolGroundY(idolActor);
-  game.templeEvent.altarPos.copy(plazaInfo.altarPos);
-  game.templeEvent.altarTopPos.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
-  game.templeEvent.altarEdgeTopPos.copy(plazaInfo.altarEdgeTopPos||plazaInfo.altarTopPos||plazaInfo.altarPos);
-  game.templeEvent.altarFrontPos.copy(plazaInfo.altarFrontPos||plazaInfo.altarPos);
-  game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
-  game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
-  game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
+  if(decorative){
+    game.templeEvent.secondaryIdols.push(idolActor);
+  }else{
+    game.templeEvent.idol=idolActor;
+    game.templeEvent.idolActor=idolActor;
+    game.templeEvent.altarPos.copy(plazaInfo.altarPos);
+    game.templeEvent.altarTopPos.copy(plazaInfo.altarTopPos||plazaInfo.altarPos);
+    game.templeEvent.altarEdgeTopPos.copy(plazaInfo.altarEdgeTopPos||plazaInfo.altarTopPos||plazaInfo.altarPos);
+    game.templeEvent.altarFrontPos.copy(plazaInfo.altarFrontPos||plazaInfo.altarPos);
+    game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
+    game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
+    game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
+  }
   return idolActor;
+}
+function clonePlazaInfoForIdol(plazaInfo){
+  return {
+    altarPos:plazaInfo.altarPos.clone(),
+    altarTopPos:(plazaInfo.altarTopPos||plazaInfo.altarPos).clone(),
+    altarEdgeTopPos:(plazaInfo.altarEdgeTopPos||plazaInfo.altarTopPos||plazaInfo.altarPos).clone(),
+    altarFrontPos:(plazaInfo.altarFrontPos||plazaInfo.altarPos).clone(),
+    doorwayPos:(plazaInfo.doorwayPos||plazaInfo.altarPos).clone(),
+    streetPos:(plazaInfo.streetPos||plazaInfo.altarPos).clone(),
+    processionPath:(plazaInfo.processionPath||[]).map(p=>p.clone())
+  };
+}
+function requestDecorativeTempleIdol(plazaInfo){
+  const snapshot=clonePlazaInfoForIdol(plazaInfo);
+  if(templeIdolSource && templeIdolIdleClip && templeIdolWalkClip){
+    spawnTempleIdol(snapshot,{decorative:true});
+  }else{
+    game.templeEvent.pendingSecondaryPlazas.push(snapshot);
+    loadTempleIdolAssets().catch(()=>{});
+  }
+}
+function despawnSecondaryTempleIdols(){
+  for(const idol of game.templeEvent.secondaryIdols){
+    if(idol?.root){
+      idol.root.parent?.remove(idol.root);
+      idol.root.traverse(o=>{
+        if(o.isMesh){
+          o.geometry?.dispose?.();
+          disposeMaterials(o.material);
+        }
+      });
+    }
+  }
+  game.templeEvent.secondaryIdols.length=0;
+  game.templeEvent.pendingSecondaryPlazas.length=0;
 }
 function replaceTempleIdolWithWalkRig(idol){
   const previousRoot=idol.root;
@@ -3164,6 +3226,14 @@ function generateTempleChunk(idx,xBase,opts={}){
     game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
     game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
     spawnTempleIdol(plazaInfo);
+    // Kick off idol-asset load even before the rat-count threshold so the
+    // statue is visible (and gold) the moment the player first sees the
+    // altar, instead of an empty plinth that pops in only on awakening.
+    if(!templeIdolSource) loadTempleIdolAssets().catch(()=>{});
+  }else{
+    // The twin temple at the other end of the looped street shows the
+    // same gold idol — never animates, removed when the primary awakens.
+    requestDecorativeTempleIdol(plazaInfo);
   }
   chunks.set(idx,chunk);_activeChunk=null;
   console.log('[chunk] temple '+idx+' humans='+chunk.humans.length+' meshes='+chunk.meshes.length);
@@ -3931,30 +4001,46 @@ function buildTempleIdolMaterial(src,mode='awake'){
     mat.map.colorSpace=THREE.SRGBColorSpace;
   }
   if(mode==='awake'){
-    if('metalness' in mat) mat.metalness=Math.max(0.08,mat.metalness??0.08);
-    if('roughness' in mat) mat.roughness=Math.min(0.92,mat.roughness??0.82);
+    // After awakening the idol shows its true flesh — restore the cloned
+    // original maps untouched, just guarantee no leftover metallic /
+    // emissive boost from the gold or flash phases.
+    if('metalness' in mat) mat.metalness=0;
     if('emissive' in mat){
-      mat.emissive.setRGB(0.04,0.03,0.02);
-      mat.emissiveIntensity=0.28;
+      mat.emissive.setRGB(0,0,0);
+      mat.emissiveIntensity=0;
     }
     mat.needsUpdate=true;
     return mat;
   }
   if(mode==='gold'){
-    if(mat.color) mat.color.set('#d5ac4b');
-    if('metalness' in mat) mat.metalness=0.88;
-    if('roughness' in mat) mat.roughness=0.42;
+    // Pre-ritual: gilded statue. MeshStandardMaterial with high metalness
+    // and no envMap renders almost black, so we drop both the diffuse map
+    // and the texture-driven PBR maps and use a moderate metalness with a
+    // warm emissive floor. The temple's directional key + rim lights then
+    // produce real diffuse shading that reveals body silhouette without
+    // depending on environment reflections.
+    mat.map=null;
+    if('metalnessMap' in mat) mat.metalnessMap=null;
+    if('roughnessMap' in mat) mat.roughnessMap=null;
+    if('aoMap' in mat) mat.aoMap=null;
+    // Keep mat.normalMap (if present) so surface detail still reads.
+    if(mat.color) mat.color.set('#f0c14a');
+    if('metalness' in mat) mat.metalness=0.30;
+    if('roughness' in mat) mat.roughness=0.45;
     if('emissive' in mat){
-      mat.emissive.set('#3a2a10');
-      mat.emissiveIntensity=0.18;
+      mat.emissive.set('#6a4818');
+      mat.emissiveIntensity=0.55;
     }
   }else if(mode==='flash'){
+    mat.map=null;
+    if('metalnessMap' in mat) mat.metalnessMap=null;
+    if('roughnessMap' in mat) mat.roughnessMap=null;
     if(mat.color) mat.color.set('#fff1c9');
-    if('metalness' in mat) mat.metalness=0.62;
-    if('roughness' in mat) mat.roughness=0.24;
+    if('metalness' in mat) mat.metalness=0.18;
+    if('roughness' in mat) mat.roughness=0.28;
     if('emissive' in mat){
       mat.emissive.set('#fff1b8');
-      mat.emissiveIntensity=0.72;
+      mat.emissiveIntensity=1.1;
     }
   }
   mat.needsUpdate=true;
@@ -3966,6 +4052,15 @@ function setTempleIdolPhaseMaterials(idol,mode='awake'){
     entry.mesh.material=Array.isArray(entry.material)
       ? entry.material.map(src=>buildTempleIdolMaterial(src,mode))
       : buildTempleIdolMaterial(entry.material,mode);
+  }
+}
+function setAllTempleIdolPhaseMaterials(mode){
+  // Apply a phase material to the primary idol AND every decorative twin
+  // at the looped end of the street, so both end-of-road temples flip
+  // together as the ritual progresses.
+  if(game.templeEvent.idol) setTempleIdolPhaseMaterials(game.templeEvent.idol,mode);
+  for(const idol of game.templeEvent.secondaryIdols){
+    if(idol) setTempleIdolPhaseMaterials(idol,mode);
   }
 }
 function isPlayerInsideEventTemple(){
@@ -4028,7 +4123,7 @@ function startTempleAwakening(){
   game.templeEvent.swarmSettleTimer=0;
   game.templeEvent.glowCooldown=0;
   game.templeEvent.swarmSprites.length=0;
-  setTempleIdolPhaseMaterials(game.templeEvent.idol,'gold');
+  setAllTempleIdolPhaseMaterials('gold');
   for(const rat of game.rats){
     if(rat===player)continue;
     rat.followPlayer=false;
@@ -4244,7 +4339,7 @@ function tickTempleEvent(dt){
       if(game.templeEvent.swarmSettleTimer>=1.5){
         game.templeEvent.phase='glow';
         game.templeEvent.phaseTimer=1.1;
-        setTempleIdolPhaseMaterials(idol,'flash');
+        setAllTempleIdolPhaseMaterials('flash');
         setTempleFlash(0.22);
         spawnTempleGlow(game.templeEvent.altarPos,120);
       }
@@ -4269,7 +4364,11 @@ function tickTempleEvent(dt){
     if(game.templeEvent.phaseTimer<=0){
       game.templeEvent.phase='drop';
       game.templeEvent.phaseTimer=0.85;
-      setTempleIdolPhaseMaterials(idol,'awake');
+      // Reveal the true flesh on every twin simultaneously, then despawn
+      // the decorative ones so the looped twin altar isn't left with a
+      // static statue while the primary walks away.
+      setAllTempleIdolPhaseMaterials('awake');
+      despawnSecondaryTempleIdols();
     }
     return;
   }
