@@ -3983,27 +3983,27 @@ function setHostHeadMasked(host,masked){
   headBone.updateMatrixWorld(true);
 }
 function buildTempleIdolMaterial(src,mode='awake'){
-  const source=src?.clone ? src.clone() : new THREE.MeshStandardMaterial();
-  let mat;
-  if(source.isMeshStandardMaterial || source.isMeshPhysicalMaterial || source.isMeshPhongMaterial || source.isMeshLambertMaterial){
-    mat=source;
-  }else{
-    mat=new THREE.MeshStandardMaterial();
-    if(source?.map) mat.map=source.map;
-    if(source?.color) mat.color.copy(source.color);
-    if(source?.transparent!==undefined) mat.transparent=source.transparent;
-    if(source?.opacity!==undefined) mat.opacity=source.opacity;
-    if(source?.alphaTest!==undefined) mat.alphaTest=source.alphaTest;
-    if(source?.side!==undefined) mat.side=source.side;
-  }
-  if(mat.map){
-    pixelate(mat.map);
-    mat.map.colorSpace=THREE.SRGBColorSpace;
-  }
+  // Awake → keep the cloned original; just neutralise any leftover
+  // metallic / emissive from the gold or flash phases so the true skin
+  // texture reads cleanly under standard scene lighting.
   if(mode==='awake'){
-    // After awakening the idol shows its true flesh — restore the cloned
-    // original maps untouched, just guarantee no leftover metallic /
-    // emissive boost from the gold or flash phases.
+    const source=src?.clone ? src.clone() : new THREE.MeshStandardMaterial();
+    let mat;
+    if(source.isMeshStandardMaterial || source.isMeshPhysicalMaterial || source.isMeshPhongMaterial || source.isMeshLambertMaterial){
+      mat=source;
+    }else{
+      mat=new THREE.MeshStandardMaterial();
+      if(source?.map) mat.map=source.map;
+      if(source?.color) mat.color.copy(source.color);
+      if(source?.transparent!==undefined) mat.transparent=source.transparent;
+      if(source?.opacity!==undefined) mat.opacity=source.opacity;
+      if(source?.alphaTest!==undefined) mat.alphaTest=source.alphaTest;
+      if(source?.side!==undefined) mat.side=source.side;
+    }
+    if(mat.map){
+      pixelate(mat.map);
+      mat.map.colorSpace=THREE.SRGBColorSpace;
+    }
     if('metalness' in mat) mat.metalness=0;
     if('emissive' in mat){
       mat.emissive.setRGB(0,0,0);
@@ -4012,39 +4012,48 @@ function buildTempleIdolMaterial(src,mode='awake'){
     mat.needsUpdate=true;
     return mat;
   }
+  // For gold / flash modes we REPLACE the original material with a fresh
+  // MeshPhongMaterial. MeshStandardMaterial with high metalness goes
+  // pitch black without an envMap (and even at metalness=0 the diffuse
+  // attenuation made the body read as muddy brown). Phong gives reliable
+  // diffuse + specular from directional lights and shows body silhouette
+  // immediately, without needing PMREM / environment maps.
   if(mode==='gold'){
-    // Pre-ritual: gilded statue. MeshStandardMaterial with high metalness
-    // and no envMap renders almost black, so we drop both the diffuse map
-    // and the texture-driven PBR maps and use a moderate metalness with a
-    // warm emissive floor. The temple's directional key + rim lights then
-    // produce real diffuse shading that reveals body silhouette without
-    // depending on environment reflections.
-    mat.map=null;
-    if('metalnessMap' in mat) mat.metalnessMap=null;
-    if('roughnessMap' in mat) mat.roughnessMap=null;
-    if('aoMap' in mat) mat.aoMap=null;
-    // Keep mat.normalMap (if present) so surface detail still reads.
-    if(mat.color) mat.color.set('#f0c14a');
-    if('metalness' in mat) mat.metalness=0.30;
-    if('roughness' in mat) mat.roughness=0.45;
-    if('emissive' in mat){
-      mat.emissive.set('#6a4818');
-      mat.emissiveIntensity=0.55;
+    const mat=new THREE.MeshPhongMaterial({
+      color:'#f7c63a',
+      specular:'#fff2c5',
+      shininess:110,
+      emissive:'#5a3a08',
+      emissiveIntensity:0.32,
+      transparent:src?.transparent===true,
+      opacity:src?.opacity ?? 1,
+      side:src?.side ?? THREE.FrontSide
+    });
+    if(src?.normalMap && 'normalMap' in mat){
+      mat.normalMap=src.normalMap;
+      if(src.normalScale) mat.normalScale=src.normalScale.clone();
     }
-  }else if(mode==='flash'){
-    mat.map=null;
-    if('metalnessMap' in mat) mat.metalnessMap=null;
-    if('roughnessMap' in mat) mat.roughnessMap=null;
-    if(mat.color) mat.color.set('#fff1c9');
-    if('metalness' in mat) mat.metalness=0.18;
-    if('roughness' in mat) mat.roughness=0.28;
-    if('emissive' in mat){
-      mat.emissive.set('#fff1b8');
-      mat.emissiveIntensity=1.1;
-    }
+    mat.needsUpdate=true;
+    return mat;
   }
-  mat.needsUpdate=true;
-  return mat;
+  if(mode==='flash'){
+    const mat=new THREE.MeshPhongMaterial({
+      color:'#fff1c9',
+      specular:'#ffffff',
+      shininess:200,
+      emissive:'#fff1b8',
+      emissiveIntensity:1.1,
+      transparent:src?.transparent===true,
+      opacity:src?.opacity ?? 1,
+      side:src?.side ?? THREE.FrontSide
+    });
+    mat.needsUpdate=true;
+    return mat;
+  }
+  // Default fallback — clone untouched.
+  const fallback=src?.clone ? src.clone() : new THREE.MeshStandardMaterial();
+  fallback.needsUpdate=true;
+  return fallback;
 }
 function setTempleIdolPhaseMaterials(idol,mode='awake'){
   if(!idol?.originalMaterials)return;
@@ -4130,26 +4139,41 @@ function startTempleAwakening(){
     rat.followStatue=false;
     rat.templeBound=true;
     rat.targetPos?.set(
-      game.templeEvent.altarPos.x+rand(-1.2,1.2),
+      game.templeEvent.altarFrontPos.x+rand(-1.2,1.2),
       0,
-      game.templeEvent.altarPos.z+rand(-1.0,1.0)
+      game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
     );
   }
-  const swarmVisuals=Math.min(2400,Math.max(1400,Math.round(getTotalRatCount()*1.6)));
-  const visualFromVirtual=Math.min(game.virtualRats,swarmVisuals);
+  // 300 rats burst from outside the doorway, charge into the temple,
+  // climb the altar collision body and end up swarming the idol.
+  const SWARM_COUNT=300;
+  const visualFromVirtual=Math.min(game.virtualRats,SWARM_COUNT);
   game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
-  for(let i=0;i<swarmVisuals;i++){
+  const street=game.templeEvent.streetPos;
+  const doorway=game.templeEvent.doorwayPos;
+  // Unit vector pointing INTO the temple (street → doorway → altar).
+  let inX=doorway.x-street.x, inZ=doorway.z-street.z;
+  const inLen=Math.hypot(inX,inZ)||1;
+  inX/=inLen; inZ/=inLen;
+  // Perpendicular vector along the doorway plane (for spawn-line spread).
+  const perpX=-inZ, perpZ=inX;
+  for(let i=0;i<SWARM_COUNT;i++){
     const rat=buildRat({isPlayer:false});
     rat.swarmPhase=Math.random()*Math.PI*2;
-    rat.root.position.set(
-      game.templeEvent.altarPos.x+rand(-5.2,5.2),
-      GROUND_Y_OFFSET,
-      game.templeEvent.altarPos.z+rand(2.2,10.5)
-    );
+    // Spawn just outside the doorway: 0.6..6.5 m back from streetPos
+    // (away from the temple) with ±2.8 m sideways spread along the
+    // doorway plane. Forms a crowd ready to pour through the door.
+    const backOff=rand(0.6,6.5);
+    const side=rand(-2.8,2.8);
+    const sx=street.x - inX*backOff + perpX*side;
+    const sz=street.z - inZ*backOff + perpZ*side;
+    rat.root.position.set(sx,GROUND_Y_OFFSET,sz);
+    rat.spawnX=sx;
+    rat.spawnZ=sz;
     rat.templeBound=true;
     rat.followPlayer=false;
     rat.followStatue=false;
-    rat.targetPos.set(game.templeEvent.altarPos.x,0,game.templeEvent.altarPos.z);
+    rat.targetPos.set(game.templeEvent.altarFrontPos.x,0,game.templeEvent.altarFrontPos.z);
     rat.moveIntent.y=1;
     game.rats.push(rat);
     game.templeEvent.swarmSprites.push(rat);
@@ -4266,55 +4290,78 @@ function tickTempleEvent(dt){
     const altarFront=game.templeEvent.altarFrontPos;
     const altarEdgeTop=game.templeEvent.altarEdgeTopPos;
     const altarTop=game.templeEvent.altarTopPos;
+    const doorway=game.templeEvent.doorwayPos;
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
       const phase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(rat.swarmPhase=Math.random()*Math.PI*2);
       const climb=clamp(game.templeEvent.swarmProgress*1.12-((phase/Math.PI)%0.12),0,1);
       const ringAngle=phase+gameTime*0.9;
       let targetX, targetZ, targetY;
-      // Foot-of-altar position: altar's front face at ground level. The
-      // collision body of the altar is x=[altarEdgeTop.x±halfX] but we
-      // approximate by sliding to altarEdgeTop's XZ at GROUND_Y_OFFSET so
-      // rats arrive at the altar mesh BEFORE any vertical lift starts.
+      // Foot-of-altar XZ: rats walk on the temple floor up to here, then
+      // climb the altar's front face. Lined up on the same XZ as the
+      // altar's collision body's leading edge.
       const altarFootX=altarFront.x;
       const altarFootZ=altarFront.z;
-      if(climb<0.22){
-        const radius=lerp(6.8,2.4,climb/0.22);
-        targetX=altarFront.x+Math.cos(ringAngle)*radius;
-        targetZ=altarFront.z+Math.sin(ringAngle)*radius*0.55;
+      if(climb<0.20){
+        // Stage 1: rush from spawn (just outside the doorway) THROUGH the
+        // doorway toward the altar foot. Path goes spawn → doorway →
+        // altarFront; we pick the segment based on rush progress.
+        const rush=climb/0.20;
+        const spawnX=(rat.spawnX!==undefined)?rat.spawnX:rat.root.position.x;
+        const spawnZ=(rat.spawnZ!==undefined)?rat.spawnZ:rat.root.position.z;
+        const doorJitterX=Math.cos(phase)*0.9;
+        const doorJitterZ=Math.sin(phase)*0.9;
+        if(rush<0.55){
+          // Spawn → doorway
+          const seg=rush/0.55;
+          targetX=lerp(spawnX,doorway.x+doorJitterX,seg);
+          targetZ=lerp(spawnZ,doorway.z+doorJitterZ,seg);
+        }else{
+          // Doorway → altar foot
+          const seg=(rush-0.55)/0.45;
+          targetX=lerp(doorway.x+doorJitterX,altarFootX+Math.cos(ringAngle)*0.5,seg);
+          targetZ=lerp(doorway.z+doorJitterZ,altarFootZ+Math.sin(ringAngle)*0.35,seg);
+        }
         targetY=GROUND_Y_OFFSET;
-      }else if(climb<0.42){
-        // Approach: walk on the GROUND from altarFront to the altar's front
-        // face. Pure horizontal motion — feet stay on the ground.
-        const approach=(climb-0.22)/0.20;
-        targetX=lerp(altarFront.x,altarFootX,approach)+Math.cos(ringAngle)*0.6;
-        targetZ=lerp(altarFront.z,altarFootZ,approach)+Math.sin(ringAngle)*0.35;
+      }else if(climb<0.38){
+        // Stage 2: pack tight against the altar's front face on the ground
+        // so the wave of rats arrives BEFORE any vertical lift starts.
+        const pack=(climb-0.20)/0.18;
+        targetX=altarFootX+Math.cos(ringAngle)*lerp(1.4,0.45,pack);
+        targetZ=altarFootZ+Math.sin(ringAngle)*lerp(0.85,0.30,pack);
         targetY=GROUND_Y_OFFSET;
-      }else if(climb<0.55){
-        // Climb up the altar's front face. Pure vertical lift — X/Z hold.
-        const lift=(climb-0.42)/0.13;
-        targetX=altarFootX+Math.cos(ringAngle)*0.5;
-        targetZ=altarFootZ+Math.sin(ringAngle)*0.32;
+      }else if(climb<0.58){
+        // Stage 3: climb the altar's front face. XZ holds against the
+        // collision-body edge; Y rises from ground up to altar top.
+        const lift=(climb-0.38)/0.20;
+        targetX=altarFootX+Math.cos(ringAngle)*0.45;
+        targetZ=altarFootZ+Math.sin(ringAngle)*0.30;
         targetY=lerp(GROUND_Y_OFFSET,altarEdgeTop.y+0.05,lift);
-      }else if(climb<0.74){
-        const topLift=(climb-0.55)/0.19;
-        targetX=lerp(altarFootX,altarTop.x,topLift)+Math.cos(ringAngle)*1.05;
-        targetZ=lerp(altarFootZ,altarTop.z,topLift)+Math.sin(ringAngle)*0.65;
+      }else if(climb<0.78){
+        // Stage 4: walk across the altar top toward the idol's base.
+        const topLift=(climb-0.58)/0.20;
+        targetX=lerp(altarFootX,altarTop.x,topLift)+Math.cos(ringAngle)*0.95;
+        targetZ=lerp(altarFootZ,altarTop.z,topLift)+Math.sin(ringAngle)*0.55;
         targetY=lerp(altarEdgeTop.y+0.05,altarTop.y+0.08,topLift);
       }else{
-        const crest=(climb-0.74)/0.26;
-        const radius=lerp(1.8,0.55,crest);
+        // Stage 5: swarm the idol body — orbit the idol shrinking inward
+        // while rising up its silhouette so they BLANKET the statue.
+        const crest=(climb-0.78)/0.22;
+        const radius=lerp(1.65,0.45,crest);
         targetX=game.templeEvent.altarPos.x+Math.cos(ringAngle)*radius;
         targetZ=game.templeEvent.altarPos.z+Math.sin(ringAngle)*radius*0.5;
         const bodyT=(phase%Math.PI)/Math.PI;
-        const climbCeiling=idolBaseY+TEMPLE_IDOL_HEIGHT+0.35;
-        const climbFloor=idolBaseY+0.25;
+        const climbCeiling=idolBaseY+TEMPLE_IDOL_HEIGHT+0.25;
+        const climbFloor=idolBaseY+0.20;
         targetY=lerp(altarTop.y+0.08,lerp(climbFloor,climbCeiling,bodyT),crest);
       }
       // Climb stages use a fast lerp so rats actually arrive at the
       // crest height before the swarm-progress timer caps; otherwise the
       // white flash fires while rats are still mid-altar.
-      const lerpRate=climb>0.55?5.6:3.4;
+      // Rush stage uses a higher lerp so the wave from outside the doorway
+      // actually reaches the altar foot before the swarmProgress timer
+      // advances them into the climb stages.
+      const lerpRate=climb<0.20 ? 6.4 : (climb>0.58 ? 5.6 : 3.4);
       // Gate the vertical lift by horizontal proximity so rats far away
       // from the altar don't take off into the air. Only rats already
       // within ~1.2 m of the target XZ actually climb upward.
@@ -7743,19 +7790,34 @@ function renderMinimap(){
   if(!tracked||!minimapCtx)return;
   const w=minimapCanvas.width,h=minimapCanvas.height;
   const cx=w*0.5,cy=h*0.5,r=Math.min(w,h)*0.5-6;
-  const mapScale=3.2;
   const playerX=tracked.root.position.x;
-  const playerZ=tracked.root.position.z;
   const trackedYaw=tracked.yaw??player?.yaw??0;
-  const templePos=game.templeEvent?.altarPos?.lengthSq?.()>0
-    ? game.templeEvent.altarPos
-    : new THREE.Vector3(TEMPLE_CHUNK_IDX*CHUNK_SIZE+18.6,0,0);
-  const toMap=(wx,wz)=>{
-    const relX=(wx-playerX)/mapScale;
-    const relY=-(wz-playerZ)/mapScale;
-    const dx=Math.max(-r+10,Math.min(r-10,relX));
-    const dy=Math.max(-r+10,Math.min(r-10,relY));
-    return {x:cx+dx,y:cy+dy};
+  // The world is a one-axis loop between Temple A and Temple B, joined
+  // back-to-back via rearStreet portals. Compute a single arc-length
+  // parameter [0,1) for the player and the two temple altars on that
+  // loop, then render it as a ring with the temples at opposite ends.
+  const templeBX=TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+8.8;        // altar world X (B)
+  const templeAX=TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6+8.8; // altar world X (A)
+  // The "rear portal" of each temple is the wrap point. World coords:
+  const portalBX=TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+30;        // B rearStreet X
+  const portalAX=TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6+30; // A rearStreet X
+  // Loop is: portalAX → templeAX → 0 → templeBX → portalBX (then wraps to portalAX).
+  // Arc-length the loop linearly along X with wraparound at the portals.
+  const loopHalf=portalBX-templeAX; // distance covered going +X around the loop
+  const loopFull=loopHalf*2;
+  const wrapX=(x)=>{
+    // Normalise X into the loop interval, treating outside-portal X as wrapped.
+    let v=x;
+    while(v>portalBX) v-=loopFull;
+    while(v<portalAX-loopFull) v+=loopFull;
+    return v;
+  };
+  const angleFor=(x)=>{
+    // Map x ∈ [portalAX-loopFull/2 .. portalBX] linearly to angle [-π, π].
+    const ref=wrapX(x);
+    const center=(portalAX+portalBX)*0.5;
+    const t=(ref-center)/loopFull; // -0.5..0.5
+    return t*Math.PI*2;
   };
   minimapCtx.clearRect(0,0,w,h);
   minimapCtx.save();
@@ -7767,56 +7829,59 @@ function renderMinimap(){
   bg.addColorStop(1,'rgba(8,10,18,0.98)');
   minimapCtx.fillStyle=bg;
   minimapCtx.fillRect(0,0,w,h);
-  minimapCtx.strokeStyle='rgba(135,215,255,0.12)';
-  minimapCtx.lineWidth=1;
-  for(let i=-2;i<=2;i++){
-    minimapCtx.beginPath();
-    minimapCtx.moveTo(0,cy+i*18);
-    minimapCtx.lineTo(w,cy+i*18);
-    minimapCtx.stroke();
-  }
-  minimapCtx.strokeStyle='rgba(255,233,160,0.26)';
-  minimapCtx.lineWidth=14;
+  // Loop ring — the street wraps as a closed circle.
+  const ringR=r*0.66;
+  minimapCtx.strokeStyle='rgba(255,233,160,0.32)';
+  minimapCtx.lineWidth=12;
   minimapCtx.lineCap='round';
   minimapCtx.beginPath();
-  for(let ix=-(CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA);ix<=TEMPLE_CHUNK_IDX+1;ix++){
-    const worldX=ix*CHUNK_SIZE;
-    const a=toMap(worldX,ALLEY_Z_MIN+1.8);
-    const b=toMap(worldX,ALLEY_Z_MAX-1.8);
-    minimapCtx.moveTo(a.x,a.y);
-    minimapCtx.lineTo(b.x,b.y);
-  }
+  minimapCtx.arc(cx,cy,ringR,0,Math.PI*2);
   minimapCtx.stroke();
+  // Cross-ticks evoking road segments.
   minimapCtx.strokeStyle='rgba(111,225,255,0.22)';
-  minimapCtx.lineWidth=3;
-  minimapCtx.beginPath();
-  for(let ix=-(CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA);ix<=TEMPLE_CHUNK_IDX+1;ix+=2){
-    const a=toMap(ix*CHUNK_SIZE,-1.6);
-    const b=toMap(ix*CHUNK_SIZE+CHUNK_SIZE,1.6);
-    minimapCtx.moveTo(a.x,a.y);
-    minimapCtx.lineTo(b.x,b.y);
-  }
-  minimapCtx.stroke();
-  const templeMap=toMap(templePos.x,templePos.z);
-  const dx=templeMap.x-cx,dy=templeMap.y-cy;
-  const dist=Math.hypot(templePos.x-playerX,templePos.z-playerZ);
-  const pulse=1+Math.sin(performance.now()*0.008)*0.18;
-  const tx=templeMap.x;
-  const ty=templeMap.y;
-  minimapCtx.strokeStyle='rgba(255,92,76,0.95)';
   minimapCtx.lineWidth=2;
-  minimapCtx.beginPath();
-  minimapCtx.arc(tx,ty,9*pulse,0,Math.PI*2);
-  minimapCtx.stroke();
-  minimapCtx.fillStyle='rgba(255,97,87,0.95)';
-  minimapCtx.beginPath();
-  minimapCtx.arc(tx,ty,6,0,Math.PI*2);
-  minimapCtx.fill();
-  minimapCtx.fillStyle='rgba(255,244,204,0.92)';
-  minimapCtx.font='bold 12px monospace';
-  minimapCtx.fillText('TEMPLE',Math.max(8,tx-22),Math.max(14,ty-12));
-  minimapCtx.fillText(`${Math.round(dist)}m`,Math.max(8,tx-12),Math.min(h-6,ty+18));
-  minimapCtx.translate(cx,cy);
+  for(let i=0;i<24;i++){
+    const a=(i/24)*Math.PI*2;
+    const inner=ringR-6, outer=ringR+6;
+    minimapCtx.beginPath();
+    minimapCtx.moveTo(cx+Math.cos(a)*inner,cy+Math.sin(a)*inner);
+    minimapCtx.lineTo(cx+Math.cos(a)*outer,cy+Math.sin(a)*outer);
+    minimapCtx.stroke();
+  }
+  // Player angle around the loop — sit at the TOP of the ring (-π/2)
+  // and rotate the world around so the player always faces "up". This
+  // mirrors how the player's facing arrow always points up.
+  const playerAngle=angleFor(playerX);
+  const drawMarkerAt=(worldX,style,label,radius)=>{
+    const a=angleFor(worldX)-playerAngle-Math.PI/2;
+    const px=cx+Math.cos(a)*ringR;
+    const py=cy+Math.sin(a)*ringR;
+    minimapCtx.strokeStyle=style.stroke;
+    minimapCtx.lineWidth=2;
+    minimapCtx.beginPath();
+    minimapCtx.arc(px,py,radius*1.5,0,Math.PI*2);
+    minimapCtx.stroke();
+    minimapCtx.fillStyle=style.fill;
+    minimapCtx.beginPath();
+    minimapCtx.arc(px,py,radius,0,Math.PI*2);
+    minimapCtx.fill();
+    if(label){
+      minimapCtx.fillStyle='rgba(255,244,204,0.92)';
+      minimapCtx.font='bold 11px monospace';
+      const lx=px+Math.cos(a)*12;
+      const ly=py+Math.sin(a)*12+4;
+      minimapCtx.fillText(label,Math.max(4,Math.min(w-32,lx-10)),Math.max(12,Math.min(h-6,ly)));
+    }
+  };
+  const pulse=1+Math.sin(performance.now()*0.008)*0.18;
+  // Temple B (event temple — red, pulsing)
+  drawMarkerAt(templeBX,{stroke:'rgba(255,92,76,0.95)',fill:'rgba(255,97,87,0.95)'},'B',5*pulse);
+  // Temple A (twin — softer gold)
+  drawMarkerAt(templeAX,{stroke:'rgba(244,196,96,0.95)',fill:'rgba(244,196,96,0.95)'},'A',5);
+  // Player marker at top of ring, oriented by facing.
+  minimapCtx.save();
+  minimapCtx.translate(cx+Math.cos(-Math.PI/2)*ringR,cy+Math.sin(-Math.PI/2)*ringR);
+  // Convert world yaw → ring tangent angle so the arrow leans into walking direction.
   minimapCtx.rotate(trackedYaw);
   minimapCtx.fillStyle='rgba(255,236,150,0.98)';
   minimapCtx.beginPath();
@@ -7830,6 +7895,16 @@ function renderMinimap(){
   minimapCtx.lineWidth=1.5;
   minimapCtx.stroke();
   minimapCtx.restore();
+  // Distance readout to the active event temple (B).
+  const distB=Math.abs(wrapX(templeBX)-wrapX(playerX));
+  const distAlt=loopFull-distB;
+  const distShown=Math.min(distB,distAlt);
+  minimapCtx.fillStyle='rgba(255,244,204,0.88)';
+  minimapCtx.font='bold 11px monospace';
+  minimapCtx.fillText('LOOP',cx-14,cy-3);
+  minimapCtx.fillText(`${Math.round(distShown)}m`,cx-14,cy+11);
+  minimapCtx.restore();
+  // Outer ring.
   minimapCtx.strokeStyle='rgba(255,242,193,0.9)';
   minimapCtx.lineWidth=3;
   minimapCtx.beginPath();
