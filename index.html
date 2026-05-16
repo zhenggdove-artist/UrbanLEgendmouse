@@ -596,9 +596,28 @@ const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
 function resolveIdolGroundY(idol){
-  const sy=sampleSupportHeight(idol,idol.root.position.x,idol.root.position.z,idol.root.position.y);
-  const base=(idol.baseY??0)+GROUND_Y_OFFSET;
-  return sy>base+0.001?sy:base;
+  // The default sampleSupportHeight gates blockers with a tight currentY
+  // window (designed for jumping humans). The idol never jumps but DOES
+  // step off the altar (a 1.6m drop) and must find the hall floor below
+  // — so we scan every blocker whose footprint contains the idol and
+  // pick the highest top that is at or below the idol's current Y.
+  const x=idol.root.position.x, z=idol.root.position.z, cur=idol.root.position.y;
+  let best=(idol.baseY??0)+GROUND_Y_OFFSET;
+  for(const blocker of game.blockers){
+    if(!blocker?.root||blocker.root===idol.root)continue;
+    const minX=blocker.minX??(blocker.centerX-(blocker.halfX||blocker.radius||0.6));
+    const maxX=blocker.maxX??(blocker.centerX+(blocker.halfX||blocker.radius||0.6));
+    const minZ=blocker.minZ??(blocker.centerZ-(blocker.halfZ||blocker.radius||0.6));
+    const maxZ=blocker.maxZ??(blocker.centerZ+(blocker.halfZ||blocker.radius||0.6));
+    if(x<minX||x>maxX||z<minZ||z>maxZ)continue;
+    const topY=(blocker.topY??0)+GROUND_Y_OFFSET;
+    // Skip blockers towering above us (we can't be standing on the roof
+    // of a sealed building) but accept anything we're on or about to
+    // drop onto.
+    if(topY>cur+0.4) continue;
+    if(topY>best) best=topY;
+  }
+  return best;
 }
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
@@ -3175,6 +3194,7 @@ function generateChunk(idx){
       const px=xBase+1.1+i*((CHUNK_SIZE-2.2)/(poleCount-1))+rand(-0.28,0.28);
       const pz=sign*rand(6.9,8.2);
       const ph=rand(5.9,7.6);
+      if(pointInsideTempleZone(px,pz,1.2)) continue;
       poles.push(buildPowerPole(px,pz,sign,ph));
       const glow=new THREE.Sprite(SPRITE_MAT.lampGlow.clone());
       glow.scale.set(1.15,1.15,1);
@@ -3183,6 +3203,9 @@ function generateChunk(idx){
     }
     for(let i=0;i<poles.length-1;i++){
       const a=poles[i],b=poles[i+1];
+      const midX=(a.high[0].x+b.high[0].x)*0.5;
+      const midZ=(a.high[0].z+b.high[0].z)*0.5;
+      if(pointInsideTempleZone(midX,midZ,0.4)) continue;
       for(let k=0;k<3;k++){
         const sag=rand(0.35,0.85);
         buildCableCurve([
@@ -3783,6 +3806,7 @@ function startTempleAwakening(){
   game.templeEvent.phase='gather';
   game.templeEvent.phaseTimer=0;
   game.templeEvent.swarmProgress=0;
+  game.templeEvent.swarmSettleTimer=0;
   game.templeEvent.glowCooldown=0;
   game.templeEvent.swarmSprites.length=0;
   setTempleIdolPhaseMaterials(game.templeEvent.idol,'gold');
@@ -3867,8 +3891,7 @@ function tickTempleIdolProcession(idol,dt){
     idol.root.position.x+=Math.sin(yaw)*Math.min(step,dist);
     idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
   }
-  const groundY=resolveIdolGroundY(idol);
-  idol.root.position.y=lerp(idol.root.position.y,groundY,Math.min(1,dt*6.0));
+  idol.root.position.y=resolveIdolGroundY(idol);
   if(dist<0.5){
     if(idol.processIndex<path.length-1) idol.processIndex++;
     else game.templeEvent.phase='roam';
@@ -3901,8 +3924,7 @@ function tickTempleIdolRoam(idol,dt){
     idol.root.position.x+=Math.sin(yaw)*move;
     idol.root.position.z+=Math.cos(yaw)*move;
   }
-  const groundY=resolveIdolGroundY(idol);
-  idol.root.position.y=lerp(idol.root.position.y,groundY,Math.min(1,dt*6.0));
+  idol.root.position.y=resolveIdolGroundY(idol);
   softClampZ(idol.root.position);
   softClampTempleX(idol.root.position);
   tickTempleIdolKills(idol);
@@ -3927,18 +3949,32 @@ function tickTempleEvent(dt){
       const climb=clamp(game.templeEvent.swarmProgress*1.12-((phase/Math.PI)%0.12),0,1);
       const ringAngle=phase+gameTime*0.9;
       let targetX, targetZ, targetY;
-      if(climb<0.28){
-        const radius=lerp(6.8,2.4,climb/0.28);
+      // Foot-of-altar position: altar's front face at ground level. The
+      // collision body of the altar is x=[altarEdgeTop.x±halfX] but we
+      // approximate by sliding to altarEdgeTop's XZ at GROUND_Y_OFFSET so
+      // rats arrive at the altar mesh BEFORE any vertical lift starts.
+      const altarFootX=altarEdgeTop.x;
+      const altarFootZ=altarEdgeTop.z;
+      if(climb<0.22){
+        const radius=lerp(6.8,2.4,climb/0.22);
         targetX=altarFront.x+Math.cos(ringAngle)*radius;
         targetZ=altarFront.z+Math.sin(ringAngle)*radius*0.55;
         targetY=GROUND_Y_OFFSET;
-      }else if(climb<0.5){
-        const lift=(climb-0.28)/0.22;
-        targetX=lerp(altarFront.x,altarEdgeTop.x,lift)+Math.cos(ringAngle)*0.8;
-        targetZ=lerp(altarFront.z,altarEdgeTop.z,lift)+Math.sin(ringAngle)*0.45;
+      }else if(climb<0.42){
+        // Approach: walk on the GROUND from altarFront to the altar's front
+        // face. Pure horizontal motion — feet stay on the ground.
+        const approach=(climb-0.22)/0.20;
+        targetX=lerp(altarFront.x,altarFootX,approach)+Math.cos(ringAngle)*0.6;
+        targetZ=lerp(altarFront.z,altarFootZ,approach)+Math.sin(ringAngle)*0.35;
+        targetY=GROUND_Y_OFFSET;
+      }else if(climb<0.55){
+        // Climb up the altar's front face. Pure vertical lift — X/Z hold.
+        const lift=(climb-0.42)/0.13;
+        targetX=altarFootX+Math.cos(ringAngle)*0.5;
+        targetZ=altarFootZ+Math.sin(ringAngle)*0.32;
         targetY=lerp(GROUND_Y_OFFSET,altarEdgeTop.y+0.05,lift);
       }else if(climb<0.74){
-        const topLift=(climb-0.5)/0.24;
+        const topLift=(climb-0.55)/0.19;
         targetX=lerp(altarEdgeTop.x,altarTop.x,topLift)+Math.cos(ringAngle)*1.05;
         targetZ=lerp(altarEdgeTop.z,altarTop.z,topLift)+Math.sin(ringAngle)*0.65;
         targetY=lerp(altarEdgeTop.y+0.05,altarTop.y+0.08,topLift);
@@ -3952,9 +3988,13 @@ function tickTempleEvent(dt){
         const climbFloor=idolBaseY+0.25;
         targetY=lerp(altarTop.y+0.08,lerp(climbFloor,climbCeiling,bodyT),crest);
       }
-      rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*1.8));
-      rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*1.8));
-      rat.root.position.y=lerp(rat.root.position.y,targetY,Math.min(1,dt*1.9));
+      // Climb stages use a fast lerp so rats actually arrive at the
+      // crest height before the swarm-progress timer caps; otherwise the
+      // white flash fires while rats are still mid-altar.
+      const lerpRate=climb>0.55?5.6:3.4;
+      rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*lerpRate));
+      rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*lerpRate));
+      rat.root.position.y=lerp(rat.root.position.y,targetY,Math.min(1,dt*(lerpRate+0.6)));
       rat.root.rotation.y=Math.atan2(game.templeEvent.altarPos.x-rat.root.position.x,game.templeEvent.altarPos.z-rat.root.position.z);
       rat.moveIntent.y=1;
       tickRatBillboard(rat,dt);
@@ -3964,12 +4004,17 @@ function tickTempleEvent(dt){
       spawnTempleGlow(game.templeEvent.altarPos,26);
       game.templeEvent.glowCooldown=0.18;
     }
+    // Once climb finishes, hold the swarm in place for ~1.5s so the lerp
+    // can finish settling rats onto the idol's head before the flash.
     if(game.templeEvent.swarmProgress>=1){
-      game.templeEvent.phase='glow';
-      game.templeEvent.phaseTimer=1.1;
-      setTempleIdolPhaseMaterials(idol,'flash');
-      setTempleFlash(0.22);
-      spawnTempleGlow(game.templeEvent.altarPos,120);
+      game.templeEvent.swarmSettleTimer=(game.templeEvent.swarmSettleTimer||0)+dt;
+      if(game.templeEvent.swarmSettleTimer>=1.5){
+        game.templeEvent.phase='glow';
+        game.templeEvent.phaseTimer=1.1;
+        setTempleIdolPhaseMaterials(idol,'flash');
+        setTempleFlash(0.22);
+        spawnTempleGlow(game.templeEvent.altarPos,120);
+      }
     }
     return;
   }
@@ -4079,11 +4124,11 @@ function spawnBiteBlood(host,multiplier=1){
       color:new THREE.Color(i%3===0?'#ffb2b2':'#d81f41')
     }));
     sprite.scale.setScalar(rand(0.12,0.28)*Math.sqrt(Math.max(1,multiplier))*0.75);
-    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.045,0.045),rand(-0.03,0.07),rand(-0.045,0.045)));
+    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.014,0.014),rand(-0.01,0.022),rand(-0.014,0.014)));
     scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
-      vel:new THREE.Vector3(rand(-0.9,0.9)*Math.min(2.8,multiplier*0.22+1),rand(0.4,1.8)*Math.min(2.6,multiplier*0.18+1),rand(-0.9,0.9)*Math.min(2.8,multiplier*0.22+1)),
+      vel:new THREE.Vector3(rand(-0.27,0.27)*Math.min(2.8,multiplier*0.22+1),rand(0.12,0.54)*Math.min(2.6,multiplier*0.18+1),rand(-0.27,0.27)*Math.min(2.8,multiplier*0.22+1)),
       gravity:4.4,life:0.8+Math.min(0.8,multiplier*0.04),maxLife:0.8+Math.min(0.8,multiplier*0.04),spin:rand(-14,14)
     });
   }
@@ -4101,11 +4146,11 @@ function spawnBodyBlood(host,multiplier=1){
       color:new THREE.Color(i%4===0?'#ff8a8a':'#cf1735')
     }));
     sprite.scale.setScalar(rand(0.14,0.32)*Math.sqrt(Math.max(1,multiplier))*0.72);
-    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.06,0.06),rand(-0.09,0.09),rand(-0.06,0.06)));
+    sprite.position.copy(base).add(new THREE.Vector3(rand(-0.018,0.018),rand(-0.027,0.027),rand(-0.018,0.018)));
     scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
-      vel:new THREE.Vector3(rand(-1.4,1.4)*Math.min(3.2,multiplier*0.16+1),rand(-0.1,2.1)*Math.min(2.8,multiplier*0.16+1),rand(-1.4,1.4)*Math.min(3.2,multiplier*0.16+1)),
+      vel:new THREE.Vector3(rand(-0.42,0.42)*Math.min(3.2,multiplier*0.16+1),rand(-0.03,0.63)*Math.min(2.8,multiplier*0.16+1),rand(-0.42,0.42)*Math.min(3.2,multiplier*0.16+1)),
       gravity:4.6,life:0.9+Math.min(0.9,multiplier*0.03),maxLife:0.9+Math.min(0.9,multiplier*0.03),spin:rand(-12,12)
     });
   }
@@ -6546,7 +6591,11 @@ async function init(){
       skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
     }));
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
-    for(const v of HUMAN_VARIANTS){ v.clips.death=sharedDeathClip; }
+    const fallbackIdleClip=resolveAnimationClip(idleHumanFBX);
+    for(const v of HUMAN_VARIANTS){
+      v.clips.death=sharedDeathClip;
+      if(!v.clips.idle) v.clips.idle=fallbackIdleClip;
+    }
     characterSource=HUMAN_VARIANTS[0].source;
     HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
     HUMAN_SKIN.normal=HUMAN_VARIANTS[0].skin.normal;
