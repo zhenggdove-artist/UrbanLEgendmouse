@@ -585,6 +585,7 @@ const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
 const BROTH_POOL_GROWTH=2.8;
+const CHUNK_SIZE=24;
 const TEMPLE_CHUNK_IDX=6;
 const TEMPLE_SWARM_TRIGGER=1000;
 const TEMPLE_A_CHUNK_IDX=-10;
@@ -2665,7 +2666,8 @@ function buildTempleComplex(xBase,opts={}){
 }
 
 // ===== Chunk system — infinite alley along the X axis =====
-const CHUNK_SIZE=24;
+// CHUNK_SIZE is declared up top alongside TEMPLE_CHUNK_IDX so the
+// temple keep-out zones can reference it during initialisation.
 const CHUNK_WINDOW_AHEAD=6;
 const CHUNK_WINDOW_A_SIDE=14;
 const CHUNK_PREFETCH_MARGIN=8;
