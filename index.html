@@ -2963,7 +2963,7 @@ function spawnTempleIdol(plazaInfo){
   const root=inst.outer;
   root.position.copy(plazaInfo.altarPos);
   root.position.y+=TEMPLE_IDOL_SPAWN_Y_OFFSET;
-  root.rotation.y=Math.PI;
+  root.rotation.y=-Math.PI/2;
   addDynamicChunkObject(root);
   const originalMaterials=[];
   root.traverse(o=>{
@@ -3891,7 +3891,7 @@ function startTempleAwakening(){
       game.templeEvent.altarPos.z+rand(-1.0,1.0)
     );
   }
-  const swarmVisuals=Math.min(240,Math.max(140,Math.round(getTotalRatCount()*0.16)));
+  const swarmVisuals=Math.min(2400,Math.max(1400,Math.round(getTotalRatCount()*1.6)));
   const visualFromVirtual=Math.min(game.virtualRats,swarmVisuals);
   game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
   for(let i=0;i<swarmVisuals;i++){
@@ -6190,7 +6190,8 @@ function tickFollowerRats(dt){
     const dz=tz-r.root.position.z;
     const a=Math.atan2(dx,dz);
     const dist=Math.hypot(dx,dz);
-    const spd=(dist>0.35)?(1.2+game.chaos*1.5):0;
+    const baseSpd=(dist>0.35)?(1.2+game.chaos*1.5):0;
+    const spd=r.followStatue?baseSpd*4:baseSpd;
     const prevX=r.root.position.x, prevZ=r.root.position.z;
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
