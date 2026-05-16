@@ -2743,6 +2743,8 @@ function disposeChunk(chunk){
     const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)
   }
   for(const h of chunk.humans){
+    // Keep corpses in the world even after their birth-chunk unloads.
+    if(h.dead) continue;
     if(h.parasitised) exitHost();
     if(h.root && h.root.parent) h.root.parent.remove(h.root);
     const i=game.humans.indexOf(h);if(i>=0) game.humans.splice(i,1);
@@ -3569,7 +3571,9 @@ function tickActor(ent,dt){
   if(!ent.inst||!ent.inst.mixer)return;
   if(ent.inst.actions && Object.keys(ent.inst.actions).length){
     let next='idle';
-    if(ent.kind==='human'){
+    if(ent.kind==='human' && ent.dead && ent.inst.actions.death){
+      next='death';
+    }else if(ent.kind==='human'){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
@@ -4162,7 +4166,7 @@ function killHost(host){
   host.attackCooldown=0;
   host.actionTimer=0;
   host.actionName=null;
-  host.root.rotation.z=(Math.random()<0.5?-1:1)*1.42;
+  host.root.rotation.z=0;
   host.root.rotation.x=0;
   host.root.position.y=host.baseY||0;
   if(host.bloodPool){
@@ -6410,7 +6414,14 @@ async function init(){
       idleSchoolgirlFBX,walkSchoolgirlFBX,runSchoolgirlFBX,jumpSchoolgirlFBX,kickSchoolgirlFBX,cleanSchoolgirlFBX,
       baseColourTexSchoolgirl,normalTexSchoolgirl,roughTexSchoolgirl,metalTexSchoolgirl,
       idleMumFBX,walkMumFBX,runMumFBX,jumpMumFBX,kickMumFBX,cleanMumFBX,
-      baseColourTexMum,normalTexMum,roughTexMum,metalTexMum
+      baseColourTexMum,normalTexMum,roughTexMum,metalTexMum,
+      idleUncleFBX,walkUncleFBX,runUncleFBX,jumpUncleFBX,kickUncleFBX,cleanUncleFBX,
+      baseColourTexUncle,normalTexUncle,roughTexUncle,metalTexUncle,
+      idleOLFBX,walkOLFBX,runOLFBX,jumpOLFBX,kickOLFBX,cleanOLFBX,
+      baseColourTexOL,normalTexOL,roughTexOL,metalTexOL,
+      idleSalarymanFBX,
+      baseColourTexSalaryman,normalTexSalaryman,roughTexSalaryman,metalTexSalaryman,
+      deathHumanFBX
     ]=await Promise.all([
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/走路.fbx'),
@@ -6463,7 +6474,33 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_metallic.JPEG')
+      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/發呆.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/走動.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/跑動.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/跳躍.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/清潔動作.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_BaseColor.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/發呆.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/Walking.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/Running.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/Jumping.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/清潔動作.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_BaseColor.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_男上班族/發呆.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_Normal_Bake.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_roughness.JPEG'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_metallic.JPEG'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
     ]);
     HUMAN_VARIANTS.length=0;
     HUMAN_VARIANTS.push(makeHumanVariant({
@@ -6491,6 +6528,23 @@ async function init(){
       idle:idleMumFBX,walk:walkMumFBX,run:runMumFBX,jump:jumpMumFBX,kick:kickMumFBX,pickup:null,clean:cleanMumFBX,
       skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
     }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleUncleFBX,
+      idle:idleUncleFBX,walk:walkUncleFBX,run:runUncleFBX,jump:jumpUncleFBX,kick:kickUncleFBX,pickup:null,clean:cleanUncleFBX,
+      skin:{base:baseColourTexUncle,normal:normalTexUncle,roughness:roughTexUncle,metal:metalTexUncle}
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleOLFBX,
+      idle:idleOLFBX,walk:walkOLFBX,run:runOLFBX,jump:jumpOLFBX,kick:kickOLFBX,pickup:null,clean:cleanOLFBX,
+      skin:{base:baseColourTexOL,normal:normalTexOL,roughness:roughTexOL,metal:metalTexOL}
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
+      source:idleSalarymanFBX,
+      idle:idleSalarymanFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
+      skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
+    }));
+    const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
+    for(const v of HUMAN_VARIANTS){ v.clips.death=sharedDeathClip; }
     characterSource=HUMAN_VARIANTS[0].source;
     HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
     HUMAN_SKIN.normal=HUMAN_VARIANTS[0].skin.normal;
