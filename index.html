@@ -932,7 +932,7 @@ const game={
   testMode:false,
   templeEvent:{
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
-    altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
+    altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),rearDoorwayPos:new THREE.Vector3(),rearStreetPos:new THREE.Vector3(),processionPath:[],
     gathering:false,started:false,awakened:false,awakeningRequested:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
     pendingSwarmCount:0,swarmSpawnCursor:0,swarmSpawnPerFrame:32,pendingSwarmBursts:[],
     glowCooldown:0,flashStrength:0,keyLight:null,rimLight:null,lightTarget:null,
@@ -1143,9 +1143,15 @@ function resolveSFXEmitterPosition(source){
   }
   return null;
 }
+function getSFXListenerPosition(){
+  return game.controlled?.root?.position
+    || game.parasitisedHost?.root?.position
+    || player?.root?.position
+    || null;
+}
 function getSFXDistanceGain(source){
   const emitter=resolveSFXEmitterPosition(source);
-  const listener=player?.root?.position;
+  const listener=getSFXListenerPosition();
   if(!emitter || !listener) return 1;
   const dx=emitter.x-listener.x;
   const dz=emitter.z-listener.z;
@@ -1399,21 +1405,50 @@ function resolveAnimationClip(src){
   if(Array.isArray(src.tracks) && src.duration!==undefined) return src;
   return null;
 }
+const SOURCE_CLIP_FILTER_CACHE=new WeakMap();
+function getSourceNodeNames(source){
+  const names=new Set();
+  source?.traverse?.(node=>{
+    if(node?.name) names.add(node.name);
+  });
+  return names;
+}
+function getSourceCompatibleClip(source,srcClip){
+  const clip=resolveAnimationClip(srcClip);
+  if(!clip || !source?.traverse) return clip;
+  let clipCache=SOURCE_CLIP_FILTER_CACHE.get(source);
+  if(!clipCache){
+    clipCache=new Map();
+    SOURCE_CLIP_FILTER_CACHE.set(source,clipCache);
+  }
+  const cacheKey=`${clip.name}::${clip.duration}::${clip.tracks.length}`;
+  if(clipCache.has(cacheKey)) return clipCache.get(cacheKey);
+  const sourceNodeNames=getSourceNodeNames(source);
+  const filteredTracks=clip.tracks.filter(track=>{
+    const nodeName=(track?.name||'').split('.')[0];
+    return !nodeName || sourceNodeNames.has(nodeName);
+  });
+  const filteredClip=(filteredTracks.length===clip.tracks.length)
+    ? clip
+    : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
+  clipCache.set(cacheKey,filteredClip);
+  return filteredClip;
+}
 function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
   return {
     name,
     source,
     skin,
     clips:{
-      idle:resolveAnimationClip(idle),
-      walk:resolveAnimationClip(walk),
-      run:resolveAnimationClip(run),
-      jump:resolveAnimationClip(jump),
-      kick:resolveAnimationClip(kick),
-      pickup:resolveAnimationClip(pickup),
+      idle:getSourceCompatibleClip(source,idle),
+      walk:getSourceCompatibleClip(source,walk),
+      run:getSourceCompatibleClip(source,run),
+      jump:getSourceCompatibleClip(source,jump),
+      kick:getSourceCompatibleClip(source,kick),
+      pickup:getSourceCompatibleClip(source,pickup),
       punch:null,
       punchcombo:null,
-      clean:resolveAnimationClip(clean)
+      clean:getSourceCompatibleClip(source,clean)
     }
   };
 }
@@ -1442,6 +1477,8 @@ function loadTempleIdolAssetsLegacy(){
         altarFrontPos:game.templeEvent.altarFrontPos,
         doorwayPos:game.templeEvent.doorwayPos,
         streetPos:game.templeEvent.streetPos,
+        rearDoorwayPos:game.templeEvent.rearDoorwayPos,
+        rearStreetPos:game.templeEvent.rearStreetPos,
         processionPath:game.templeEvent.processionPath
       });
     }
@@ -1518,6 +1555,8 @@ function loadTempleIdolAssets(){
         altarFrontPos:game.templeEvent.altarFrontPos,
         doorwayPos:game.templeEvent.doorwayPos,
         streetPos:game.templeEvent.streetPos,
+        rearDoorwayPos:game.templeEvent.rearDoorwayPos,
+        rearStreetPos:game.templeEvent.rearStreetPos,
         processionPath:game.templeEvent.processionPath
       });
     }
@@ -3920,6 +3959,8 @@ function spawnTempleIdol(plazaInfo,{decorative=false}={}){
     game.templeEvent.altarFrontPos.copy(plazaInfo.altarFrontPos||plazaInfo.altarPos);
     game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
     game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
+    game.templeEvent.rearDoorwayPos.copy(plazaInfo.rearDoorwayPos||plazaInfo.doorwayPos||plazaInfo.altarPos);
+    game.templeEvent.rearStreetPos.copy(plazaInfo.rearStreetPos||plazaInfo.streetPos||plazaInfo.altarPos);
     game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
   }
   return idolActor;
@@ -3932,6 +3973,8 @@ function clonePlazaInfoForIdol(plazaInfo){
     altarFrontPos:(plazaInfo.altarFrontPos||plazaInfo.altarPos).clone(),
     doorwayPos:(plazaInfo.doorwayPos||plazaInfo.altarPos).clone(),
     streetPos:(plazaInfo.streetPos||plazaInfo.altarPos).clone(),
+    rearDoorwayPos:(plazaInfo.rearDoorwayPos||plazaInfo.doorwayPos||plazaInfo.altarPos).clone(),
+    rearStreetPos:(plazaInfo.rearStreetPos||plazaInfo.streetPos||plazaInfo.altarPos).clone(),
     processionPath:(plazaInfo.processionPath||[]).map(p=>p.clone())
   };
 }
@@ -4027,6 +4070,8 @@ function generateTempleChunk(idx,xBase,opts={}){
     game.templeEvent.altarFrontPos.copy(plazaInfo.altarFrontPos||plazaInfo.altarPos);
     game.templeEvent.doorwayPos.copy(plazaInfo.doorwayPos||plazaInfo.altarPos);
     game.templeEvent.streetPos.copy(plazaInfo.streetPos||plazaInfo.altarPos);
+    game.templeEvent.rearDoorwayPos.copy(plazaInfo.rearDoorwayPos||plazaInfo.doorwayPos||plazaInfo.altarPos);
+    game.templeEvent.rearStreetPos.copy(plazaInfo.rearStreetPos||plazaInfo.streetPos||plazaInfo.altarPos);
     game.templeEvent.processionPath=(plazaInfo.processionPath||[]).map(p=>p.clone());
     spawnTempleIdol(plazaInfo);
     // Kick off idol-asset load even before the rat-count threshold so the
@@ -4926,6 +4971,8 @@ function promoteIdolToPrimary(idolActor){
     game.templeEvent.altarFrontPos.copy(snap.altarFrontPos);
     game.templeEvent.doorwayPos.copy(snap.doorwayPos);
     game.templeEvent.streetPos.copy(snap.streetPos);
+    game.templeEvent.rearDoorwayPos.copy(snap.rearDoorwayPos||snap.doorwayPos);
+    game.templeEvent.rearStreetPos.copy(snap.rearStreetPos||snap.streetPos);
     game.templeEvent.processionPath=snap.processionPath.map(p=>p.clone());
   }
 }
@@ -4973,13 +5020,42 @@ function getActiveTempleSwarmPlazas(){
   }
   return plazas;
 }
+function getCurrentTempleSwarmPlaza(){
+  if(game.templeEvent.idol?.plazaSnapshot){
+    return clonePlazaInfoForIdol(game.templeEvent.idol.plazaSnapshot);
+  }
+  return clonePlazaInfoForIdol({
+    altarPos:game.templeEvent.altarPos,
+    altarTopPos:game.templeEvent.altarTopPos,
+    altarEdgeTopPos:game.templeEvent.altarEdgeTopPos,
+    altarFrontPos:game.templeEvent.altarFrontPos,
+    doorwayPos:game.templeEvent.doorwayPos,
+    streetPos:game.templeEvent.streetPos,
+    rearDoorwayPos:game.templeEvent.rearDoorwayPos||game.templeEvent.doorwayPos,
+    rearStreetPos:game.templeEvent.rearStreetPos||game.templeEvent.streetPos,
+    processionPath:game.templeEvent.processionPath||[]
+  });
+}
+function getTempleSwarmEntrances(plazaSnapshot){
+  const entries=[{
+    doorwayPos:plazaSnapshot.doorwayPos,
+    streetPos:plazaSnapshot.streetPos
+  }];
+  if(plazaSnapshot.rearDoorwayPos && plazaSnapshot.rearStreetPos){
+    entries.push({
+      doorwayPos:plazaSnapshot.rearDoorwayPos,
+      streetPos:plazaSnapshot.rearStreetPos
+    });
+  }
+  return entries;
+}
 function setTempleFlash(strength=0){
   game.templeEvent.flashStrength=clamp(strength,0,1);
   if(templeFlashEl) templeFlashEl.style.opacity=game.templeEvent.flashStrength.toFixed(3);
 }
-function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null){
-  const street=plazaSnapshot.streetPos;
-  const doorway=plazaSnapshot.doorwayPos;
+function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null,entrance=null){
+  const street=entrance?.streetPos||plazaSnapshot.streetPos;
+  const doorway=entrance?.doorwayPos||plazaSnapshot.doorwayPos;
   let inX=doorway.x-street.x, inZ=doorway.z-street.z;
   const inLen=Math.hypot(inX,inZ)||1;
   inX/=inLen; inZ/=inLen;
@@ -5043,67 +5119,6 @@ function spawnTempleGlow(pos,count=44){
 function startTempleAwakeningLegacy(){
   if(game.templeEvent.started||game.templeEvent.awakened)return;
   if(!game.templeEvent.idol){
-    loadTempleIdolAssets().catch(()=>{});
-    return;
-  }
-  if(!game.templeEvent.gathering) startTempleGathering();
-  game.templeEvent.started=true;
-  game.templeEvent.phase='gather';
-  game.templeEvent.phaseTimer=0;
-  game.templeEvent.swarmProgress=0;
-  game.templeEvent.swarmSettleTimer=0;
-  game.templeEvent.glowCooldown=0;
-  game.templeEvent.swarmSprites.length=0;
-  setAllTempleIdolPhaseMaterials('gold');
-  for(const rat of game.rats){
-    if(rat===player)continue;
-    rat.followPlayer=false;
-    rat.followStatue=false;
-    rat.templeBound=true;
-    rat.targetPos?.set(
-      game.templeEvent.altarFrontPos.x+rand(-1.2,1.2),
-      0,
-      game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
-    );
-  }
-  // 300 rats burst from outside the doorway, charge into the temple,
-  // climb the altar collision body and end up swarming the idol.
-  const SWARM_COUNT=300;
-  const visualFromVirtual=Math.min(game.virtualRats,SWARM_COUNT);
-  game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
-  const street=game.templeEvent.streetPos;
-  const doorway=game.templeEvent.doorwayPos;
-  // Unit vector pointing INTO the temple (street → doorway → altar).
-  let inX=doorway.x-street.x, inZ=doorway.z-street.z;
-  const inLen=Math.hypot(inX,inZ)||1;
-  inX/=inLen; inZ/=inLen;
-  // Perpendicular vector along the doorway plane (for spawn-line spread).
-  const perpX=-inZ, perpZ=inX;
-  for(let i=0;i<SWARM_COUNT;i++){
-    const rat=buildRat({isPlayer:false});
-    rat.swarmPhase=Math.random()*Math.PI*2;
-    // Spawn just outside the doorway: 0.6..6.5 m back from streetPos
-    // (away from the temple) with ±2.8 m sideways spread along the
-    // doorway plane. Forms a crowd ready to pour through the door.
-    const backOff=rand(0.6,6.5);
-    const side=rand(-2.8,2.8);
-    const sx=street.x - inX*backOff + perpX*side;
-    const sz=street.z - inZ*backOff + perpZ*side;
-    rat.root.position.set(sx,GROUND_Y_OFFSET,sz);
-    rat.spawnX=sx;
-    rat.spawnZ=sz;
-    rat.templeBound=true;
-    rat.followPlayer=false;
-    rat.followStatue=false;
-    rat.targetPos.set(game.templeEvent.altarFrontPos.x,0,game.templeEvent.altarFrontPos.z);
-    rat.moveIntent.y=1;
-    game.rats.push(rat);
-    game.templeEvent.swarmSprites.push(rat);
-  }
-}
-function startTempleAwakening(){
-  if(game.templeEvent.started||game.templeEvent.awakened)return;
-  if(!game.templeEvent.idol){
     game.templeEvent.awakeningRequested=true;
     loadTempleIdolAssets().catch(()=>{});
     return;
@@ -5117,9 +5132,6 @@ function startTempleAwakening(){
   game.templeEvent.swarmSettleTimer=0;
   game.templeEvent.glowCooldown=0;
   game.templeEvent.swarmSprites.length=0;
-  game.templeEvent.pendingSwarmCount=0;
-  game.templeEvent.swarmSpawnCursor=0;
-  game.templeEvent.pendingSwarmBursts.length=0;
   setAllTempleIdolPhaseMaterials('gold');
   for(const rat of game.rats){
     if(rat===player)continue;
@@ -5132,20 +5144,32 @@ function startTempleAwakening(){
       game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
     );
   }
-  // Restore the old instant 300-rat burst flow the user asked for:
-  // spawn immediately instead of queueing over frames.
+  // Old flow restored: exactly 300 swarm rats for the temple the player
+  // is currently standing in, split across that temple's front/rear
+  // street entrances when both exist.
   const SWARM_COUNT=300;
-  const plazas=getActiveTempleSwarmPlazas();
-  const totalSwarmCount=SWARM_COUNT*Math.max(1,plazas.length);
-  const visualFromVirtual=Math.min(game.virtualRats,totalSwarmCount);
+  const visualFromVirtual=Math.min(game.virtualRats,SWARM_COUNT);
   game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
-  for(const entry of plazas){
-    for(let i=0;i<SWARM_COUNT;i++){
-      spawnTempleSwarmRat(i,SWARM_COUNT,entry.plaza,entry.idol||null);
+  const plazaSnapshot=getCurrentTempleSwarmPlaza();
+  const entrances=getTempleSwarmEntrances(plazaSnapshot);
+  let cursor=0;
+  entrances.forEach((entrance,entranceIdx)=>{
+    const remaining=SWARM_COUNT-cursor;
+    const slotsLeft=entrances.length-entranceIdx;
+    const burstCount=(slotsLeft<=1)?remaining:Math.floor(remaining/slotsLeft);
+    for(let i=0;i<burstCount;i++){
+      spawnTempleSwarmRat(i,burstCount,plazaSnapshot,game.templeEvent.idol||null,entrance);
+      cursor++;
     }
+  });
+  while(cursor<SWARM_COUNT){
+    const entrance=entrances[cursor%entrances.length];
+    spawnTempleSwarmRat(cursor,SWARM_COUNT,plazaSnapshot,game.templeEvent.idol||null,entrance);
+    cursor++;
   }
-  game.templeEvent.pendingSwarmCount=0;
-  game.templeEvent.swarmSpawnCursor=0;
+}
+function startTempleAwakening(){
+  startTempleAwakeningLegacy();
 }
 function awakenTempleIdol(idol){
   game.templeEvent.awakened=true;
@@ -6925,6 +6949,9 @@ const UI_LAYOUT_COMPARE_PAIRS={
 const UI_LAYOUT_SNAP_PX=8;
 const ADMIN_STAGE_MOBILE_WIDTH=390;
 const ADMIN_STAGE_MOBILE_HEIGHT=844;
+function isLiveMobileDevice(){
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
+}
 const uiLayoutState={
   active:false,mode:null,config:null,selectedId:null,selectedIds:[],editor:null,
   overlays:new Map(),drag:null,toastTimer:null,clipboard:null,forcedMode:null,
@@ -7168,6 +7195,7 @@ function loadUILayoutConfig(){
 }
 function saveUILayoutConfig(){
   try{
+    captureUILayoutViewportMeta();
     if(uiLayoutState.config?.desktop){
       localStorage.setItem(UI_LAYOUT_STORAGE_KEYS.desktop,JSON.stringify(uiLayoutState.config.desktop));
     }
@@ -7176,6 +7204,23 @@ function saveUILayoutConfig(){
     }
   }catch(_){}
   window.__uiLayoutConfig=uiLayoutState.config;
+}
+function captureUILayoutViewportMeta(){
+  const store=uiLayoutState.config?.mobile;
+  if(!store || !isLiveMobileDevice()) return false;
+  const vv=window.visualViewport;
+  const width=Math.round(Math.max(320,vv?.width||window.innerWidth)*1000)/1000;
+  const height=Math.round(Math.max(568,vv?.height||window.innerHeight)*1000)/1000;
+  let changed=false;
+  if(store.__viewportWidth!==width){
+    store.__viewportWidth=width;
+    changed=true;
+  }
+  if(store.__viewportHeight!==height){
+    store.__viewportHeight=height;
+    changed=true;
+  }
+  return changed;
 }
 function createUILayoutHistorySnapshot(){
   return JSON.stringify({
@@ -8642,7 +8687,14 @@ function dismantleAdminStage(){
   document.body.style.removeProperty('--admin-stage-height');
 }
 function getAdminStageMobileBaseSize(){
-  const liveMobileViewport=window.matchMedia('(any-pointer: coarse)').matches;
+  const stored=uiLayoutState.config?.mobile;
+  if(stored?.__viewportWidth && stored?.__viewportHeight){
+    return {
+      width:Math.max(320,stored.__viewportWidth),
+      height:Math.max(568,stored.__viewportHeight)
+    };
+  }
+  const liveMobileViewport=isLiveMobileDevice() || window.matchMedia('(any-pointer: coarse)').matches;
   if(liveMobileViewport){
     return {
       width:Math.max(320,window.innerWidth),
@@ -8954,6 +9006,7 @@ function enableUILayoutEditor(){
   if(uiLayoutState.active) return;
   uiLayoutState.active=true;
   if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
+  captureUILayoutViewportMeta();
   uiLayoutState.mode=getUILayoutAutoMode();
   uiLayoutState.forcedMode=uiLayoutState.mode;
   uiLayoutState.selectedIds=[];
@@ -9017,8 +9070,10 @@ function clearGameplayInputState(){
   inputFlags.action=false;
 }
 uiLayoutState.config=loadUILayoutConfig();
+const initialViewportMetaCaptured=captureUILayoutViewportMeta();
 window.__uiLayoutConfig=uiLayoutState.config;
 applyUILayoutConfig();
+if(initialViewportMetaCaptured) saveUILayoutConfig();
 layoutMobileQuery.addEventListener?.('change',()=>{
   if(!uiLayoutState.active){
     uiLayoutState.mode=getUILayoutAutoMode();
@@ -9029,6 +9084,7 @@ layoutMobileQuery.addEventListener?.('change',()=>{
   }
 });
 window.addEventListener('resize',()=>{
+  if(captureUILayoutViewportMeta()) saveUILayoutConfig();
   if(uiLayoutState.active && getUILayoutMode()==='mobile'){
     applyAdminStageZoom();
     refreshUILayoutEditor();
@@ -10168,8 +10224,19 @@ function tickCleaner(cleaner,dt){
   }
 }
 function tickHumans(dt){
+  const focusPos=getGameplayFocusPosition();
   for(const h of game.humans){
     if(h!==game.parasitisedHost) h._footstepTimer=0;
+    if(!shouldSimulateHumanEntity(h,focusPos)){
+      if(h.root) h.root.visible=false;
+      if(h.shoulderRat) h.shoulderRat.visible=false;
+      if(h.parasiteOverlay) h.parasiteOverlay.visible=false;
+      h.curSpeed=0;
+      h.cleanBar.root.visible=false;
+      h._footstepTimer=0;
+      continue;
+    }
+    if(h.root) h.root.visible=true;
     if(h.idolWanderer){
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       h.wanderTimer=(h.wanderTimer||0)-dt;
@@ -10358,6 +10425,26 @@ const HUMAN_RAT_ATTACK_CAP=14;           // max rats per human at once
 const HUMAN_RAT_TRANSFORM_RATS=8;        // minimum climbers to start transforming
 const HUMAN_RAT_TRANSFORM_TIME=2.4;      // seconds at full coverage → transform
 const RAT_BLOOD_SPRAY_INTERVAL=0.18;     // throttle per-human blood spawns
+const HUMAN_ACTIVE_SIM_RADIUS=34;
+const HUMAN_ACTIVE_SIM_RADIUS_SQ=HUMAN_ACTIVE_SIM_RADIUS*HUMAN_ACTIVE_SIM_RADIUS;
+function getGameplayFocusPosition(){
+  return game.controlled?.root?.position
+    || game.parasitisedHost?.root?.position
+    || player?.root?.position
+    || null;
+}
+function shouldSimulateHumanEntity(human,focusPos){
+  if(!human?.root || !focusPos) return true;
+  if(human.controllable || human.parasitised || human===game.parasitisedHost || human.dead || human.idolWanderer || human.transformedToIdol){
+    return true;
+  }
+  if(game.templeEvent.gathering && pointInsideTempleZone(human.root.position.x,human.root.position.z,10)){
+    return true;
+  }
+  const dx=human.root.position.x-focusPos.x;
+  const dz=human.root.position.z-focusPos.z;
+  return dx*dx+dz*dz<=HUMAN_ACTIVE_SIM_RADIUS_SQ;
+}
 function spawnRatBloodSpray(pos,count=2){
   for(let i=0;i<count;i++){
     const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
@@ -11301,7 +11388,7 @@ async function init(){
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/踢ATTACK.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/清潔姿勢.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/拿起物件.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_roughness.JPEG'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_metallic.JPEG'),
@@ -11312,7 +11399,7 @@ async function init(){
       loadFBXAsync('asset/都市傳說鼠王_中年婦女/踢ATTACK.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年婦女/清潔姿勢.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_中年婦女/拿起物品.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_roughness.JPEG'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_metallic.JPEG'),
@@ -11322,7 +11409,7 @@ async function init(){
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/清潔姿勢.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_roughness.JPEG'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_metallic.JPEG'),
@@ -11400,52 +11487,61 @@ async function init(){
         }
       }));
     };
+    const sharedHumanClips={
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      pickup:null,
+      clean:cleanBoyFBX
+    };
     pushHumanVariant({
       name:'中年男子',
       source:idleHumanFBX,
-      idle:idleHumanFBX,walk:walkHumanFBX,run:runHumanFBX,jump:jumpHumanFBX,kick:kickHumanFBX,pickup:pickupHumanFBX,clean:cleanHumanFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTex,normal:normalTex,roughness:roughTex,metal:metalTex}
     });
     pushHumanVariant({
       name:'中年婦女',
       source:idleWomanFBX,
-      idle:idleWomanFBX,walk:walkWomanFBX,run:runWomanFBX,jump:jumpWomanFBX,kick:kickWomanFBX,pickup:pickupWomanFBX,clean:cleanWomanFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
     });
     pushHumanVariant({
       name:'男高中生',
       source:idleBoyFBX,
-      idle:idleBoyFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexBoy,normal:normalTexBoy,roughness:roughTexBoy,metal:metalTexBoy}
     });
     pushHumanVariant({
       name:'女高中生',
       source:idleSchoolgirlFBX,
-      idle:idleBoyFBX,walk:walkSchoolgirlFBX,run:runSchoolgirlFBX,jump:jumpSchoolgirlFBX,kick:kickSchoolgirlFBX,pickup:null,clean:cleanSchoolgirlFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
     });
     pushHumanVariant({
       name:'花花大媽',
       source:idleMumFBX,
-      idle:idleMumFBX,walk:walkMumFBX,run:runMumFBX,jump:jumpMumFBX,kick:kickMumFBX,pickup:null,clean:cleanMumFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
     });
     pushHumanVariant({
       name:'吊嘎阿伯',
       source:idleUncleFBX,
-      idle:idleUncleFBX,walk:walkUncleFBX,run:runUncleFBX,jump:jumpUncleFBX,kick:kickUncleFBX,pickup:null,clean:cleanUncleFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexUncle,normal:normalTexUncle,roughness:roughTexUncle,metal:metalTexUncle}
     });
     pushHumanVariant({
       name:'女上班族',
       source:idleOLFBX,
-      idle:idleOLFBX,walk:walkOLFBX,run:runOLFBX,jump:jumpOLFBX,kick:kickOLFBX,pickup:null,clean:cleanOLFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexOL,normal:normalTexOL,roughness:roughTexOL,metal:metalTexOL}
     });
     pushHumanVariant({
       name:'男上班族',
       source:idleSalarymanFBX,
-      idle:idleSalarymanFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
+      ...sharedHumanClips,
       skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
     });
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
