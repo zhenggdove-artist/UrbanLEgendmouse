@@ -529,10 +529,6 @@
 <canvas id="c"></canvas>
 <canvas id="minimap" width="160" height="160" aria-label="Map"></canvas>
 <div id="viewport-frame" aria-hidden="true">
-  <div class="viewport-edge" id="viewport-frame-top"></div>
-  <div class="viewport-edge" id="viewport-frame-bottom"></div>
-  <div class="viewport-edge" id="viewport-frame-left"></div>
-  <div class="viewport-edge" id="viewport-frame-right"></div>
 </div>
 
 <div id="hud">
@@ -906,9 +902,10 @@ const TEMPLE_KEEP_OUT_ZONES=[
   {minX:TEMPLE_CHUNK_IDX*CHUNK_SIZE+18-19,maxX:TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+28,minZ:-19.5,maxZ:19.5},
   {minX:(TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6)-19,maxX:(TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6)+28,minZ:-19.5,maxZ:19.5}
 ];
+const FULL_WORLD_PRELOAD_MIN=TEMPLE_A_CHUNK_IDX-2;
+const FULL_WORLD_PRELOAD_MAX=TEMPLE_CHUNK_IDX+4;
 function isTempleHotChunk(idx){
-  return (idx>=TEMPLE_A_CHUNK_IDX-1 && idx<=TEMPLE_A_CHUNK_IDX+1)
-    || (idx>=TEMPLE_CHUNK_IDX-1 && idx<=TEMPLE_CHUNK_IDX+1);
+  return idx>=FULL_WORLD_PRELOAD_MIN && idx<=FULL_WORLD_PRELOAD_MAX;
 }
 function pointInsideTempleZone(x,z,margin=0){
   for(const z0 of TEMPLE_KEEP_OUT_ZONES){
@@ -937,7 +934,7 @@ const game={
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
     altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),processionPath:[],
     gathering:false,started:false,awakened:false,awakeningRequested:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
-    pendingSwarmCount:0,swarmSpawnCursor:0,swarmSpawnPerFrame:32,
+    pendingSwarmCount:0,swarmSpawnCursor:0,swarmSpawnPerFrame:32,pendingSwarmBursts:[],
     glowCooldown:0,flashStrength:0,keyLight:null,rimLight:null,lightTarget:null,
     // Loop portals make the two end-of-street temples conceptually the same
     // temple. We spawn a decorative twin idol at the non-event temple so
@@ -970,7 +967,6 @@ const SOUND_PATHS={
 };
 SOUND_PATHS.ratSqueak=SOUND_PATHS.playerMove;
 const SFX_LOOP_KEYS=new Set(['playerBiteLoop','ritualSwarm','streetAmbience']);
-const SFX_BOOT_PRELOAD_KEYS=['playerMove','playerJump','playerBiteLoop','streetAmbience','parasiteComplete','humanDeath'];
 const HUMAN_BITE_SCREAM_PATHS={
   '中年婦女':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E5%A9%A6%E5%A5%B3%E5%B0%96%E5%8F%AB.mp3',
   '中年男子':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E7%94%B7%E5%AD%90%E5%B0%96%E5%8F%AB.MP3',
@@ -981,6 +977,7 @@ const HUMAN_BITE_SCREAM_PATHS={
   '男高中生':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E7%94%B7%E9%AB%98%E4%B8%AD%E7%94%9F%E5%B0%96%E5%8F%AB.mp3',
   '花花大媽':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E8%8A%B1%E8%8A%B1%E5%A4%A7%E5%AA%BD%E5%B0%96%E5%8F%AB.MP3'
 };
+const ALL_SFX_KEYS=[...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)];
 const SFX_DISTANCE_NEAR=2.2;
 const SFX_DISTANCE_FAR=34;
 const sfxState={
@@ -1057,7 +1054,7 @@ function ensureSFXPlayer(key){
 function primeSFXPlayers(keys=null){
   const sourceKeys=Array.isArray(keys) && keys.length
     ? keys
-    : [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)];
+    : ALL_SFX_KEYS;
   for(const key of sourceKeys){
     ensureSFXPlayer(key);
   }
@@ -1086,7 +1083,7 @@ function waitSFXAudioReady(audio,timeoutMs=9000){
     try{audio.load();}catch(_){finish(false);}
   });
 }
-async function preloadSFXPlayers(keys=SFX_BOOT_PRELOAD_KEYS){
+async function preloadSFXPlayers(keys=ALL_SFX_KEYS){
   primeSFXPlayers(keys);
   const waits=[];
   for(const key of keys){
@@ -1111,7 +1108,7 @@ function warmSFXKey(key,{fullPool=false}={}){
   }
   return warms;
 }
-function unlockSFX(keys=SFX_BOOT_PRELOAD_KEYS){
+function unlockSFX(keys=ALL_SFX_KEYS){
   if(sfxState.unlockPromise) return sfxState.unlockPromise;
   sfxState.unlocked=true;
   const warms=[];
@@ -4965,13 +4962,24 @@ function startTempleGathering(){
     );
   }
 }
+function getActiveTempleSwarmPlazas(){
+  const plazas=[];
+  if(game.templeEvent.idol?.plazaSnapshot){
+    plazas.push({plaza:clonePlazaInfoForIdol(game.templeEvent.idol.plazaSnapshot),idol:game.templeEvent.idol});
+  }
+  for(const idol of game.templeEvent.secondaryIdols){
+    if(!idol?.plazaSnapshot) continue;
+    plazas.push({plaza:clonePlazaInfoForIdol(idol.plazaSnapshot),idol});
+  }
+  return plazas;
+}
 function setTempleFlash(strength=0){
   game.templeEvent.flashStrength=clamp(strength,0,1);
   if(templeFlashEl) templeFlashEl.style.opacity=game.templeEvent.flashStrength.toFixed(3);
 }
-function spawnTempleSwarmRat(index,total){
-  const street=game.templeEvent.streetPos;
-  const doorway=game.templeEvent.doorwayPos;
+function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null){
+  const street=plazaSnapshot.streetPos;
+  const doorway=plazaSnapshot.doorwayPos;
   let inX=doorway.x-street.x, inZ=doorway.z-street.z;
   const inLen=Math.hypot(inX,inZ)||1;
   inX/=inLen; inZ/=inLen;
@@ -4986,9 +4994,12 @@ function spawnTempleSwarmRat(index,total){
   rat.spawnX=sx;
   rat.spawnZ=sz;
   rat.templeBound=true;
+  rat.templeSwarmVisual=true;
+  rat.templeSwarmSnapshot=clonePlazaInfoForIdol(plazaSnapshot);
+  rat.templeSwarmIdol=idolActor||null;
   rat.followPlayer=false;
   rat.followStatue=false;
-  rat.targetPos.set(game.templeEvent.altarFrontPos.x,0,game.templeEvent.altarFrontPos.z);
+  rat.targetPos.set(plazaSnapshot.altarFrontPos.x,0,plazaSnapshot.altarFrontPos.z);
   rat.moveIntent.y=1;
   rat.swarmSpawnIndex=index;
   rat.swarmSpawnTotal=total;
@@ -4996,20 +5007,23 @@ function spawnTempleSwarmRat(index,total){
   game.templeEvent.swarmSprites.push(rat);
 }
 function tickTempleSwarmSpawnQueue(){
-  const total=game.templeEvent.pendingSwarmCount||0;
-  if(total<=0) return;
+  const bursts=game.templeEvent.pendingSwarmBursts||[];
+  if(!bursts.length) return;
   const batch=Math.max(1,game.templeEvent.swarmSpawnPerFrame||32);
-  const remaining=total-(game.templeEvent.swarmSpawnCursor||0);
-  const spawnNow=Math.min(batch,remaining);
-  for(let i=0;i<spawnNow;i++){
-    const idx=(game.templeEvent.swarmSpawnCursor||0)+i;
-    spawnTempleSwarmRat(idx,total);
+  let remainingBatch=batch;
+  while(remainingBatch>0 && bursts.length){
+    const burst=bursts[0];
+    const remaining=burst.total-burst.cursor;
+    const spawnNow=Math.min(remainingBatch,remaining);
+    for(let i=0;i<spawnNow;i++){
+      const idx=burst.cursor+i;
+      spawnTempleSwarmRat(idx,burst.total,burst.plaza,burst.idol);
+    }
+    burst.cursor+=spawnNow;
+    remainingBatch-=spawnNow;
+    if(burst.cursor>=burst.total) bursts.shift();
   }
-  game.templeEvent.swarmSpawnCursor=(game.templeEvent.swarmSpawnCursor||0)+spawnNow;
-  if(game.templeEvent.swarmSpawnCursor>=total){
-    game.templeEvent.pendingSwarmCount=0;
-    game.templeEvent.swarmSpawnCursor=0;
-  }
+  game.templeEvent.pendingSwarmCount=bursts.reduce((sum,burst)=>sum+Math.max(0,burst.total-burst.cursor),0);
 }
 function spawnTempleGlow(pos,count=44){
   for(let i=0;i<count;i++){
@@ -5105,6 +5119,7 @@ function startTempleAwakening(){
   game.templeEvent.swarmSprites.length=0;
   game.templeEvent.pendingSwarmCount=0;
   game.templeEvent.swarmSpawnCursor=0;
+  game.templeEvent.pendingSwarmBursts.length=0;
   setAllTempleIdolPhaseMaterials('gold');
   for(const rat of game.rats){
     if(rat===player)continue;
@@ -5117,12 +5132,21 @@ function startTempleAwakening(){
       game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
     );
   }
-  // Avoid the doorway hitch: queue the burst instead of spawning all
-  // 300 rats in one frame.
   const SWARM_COUNT=300;
-  const visualFromVirtual=Math.min(game.virtualRats,SWARM_COUNT);
+  const plazas=getActiveTempleSwarmPlazas();
+  const totalSwarmCount=SWARM_COUNT*Math.max(1,plazas.length);
+  const visualFromVirtual=Math.min(game.virtualRats,totalSwarmCount);
   game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
-  game.templeEvent.pendingSwarmCount=SWARM_COUNT;
+  for(const entry of plazas){
+    game.templeEvent.pendingSwarmBursts.push({
+      plaza:entry.plaza,
+      idol:entry.idol||null,
+      total:SWARM_COUNT,
+      cursor:0
+    });
+  }
+  game.templeEvent.pendingSwarmCount=totalSwarmCount;
+  game.templeEvent.swarmSpawnPerFrame=totalSwarmCount;
   tickTempleSwarmSpawnQueue();
 }
 function awakenTempleIdol(idol){
@@ -5280,13 +5304,22 @@ function tickTempleEvent(dt){
   if(!game.templeEvent.started)return;
   if(game.templeEvent.phase==='gather'){
     game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.22);
-    const idolBaseY=idol.root.position.y;
-    const altarFront=game.templeEvent.altarFrontPos;
-    const altarEdgeTop=game.templeEvent.altarEdgeTopPos;
-    const altarTop=game.templeEvent.altarTopPos;
-    const doorway=game.templeEvent.doorwayPos;
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
+      const swarmSnapshot=rat.templeSwarmSnapshot||{
+        altarPos:game.templeEvent.altarPos,
+        altarTopPos:game.templeEvent.altarTopPos,
+        altarEdgeTopPos:game.templeEvent.altarEdgeTopPos,
+        altarFrontPos:game.templeEvent.altarFrontPos,
+        doorwayPos:game.templeEvent.doorwayPos,
+        streetPos:game.templeEvent.streetPos
+      };
+      const swarmIdol=(rat.templeSwarmIdol?.root && rat.templeSwarmIdol.root.parent)?rat.templeSwarmIdol:idol;
+      const idolBaseY=swarmIdol?.root?.position?.y ?? idol.root.position.y;
+      const altarFront=swarmSnapshot.altarFrontPos;
+      const altarEdgeTop=swarmSnapshot.altarEdgeTopPos;
+      const altarTop=swarmSnapshot.altarTopPos;
+      const doorway=swarmSnapshot.doorwayPos;
       const phase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(rat.swarmPhase=Math.random()*Math.PI*2);
       const climb=clamp(game.templeEvent.swarmProgress*1.12-((phase/Math.PI)%0.12),0,1);
       const ringAngle=phase+gameTime*0.9;
@@ -5342,8 +5375,8 @@ function tickTempleEvent(dt){
         // while rising up its silhouette so they BLANKET the statue.
         const crest=(climb-0.78)/0.22;
         const radius=lerp(1.65,0.45,crest);
-        targetX=game.templeEvent.altarPos.x+Math.cos(ringAngle)*radius;
-        targetZ=game.templeEvent.altarPos.z+Math.sin(ringAngle)*radius*0.5;
+        targetX=swarmSnapshot.altarPos.x+Math.cos(ringAngle)*radius;
+        targetZ=swarmSnapshot.altarPos.z+Math.sin(ringAngle)*radius*0.5;
         const bodyT=(phase%Math.PI)/Math.PI;
         const climbCeiling=idolBaseY+TEMPLE_IDOL_HEIGHT+0.25;
         const climbFloor=idolBaseY+0.20;
@@ -5364,7 +5397,7 @@ function tickTempleEvent(dt){
       rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*lerpRate));
       rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*lerpRate));
       rat.root.position.y=lerp(rat.root.position.y,yGate,Math.min(1,dt*(lerpRate+0.6)));
-      rat.root.rotation.y=Math.atan2(game.templeEvent.altarPos.x-rat.root.position.x,game.templeEvent.altarPos.z-rat.root.position.z);
+      rat.root.rotation.y=Math.atan2(swarmSnapshot.altarPos.x-rat.root.position.x,swarmSnapshot.altarPos.z-rat.root.position.z);
       rat.moveIntent.y=-1;
       tickRatBillboard(rat,dt);
     }
@@ -5422,6 +5455,7 @@ function tickTempleEvent(dt){
       rat.root.position.y=lerp(rat.root.position.y,GROUND_Y_OFFSET,Math.min(1,dt*6.5));
       rat.followStatue=true;
       rat.templeBound=false;
+      rat.templeSwarmVisual=false;
       rat.followPlayer=false;
     }
     if(game.templeEvent.phaseTimer<=0){
@@ -6944,10 +6978,6 @@ const UI_LAYOUT_DEFAULTS={
   }
 };
 const UI_LAYOUT_TARGET_DEFS=[
-  {id:'viewport-frame-top',label:'Frame Top',scene:'game'},
-  {id:'viewport-frame-bottom',label:'Frame Bottom',scene:'game'},
-  {id:'viewport-frame-left',label:'Frame Left',scene:'game'},
-  {id:'viewport-frame-right',label:'Frame Right',scene:'game'},
   {id:'minimap',label:'Minimap',scene:'game'},
   {id:'mode-badge',label:'Mode Badge',scene:'game'},
   {id:'chaos-box',label:'Chaos Box',scene:'game'},
@@ -10860,6 +10890,9 @@ function tickFollowerRats(dt){
     if(r.climbingHuman){
       if(tickRatClimbingHuman(r,dt)) continue;
     }
+    if(r.templeSwarmVisual && game.templeEvent.started && !game.templeEvent.awakened){
+      continue;
+    }
     if(r.templeBound && game.templeEvent.idol && !game.templeEvent.awakened){
       const idol=game.templeEvent.idol;
       const phase=(r.swarmPhase!==undefined)?r.swarmPhase:(r.swarmPhase=Math.random()*Math.PI*2);
@@ -11258,11 +11291,10 @@ function setIntroProgress(p,label){
   renderIntroProgress();
 }
 startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
-startBtn.addEventListener('click',async ()=>{
+startBtn.addEventListener('click',()=>{
   if(gameState!=='intro')return;
   startBtn.disabled=true;startBtn.textContent='LOADING…';
   setIntroProgress(100);
-  await unlockSFX();
   introEl.style.display='none';
   document.body.classList.remove('intro-active');
   startGame();
@@ -11377,8 +11409,8 @@ function tick(){
 // ===== Init =====
 async function init(){
   setIntroProgress(2,'BOOT');
-  primeSFXPlayers(SFX_BOOT_PRELOAD_KEYS);
-  const sfxPreloadPromise=preloadSFXPlayers(SFX_BOOT_PRELOAD_KEYS);
+  primeSFXPlayers(ALL_SFX_KEYS);
+  const sfxPreloadPromise=preloadSFXPlayers(ALL_SFX_KEYS);
   loadRatCityLeaderboard();
   initSharedTextures();
   buildTaipeiSkyline();
@@ -11634,10 +11666,10 @@ async function init(){
   // Warm only the immediate temple-adjacent chunks during the intro so
   // temple entry stays smooth without permanently keeping the entire
   // street ring alive at startup.
-  await warmChunksDuringIntro([
-    TEMPLE_A_CHUNK_IDX-1,TEMPLE_A_CHUNK_IDX,TEMPLE_A_CHUNK_IDX+1,
-    TEMPLE_CHUNK_IDX-1,TEMPLE_CHUNK_IDX,TEMPLE_CHUNK_IDX+1
-  ],{progressStart:91,progressEnd:99,label:'WORLD'});
+  await warmChunksDuringIntro(
+    Array.from({length:FULL_WORLD_PRELOAD_MAX-FULL_WORLD_PRELOAD_MIN+1},(_,i)=>FULL_WORLD_PRELOAD_MIN+i),
+    {progressStart:91,progressEnd:99,label:'WORLD'}
+  );
   clearStartZone(player.root.position,3.6);
   setIntroProgress(100);
 
