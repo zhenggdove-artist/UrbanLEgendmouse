@@ -906,6 +906,10 @@ const TEMPLE_KEEP_OUT_ZONES=[
   {minX:TEMPLE_CHUNK_IDX*CHUNK_SIZE+18-19,maxX:TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+28,minZ:-19.5,maxZ:19.5},
   {minX:(TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6)-19,maxX:(TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6)+28,minZ:-19.5,maxZ:19.5}
 ];
+function isTempleHotChunk(idx){
+  return (idx>=TEMPLE_A_CHUNK_IDX-1 && idx<=TEMPLE_A_CHUNK_IDX+1)
+    || (idx>=TEMPLE_CHUNK_IDX-1 && idx<=TEMPLE_CHUNK_IDX+1);
+}
 function pointInsideTempleZone(x,z,margin=0){
   for(const z0 of TEMPLE_KEEP_OUT_ZONES){
     if(x>=z0.minX-margin && x<=z0.maxX+margin && z>=z0.minZ-margin && z<=z0.maxZ+margin) return z0;
@@ -965,6 +969,8 @@ const SOUND_PATHS={
   streetAmbience:`${SOUND_DIR}街道背景音效.wav`
 };
 SOUND_PATHS.ratSqueak=SOUND_PATHS.playerMove;
+const SFX_LOOP_KEYS=new Set(['playerBiteLoop','ritualSwarm','streetAmbience']);
+const SFX_BOOT_PRELOAD_KEYS=['playerMove','playerJump','playerBiteLoop','streetAmbience','parasiteComplete','humanDeath'];
 const HUMAN_BITE_SCREAM_PATHS={
   '中年婦女':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E5%A9%A6%E5%A5%B3%E5%B0%96%E5%8F%AB.mp3',
   '中年男子':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E7%94%B7%E5%AD%90%E5%B0%96%E5%8F%AB.MP3',
@@ -1006,10 +1012,10 @@ function createSFXAudio(path,{loop=false}={}){
   return audio;
 }
 function getSFXPolyphony(key){
-  if(key==='playerMove' || key==='humanWalk') return 10;
-  if(key==='playerJump' || key==='parasiteComplete' || key==='binFall' || key==='vehicleBreak' || key==='stallBreak' || key==='stallFire') return 8;
-  if(HUMAN_BITE_SCREAM_PATHS[key]) return 4;
-  return 3;
+  if(key==='playerMove' || key==='humanWalk') return 4;
+  if(key==='playerJump' || key==='parasiteComplete' || key==='binFall' || key==='vehicleBreak' || key==='stallBreak' || key==='stallFire') return 3;
+  if(HUMAN_BITE_SCREAM_PATHS[key]) return 2;
+  return 2;
 }
 function warmSFXAudioElement(audio){
   if(!audio) return Promise.resolve(false);
@@ -1043,15 +1049,16 @@ function ensureSFXPlayer(key){
   if(!path) return null;
   const audio=createSFXAudio(path);
   const pool=[audio];
-  const poolSize=getSFXPolyphony(key);
-  for(let i=1;i<poolSize;i++) pool.push(createSFXAudio(path));
-  const loopAudio=createSFXAudio(path,{loop:true});
+  const loopAudio=SFX_LOOP_KEYS.has(key)?createSFXAudio(path,{loop:true}):null;
   player={path,audio,pool,loopAudio,lastTime:-Infinity,nextIndex:0,warmed:false,cooldowns:new Map()};
   sfxState.players.set(key,player);
   return player;
 }
-function primeSFXPlayers(){
-  for(const key of [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)]){
+function primeSFXPlayers(keys=null){
+  const sourceKeys=Array.isArray(keys) && keys.length
+    ? keys
+    : [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)];
+  for(const key of sourceKeys){
     ensureSFXPlayer(key);
   }
 }
@@ -1079,35 +1086,54 @@ function waitSFXAudioReady(audio,timeoutMs=9000){
     try{audio.load();}catch(_){finish(false);}
   });
 }
-async function preloadSFXPlayers(){
-  primeSFXPlayers();
+async function preloadSFXPlayers(keys=SFX_BOOT_PRELOAD_KEYS){
+  primeSFXPlayers(keys);
   const waits=[];
-  for(const player of sfxState.players.values()){
+  for(const key of keys){
+    const player=sfxState.players.get(key);
+    if(!player) continue;
     waits.push(waitSFXAudioReady(player.audio));
-    waits.push(waitSFXAudioReady(player.loopAudio));
-    for(const extra of player.pool.slice(1,Math.min(player.pool.length,4))){
-      waits.push(waitSFXAudioReady(extra));
-    }
+    if(player.loopAudio) waits.push(waitSFXAudioReady(player.loopAudio));
   }
   const results=await Promise.allSettled(waits);
   const failed=results.filter(r=>r.status==='fulfilled' && !r.value).length + results.filter(r=>r.status==='rejected').length;
   if(failed) console.warn('[sfx] some audio files did not report ready before timeout; continuing after preload window',failed);
 }
-function unlockSFX(){
+function warmSFXKey(key,{fullPool=false}={}){
+  const player=ensureSFXPlayer(key);
+  if(!player) return [];
+  const warms=[warmSFXAudioElement(player.audio)];
+  if(player.loopAudio) warms.push(warmSFXAudioElement(player.loopAudio));
+  if(fullPool){
+    const targetPool=Math.max(1,getSFXPolyphony(key));
+    while(player.pool.length<targetPool) player.pool.push(createSFXAudio(player.path));
+    for(const extra of player.pool.slice(1)) warms.push(warmSFXAudioElement(extra));
+  }
+  return warms;
+}
+function unlockSFX(keys=SFX_BOOT_PRELOAD_KEYS){
   if(sfxState.unlockPromise) return sfxState.unlockPromise;
   sfxState.unlocked=true;
   const warms=[];
-  for(const key of [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)]){
+  for(const key of keys){
     const player=ensureSFXPlayer(key);
     if(!player || player.warmed) continue;
     player.warmed=true;
-    warms.push(warmSFXAudioElement(player.audio));
-    warms.push(warmSFXAudioElement(player.loopAudio));
-    for(const extra of player.pool){
-      warms.push(warmSFXAudioElement(extra));
-    }
+    warms.push(...warmSFXKey(key,{fullPool:false}));
   }
-  sfxState.unlockPromise=Promise.allSettled(warms).then(()=>true);
+  const quickUnlock=Promise.race([
+    Promise.allSettled(warms).then(()=>true),
+    new Promise(resolve=>window.setTimeout(()=>resolve(true),250))
+  ]);
+  sfxState.unlockPromise=quickUnlock;
+  window.setTimeout(()=>{
+    for(const key of [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)]){
+      const player=ensureSFXPlayer(key);
+      if(!player || player.warmed) continue;
+      player.warmed=true;
+      warmSFXKey(key,{fullPool:false});
+    }
+  },0);
   return sfxState.unlockPromise;
 }
 function resolveSFXEmitterPosition(source){
@@ -1147,6 +1173,10 @@ function playSFX(key,{volume=1,playbackRate=1,cooldown=0,reset=true,source=null,
   if(reuseBase && player.audio.paused){
     audio=player.audio;
   }else{
+    const maxPool=getSFXPolyphony(key);
+    if(player.pool.every(a=>!a.paused && !a.ended) && player.pool.length<maxPool){
+      player.pool.push(createSFXAudio(player.path));
+    }
     audio=player.pool.find(a=>a.paused || a.ended) || player.pool[player.nextIndex++%player.pool.length];
   }
   if(!audio) return null;
@@ -1164,6 +1194,7 @@ function startLoopSFX(key,{volume=1,playbackRate=1,source=null}={}){
   if(!audio){
     const player=ensureSFXPlayer(key);
     if(!player) return null;
+    if(!player.loopAudio) player.loopAudio=createSFXAudio(player.path,{loop:true});
     audio=player.loopAudio;
     sfxState.loops.set(key,audio);
   }
@@ -3580,10 +3611,10 @@ function buildTempleComplex(xBase,opts={}){
 // ===== Chunk system — infinite alley along the X axis =====
 // CHUNK_SIZE is declared up top alongside TEMPLE_CHUNK_IDX so the
 // temple keep-out zones can reference it during initialisation.
-const CHUNK_WINDOW_AHEAD=6;
-const CHUNK_WINDOW_A_SIDE=14;
+const CHUNK_WINDOW_AHEAD=4;
+const CHUNK_WINDOW_A_SIDE=4;
 const CHUNK_PREFETCH_MARGIN=8;
-const CHUNK_PREFETCH_EXTRA=4;
+const CHUNK_PREFETCH_EXTRA=2;
 const chunks=new Map();
 let lastChunkIdx=null;
 function yawToForwardVector(yaw){
@@ -4011,7 +4042,6 @@ function generateTempleChunk(idx,xBase,opts={}){
     requestDecorativeTempleIdol(plazaInfo);
   }
   chunks.set(idx,chunk);_activeChunk=null;
-  console.log('[chunk] temple '+idx+' humans='+chunk.humans.length+' meshes='+chunk.meshes.length);
 }
 function generateChunk(idx){
   const xBase=idx*CHUNK_SIZE;
@@ -4323,7 +4353,6 @@ function generateChunk(idx){
   }
 
   chunks.set(idx,chunk);_activeChunk=null;
-  console.log('[chunk] '+idx+' props='+chunk.props.length+' humans='+chunk.humans.length+' meshes='+chunk.meshes.length);
 }
 
 function ensureChunksAroundX(x){
@@ -4346,22 +4375,31 @@ function ensureChunksAroundX(x){
   }
   const keepBehind=CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA;
   const keepAhead=CHUNK_WINDOW_AHEAD;
-  // The street is a finite ring between the two temple chunks via loop
-  // portals. Every chunk strictly inside the ring (A_CHUNK_IDX .. portal
-  // chunk past TEMPLE_CHUNK_IDX) is part of the player's traversable
-  // world, so we NEVER dispose them. Without this guard, walking around
-  // the loop kept disposing and re-generating ~50ms-each chunks, which
-  // produced the frame stall the user observed near the temple doors.
-  const LOOP_PROTECT_MIN=TEMPLE_A_CHUNK_IDX-2;
-  const LOOP_PROTECT_MAX=TEMPLE_CHUNK_IDX+4; // keep both temple approaches hot
   for(const [idx,chunk] of [...chunks]){
     if(idx===TEMPLE_CHUNK_IDX || idx===TEMPLE_A_CHUNK_IDX) continue;
-    if(idx>=LOOP_PROTECT_MIN && idx<=LOOP_PROTECT_MAX) continue;
+    if(isTempleHotChunk(idx)) continue;
     if(idx<=(c-keepBehind-1) || idx>=(c+keepAhead+1)){
-      disposeChunk(chunk);chunks.delete(idx);console.log('[chunk] dispose '+idx);
+      disposeChunk(chunk);chunks.delete(idx);
     }
   }
   lastChunkIdx=c;
+}
+function waitForMainThreadBreath(){
+  return new Promise(resolve=>window.setTimeout(resolve,0));
+}
+async function warmChunksDuringIntro(chunkIds,{progressStart=90,progressEnd=99,label='WORLD'}={}){
+  const pending=[...new Set(chunkIds)].filter(idx=>!chunks.has(idx));
+  if(!pending.length){
+    setIntroProgress(progressEnd,label);
+    return;
+  }
+  const total=pending.length;
+  for(let i=0;i<pending.length;i++){
+    generateChunk(pending[i]);
+    const pct=progressStart+((i+1)/total)*(progressEnd-progressStart);
+    setIntroProgress(pct,label);
+    await waitForMainThreadBreath();
+  }
 }
 
 /* ============================================================
@@ -11339,8 +11377,8 @@ function tick(){
 // ===== Init =====
 async function init(){
   setIntroProgress(2,'BOOT');
-  primeSFXPlayers();
-  const sfxPreloadPromise=preloadSFXPlayers();
+  primeSFXPlayers(SFX_BOOT_PRELOAD_KEYS);
+  const sfxPreloadPromise=preloadSFXPlayers(SFX_BOOT_PRELOAD_KEYS);
   loadRatCityLeaderboard();
   initSharedTextures();
   buildTaipeiSkyline();
@@ -11593,11 +11631,13 @@ async function init(){
   // Streamed chunks around the player's starting X — this is also when
   // the wandering humans get spawned for the first three live chunks.
   ensureChunksAroundX(player.root.position.x);
-  // Pre-generate the full protected temple corridor up front so first
-  // entry into either temple does not pay synchronous chunk-build cost.
-  for(let i=TEMPLE_A_CHUNK_IDX-2;i<=TEMPLE_CHUNK_IDX+4;i++){
-    if(!chunks.has(i)) generateChunk(i);
-  }
+  // Warm only the immediate temple-adjacent chunks during the intro so
+  // temple entry stays smooth without permanently keeping the entire
+  // street ring alive at startup.
+  await warmChunksDuringIntro([
+    TEMPLE_A_CHUNK_IDX-1,TEMPLE_A_CHUNK_IDX,TEMPLE_A_CHUNK_IDX+1,
+    TEMPLE_CHUNK_IDX-1,TEMPLE_CHUNK_IDX,TEMPLE_CHUNK_IDX+1
+  ],{progressStart:91,progressEnd:99,label:'WORLD'});
   clearStartZone(player.root.position,3.6);
   setIntroProgress(100);
 
