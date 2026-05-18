@@ -256,7 +256,14 @@
   body.intro-active #game-controls,
   body.game-won #hud,
   body.game-won #minimap,
+  body.game-won #rat-city-btn,
+  body.game-won #rat-city-panel,
+  body.game-won #viewport-frame-top,
+  body.game-won #viewport-frame-bottom,
+  body.game-won #viewport-frame-left,
+  body.game-won #viewport-frame-right,
   body.game-won #game-controls{display:none !important}
+  body.game-won .ui-layout-custom-frame[data-scene="game"]{display:none !important}
   body.rat-city-mode #game-controls{display:none !important}
 
   #rats-win{position:fixed;inset:0;display:none;flex-direction:column;
@@ -267,8 +274,8 @@
     background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/100% 100% no-repeat}
   #rats-win > *{position:relative;z-index:1}
   #rats-win.show{display:flex}
-  #rats-win .rw-text{font-size:30px;letter-spacing:0.24em;color:var(--accent-soft);margin-bottom:6px}
-  #rats-win .rw-sub{font-size:11px;color:var(--ink-soft);letter-spacing:0.12em;margin-bottom:18px}
+  #rats-win .rw-text{font-size:24px;letter-spacing:0.20em;color:var(--accent-soft);margin-bottom:10px;white-space:nowrap}
+  #rats-win .rw-sub{font-size:11px;color:#fff1c2;letter-spacing:0.12em;margin-bottom:18px;text-shadow:0 2px 0 rgba(40,10,32,0.72)}
   #rats-win .rw-btn{appearance:none;border:none;border-radius:4px;padding:11px 22px;
     background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
     letter-spacing:0.16em;cursor:pointer}
@@ -956,6 +963,7 @@ const SOUND_PATHS={
   vehicleBreak:`${SOUND_DIR}車子或有玻璃的物體被砸毀的聲音.mp3`,
   streetAmbience:`${SOUND_DIR}街道背景音效.wav`
 };
+SOUND_PATHS.ratSqueak=SOUND_PATHS.playerMove;
 const HUMAN_BITE_SCREAM_PATHS={
   '中年婦女':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E5%A9%A6%E5%A5%B3%E5%B0%96%E5%8F%AB.mp3',
   '中年男子':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E7%94%B7%E5%AD%90%E5%B0%96%E5%8F%AB.MP3',
@@ -1464,7 +1472,7 @@ function loadTempleIdolAssets(){
   // The two user-supplied skin variants live at fixed filenames in
   // asset/神像/. If either is missing we silently fall back to the
   // original BaseColor jpg so the game still runs.
-  const optionalTex=(path)=>loadHumanTextureAsync(path).catch(()=>null);
+  const optionalTex=()=>Promise.resolve(null);
   templeIdolLoadPromise=Promise.all([
     loadFBXAsync('asset/神像/Orc Idle.fbx'),
     loadFBXAsync('asset/神像/Walking.fbx'),
@@ -2036,13 +2044,8 @@ function loadFloorTexture(){
   return Promise.resolve(TEX.asphalt);
 }
 function loadRatPortraitTexture(){
-  return new Promise(res=>{
-    imageLoader.load('asset/photos/rat_reference.png',
-      tex=>{ratPortraitTexture=pixelate(tex);ratPortraitTexture.colorSpace=THREE.SRGBColorSpace;res(tex)},
-      undefined,
-      ()=>res(null)
-    );
-  });
+  ratPortraitTexture=null;
+  return Promise.resolve(null);
 }
 
 /* Convenience — build a basic-material box. Static scene geometry only.
@@ -6978,6 +6981,9 @@ const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn','intro-title','
 const UI_LAYOUT_TEXT_DEFAULTS={
   'rat-city-btn':'RAT CITY',
   'start-btn':'BEGIN',
+  'rw-text':'RATS WIN',
+  'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
+  'rw-replay':'PLAY AGAIN',
   'intro-copy':`This is an ancient prophecy.
 
 Under the call of the Rat King, vast hordes of rats march toward the city.
@@ -7037,10 +7043,10 @@ const UI_LAYOUT_INTRO_FALLBACK={
   'intro-copy':{x:50,y:53,w:45,h:30,z:31,hidden:false,locked:false},
   'intro-progress-text':{x:50,y:76.6,w:24,h:1.7,z:32,hidden:false,locked:false},
   'intro-progress-track':{x:50,y:80.4,w:28,h:0.9,z:32,hidden:false,locked:false},
-  'rats-win':{x:50,y:50,w:40,h:50,z:30,hidden:false,locked:false},
-  'rw-text':{x:50,y:40,w:34,h:8,z:31,hidden:false,locked:false},
-  'rw-sub':{x:50,y:48,w:30,h:4,z:31,hidden:false,locked:false},
-  'rw-replay':{x:50,y:62,w:16,h:6,z:31,hidden:false,locked:false}
+  'rats-win':{x:50,y:50,w:56,h:56,z:30,hidden:false,locked:false},
+  'rw-text':{x:50,y:43,w:58,h:7,z:31,hidden:false,locked:false,fontSize:24},
+  'rw-sub':{x:50,y:54,w:54,h:4,z:31,hidden:false,locked:false,fontSize:11},
+  'rw-replay':{x:50,y:69,w:18,h:6,z:31,hidden:false,locked:false}
 };
 const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-top':'viewport-frame-bottom',
@@ -7157,6 +7163,29 @@ function ensureUILayoutBuiltins(config){
       if(typeof current.text!=='string' || !current.text.trim()){
         store[id]={...current,text};
       }
+    }
+    if(!store.__endingTextDefaultsRestored){
+      for(const id of ['rw-text','rw-sub','rw-replay']){
+        const text=UI_LAYOUT_TEXT_DEFAULTS[id];
+        const current=store[id]||{};
+        if(typeof current.text!=='string' || !current.text.trim()){
+          store[id]={...current,text};
+        }
+      }
+      store.__endingTextDefaultsRestored=true;
+    }
+    if(!store.__endingCardLayoutApplied){
+      for(const id of ['rats-win','rw-text','rw-sub','rw-replay']){
+        const fallback=UI_LAYOUT_INTRO_FALLBACK[id];
+        const current=store[id]||{};
+        if(fallback) store[id]={...current,...fallback,text:current.text};
+      }
+      for(const id of ['rw-text','rw-sub','rw-replay']){
+        if(store[id] && (!store[id].text || !String(store[id].text).trim())){
+          store[id].text=UI_LAYOUT_TEXT_DEFAULTS[id];
+        }
+      }
+      store.__endingCardLayoutApplied=true;
     }
     if(!store['host-life-box']){
       const frame=store.__customFrames.find(entry=>entry?.id==='builtin-frame-host-life');
