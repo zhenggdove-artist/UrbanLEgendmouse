@@ -1339,85 +1339,6 @@ function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,s
     }
   };
 }
-function addLoadedHumanVariant(config){
-  if(!config?.source){
-    console.warn('[fbx] skip human variant with missing source',config?.name||'(unnamed)');
-    return null;
-  }
-  const idle=config.idle||config.source;
-  const variant=makeHumanVariant({
-    ...config,
-    idle,
-    walk:config.walk||idle,
-    run:config.run||config.walk||idle,
-    jump:config.jump||idle,
-    kick:config.kick||idle,
-    pickup:config.pickup||null,
-    clean:config.clean||idle,
-    skin:{
-      base:config.skin?.base||null,
-      normal:config.skin?.normal||null,
-      roughness:config.skin?.roughness||null,
-      metal:config.skin?.metal||null
-    }
-  });
-  HUMAN_VARIANTS.push(variant);
-  return variant;
-}
-function adoptPrimaryHumanVariant(variant=HUMAN_VARIANTS[0]){
-  if(!variant) return false;
-  characterSource=variant.source;
-  HUMAN_SKIN.base=variant.skin?.base||null;
-  HUMAN_SKIN.normal=variant.skin?.normal||null;
-  HUMAN_SKIN.roughness=variant.skin?.roughness||null;
-  HUMAN_SKIN.metal=variant.skin?.metal||null;
-  Object.assign(HUMAN_CLIPS,variant.clips);
-  return true;
-}
-async function loadEmergencyHumanVariant(){
-  const base='asset/\u90fd\u5e02\u50b3\u8aaa\u9f20\u738b_\u7537\u9ad8\u4e2d\u751f/';
-  const loadFBXOptional=path=>loadFBXAsync(path).catch(err=>{
-    console.warn('[fbx] optional emergency human asset failed',path,err);
-    return null;
-  });
-  const loadTexOptional=path=>loadHumanTextureAsync(path).catch(err=>{
-    console.warn('[fbx] optional emergency human texture failed',path,err);
-    return null;
-  });
-  const [
-    idle,walk,run,jump,kick,clean,
-    baseTex,normalTex,roughTex,metalTex,death
-  ]=await Promise.all([
-    loadFBXAsync(`${base}\u767c\u5446.fbx`),
-    loadFBXOptional(`${base}\u8d70\u8def.fbx`),
-    loadFBXOptional(`${base}\u8dd1\u52d5.fbx`),
-    loadFBXOptional(`${base}\u8df3\u8e8d.fbx`),
-    loadFBXOptional(`${base}\u8e22ATTACK.fbx`),
-    loadFBXOptional(`${base}\u6e05\u6f54\u59ff\u52e2.fbx`),
-    loadTexOptional(`${base}basecolor_1024.jpg`),
-    loadTexOptional(`${base}tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_Normal_Bake.jpg`),
-    loadTexOptional(`${base}tripo_model_roughness.JPEG`),
-    loadTexOptional(`${base}tripo_model_metallic.JPEG`),
-    loadFBXOptional(`${base}\u6b7b\u4ea1.fbx`)
-  ]);
-  const variant=makeHumanVariant({
-    name:'emergency-human',
-    source:idle,
-    idle,
-    walk:walk||idle,
-    run:run||walk||idle,
-    jump:jump||idle,
-    kick:kick||idle,
-    pickup:null,
-    clean:clean||idle,
-    skin:{base:baseTex,normal:normalTex,roughness:roughTex,metal:metalTex}
-  });
-  variant.clips.death=resolveAnimationClip(death)||variant.clips.idle;
-  HUMAN_VARIANTS.length=0;
-  HUMAN_VARIANTS.push(variant);
-  adoptPrimaryHumanVariant(variant);
-  console.warn('[fbx] using emergency human variant; inspect the earlier failed asset path');
-}
 function loadTempleIdolAssetsLegacy(){
   if(templeIdolLoadPromise) return templeIdolLoadPromise;
   templeIdolLoadPromise=Promise.all([
@@ -11494,72 +11415,71 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_roughness.JPEG'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_metallic.JPEG'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
-    ].map(p=>p.catch(err=>{
-      console.warn('[fbx] optional human asset failed',err);
-      return null;
-    })));
+    ]);
     HUMAN_VARIANTS.length=0;
-    addLoadedHumanVariant({
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'中年男子',
       source:idleHumanFBX,
       idle:idleHumanFBX,walk:walkHumanFBX,run:runHumanFBX,jump:jumpHumanFBX,kick:kickHumanFBX,pickup:pickupHumanFBX,clean:cleanHumanFBX,
       skin:{base:baseColourTex,normal:normalTex,roughness:roughTex,metal:metalTex}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'中年婦女',
       source:idleWomanFBX,
       idle:idleWomanFBX,walk:walkWomanFBX,run:runWomanFBX,jump:jumpWomanFBX,kick:kickWomanFBX,pickup:pickupWomanFBX,clean:cleanWomanFBX,
       skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'男高中生',
       source:idleBoyFBX,
       idle:idleBoyFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
       skin:{base:baseColourTexBoy,normal:normalTexBoy,roughness:roughTexBoy,metal:metalTexBoy}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'女高中生',
       source:idleSchoolgirlFBX,
       idle:idleBoyFBX,walk:walkSchoolgirlFBX,run:runSchoolgirlFBX,jump:jumpSchoolgirlFBX,kick:kickSchoolgirlFBX,pickup:null,clean:cleanSchoolgirlFBX,
       skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'花花大媽',
       source:idleMumFBX,
-      idle:idleMumFBX,walk:walkWomanFBX,run:runWomanFBX,jump:jumpMumFBX,kick:kickMumFBX,pickup:null,clean:cleanMumFBX,
+      idle:idleMumFBX,walk:walkMumFBX,run:runMumFBX,jump:jumpMumFBX,kick:kickMumFBX,pickup:null,clean:cleanMumFBX,
       skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'吊嘎阿伯',
       source:idleUncleFBX,
       idle:idleUncleFBX,walk:walkUncleFBX,run:runUncleFBX,jump:jumpUncleFBX,kick:kickUncleFBX,pickup:null,clean:cleanUncleFBX,
       skin:{base:baseColourTexUncle,normal:normalTexUncle,roughness:roughTexUncle,metal:metalTexUncle}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'女上班族',
       source:idleOLFBX,
       idle:idleOLFBX,walk:walkOLFBX,run:runOLFBX,jump:jumpOLFBX,kick:kickOLFBX,pickup:null,clean:cleanOLFBX,
       skin:{base:baseColourTexOL,normal:normalTexOL,roughness:roughTexOL,metal:metalTexOL}
-    });
-    addLoadedHumanVariant({
+    }));
+    HUMAN_VARIANTS.push(makeHumanVariant({
       name:'男上班族',
       source:idleSalarymanFBX,
       idle:idleSalarymanFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
       skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
-    });
+    }));
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     const fallbackIdleClip=resolveAnimationClip(idleHumanFBX);
     for(const v of HUMAN_VARIANTS){
       v.clips.death=sharedDeathClip;
       if(!v.clips.idle) v.clips.idle=fallbackIdleClip;
     }
-    if(!HUMAN_VARIANTS.length) throw new Error('No human variants loaded');
-    adoptPrimaryHumanVariant(HUMAN_VARIANTS[0]);
-    console.log('[fbx] human variants loaded:',HUMAN_VARIANTS.map(v=>`${v.name||'human'} skin=${!!v.skin?.base} idle=${!!v.clips.idle} walk=${!!v.clips.walk}`).join(' | '));
+    characterSource=HUMAN_VARIANTS[0].source;
+    HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
+    HUMAN_SKIN.normal=HUMAN_VARIANTS[0].skin.normal;
+    HUMAN_SKIN.roughness=HUMAN_VARIANTS[0].skin.roughness;
+    HUMAN_SKIN.metal=HUMAN_VARIANTS[0].skin.metal;
+    Object.assign(HUMAN_CLIPS,HUMAN_VARIANTS[0].clips);
     console.log('[fbx] human clips loaded:',Object.keys(HUMAN_CLIPS).filter(k=>HUMAN_CLIPS[k]));
   }catch(e){
-    console.error('[fbx] full human batch failed; trying emergency single-variant fallback',e);
-    await loadEmergencyHumanVariant().catch(err=>console.error('[fbx] emergency human fallback failed; humans will use placeholder capsules',err));
+    console.error('[fbx] load failed — humans will use placeholder capsules',e);
   }
   await templeAssetsPromise;
   setIntroProgress(82,'WORLD');
