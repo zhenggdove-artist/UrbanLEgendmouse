@@ -1225,11 +1225,11 @@ function tickFootstepSFX(ent,dt,key,{minSpeed=0.18,baseInterval=0.44,volume=1,co
 function syncFollowerRatMovementSFX(dt){
   for(const rat of game.rats){
     if(!rat || rat===player || rat===game.controlled){
-      if(rat) rat._footstepTimer=0;
+    if(rat) rat._footstepTimer=0;
       continue;
     }
     const active=(rat.curSpeed||0)>0.12 && !rat.isAir && rat.root?.visible!==false;
-    tickFootstepSFX(rat,dt,'playerMove',{minSpeed:0.12,baseInterval:0.34,volume:0.22,cooldown:0.03,rateScale:0.08,activeOverride:active});
+    tickFootstepSFX(rat,dt,'playerMove',{minSpeed:0.08,baseInterval:0.28,volume:0.42,cooldown:0.02,rateScale:0.08,activeOverride:active});
   }
 }
 function getHumanBiteScreamKey(human){
@@ -5132,22 +5132,20 @@ function startTempleAwakening(){
       game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
     );
   }
+  // Restore the old instant 300-rat burst flow the user asked for:
+  // spawn immediately instead of queueing over frames.
   const SWARM_COUNT=300;
   const plazas=getActiveTempleSwarmPlazas();
   const totalSwarmCount=SWARM_COUNT*Math.max(1,plazas.length);
   const visualFromVirtual=Math.min(game.virtualRats,totalSwarmCount);
   game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
   for(const entry of plazas){
-    game.templeEvent.pendingSwarmBursts.push({
-      plaza:entry.plaza,
-      idol:entry.idol||null,
-      total:SWARM_COUNT,
-      cursor:0
-    });
+    for(let i=0;i<SWARM_COUNT;i++){
+      spawnTempleSwarmRat(i,SWARM_COUNT,entry.plaza,entry.idol||null);
+    }
   }
-  game.templeEvent.pendingSwarmCount=totalSwarmCount;
-  game.templeEvent.swarmSpawnPerFrame=totalSwarmCount;
-  tickTempleSwarmSpawnQueue();
+  game.templeEvent.pendingSwarmCount=0;
+  game.templeEvent.swarmSpawnCursor=0;
 }
 function awakenTempleIdol(idol){
   game.templeEvent.awakened=true;
@@ -6160,90 +6158,6 @@ const UI_LAYOUT_DEFAULTS={
         "_overallFrameMigrated": true
       },
       {
-        "id": "builtin-frame-minimap-ring",
-        "label": "Minimap Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 9.2,
-        "y": 10.2,
-        "w": 9.4,
-        "h": 16.6,
-        "z": 13,
-        "hidden": true,
-        "locked": false,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-rat-city-ring",
-        "label": "Rat City Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 50,
-        "y": 8.4,
-        "w": 8.6,
-        "h": 15.2,
-        "z": 12,
-        "hidden": true,
-        "locked": false,
-        "rot": 0,
-        "scene": "game"
-      },
-      {
-        "id": "builtin-frame-jump-ring",
-        "label": "Jump Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 88.6,
-        "y": 60.2,
-        "w": 6.9,
-        "h": 12.4,
-        "z": 13,
-        "hidden": true,
-        "locked": false,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-bite-ring",
-        "label": "Bite Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 88.6,
-        "y": 75.2,
-        "w": 6.9,
-        "h": 12.4,
-        "z": 12,
-        "hidden": true,
-        "locked": false,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-pickup-ring",
-        "label": "Pickup Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 88.6,
-        "y": 89.8,
-        "w": 6.9,
-        "h": 12.4,
-        "z": 11,
-        "hidden": true,
-        "locked": false,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-drop-ring",
-        "label": "Drop Host Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 11.8,
-        "y": 60.2,
-        "w": 6.9,
-        "h": 12.4,
-        "z": 13,
-        "hidden": true,
-        "locked": false,
-        "scene": "game",
-        "rot": 0
-      },
-      {
         "id": "builtin-frame-host-life",
         "label": "Host Life Frame",
         "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png",
@@ -6662,90 +6576,6 @@ const UI_LAYOUT_DEFAULTS={
         "_overallFrameMigrated": true
       },
       {
-        "id": "builtin-frame-minimap-ring",
-        "label": "Minimap Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 23.27,
-        "y": 15.232,
-        "w": 39.244,
-        "h": 13.157,
-        "z": 16,
-        "hidden": true,
-        "locked": true,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-rat-city-ring",
-        "label": "Rat City Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 50,
-        "y": 14.57,
-        "w": 18,
-        "h": 9.8,
-        "z": 20,
-        "hidden": true,
-        "locked": false,
-        "rot": 0,
-        "scene": "game"
-      },
-      {
-        "id": "builtin-frame-jump-ring",
-        "label": "Jump Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 83.532,
-        "y": 63.246,
-        "w": 24.348,
-        "h": 10.342,
-        "z": 15,
-        "hidden": true,
-        "locked": true,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-bite-ring",
-        "label": "Bite Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 78.565,
-        "y": 74.83,
-        "w": 25.85,
-        "h": 9.01,
-        "z": 12,
-        "hidden": true,
-        "locked": true,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-pickup-ring",
-        "label": "Pickup Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 75.194,
-        "y": 85.976,
-        "w": 28.708,
-        "h": 10.732,
-        "z": 7,
-        "hidden": true,
-        "locked": false,
-        "scene": "game",
-        "rot": 0
-      },
-      {
-        "id": "builtin-frame-drop-ring",
-        "label": "Drop Host Ring",
-        "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png",
-        "x": 18.898,
-        "y": 66.306,
-        "w": 28.768,
-        "h": 10.199,
-        "z": 14,
-        "hidden": true,
-        "locked": true,
-        "scene": "game",
-        "rot": 0
-      },
-      {
         "id": "builtin-frame-host-life",
         "label": "Host Life Frame",
         "src": "./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png",
@@ -7047,23 +6877,11 @@ const UI_LAYOUT_DEFAULT_ART_SRCS={
 const UI_LAYOUT_BUILTIN_FRAMES={
   desktop:[
     {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%95%B4%E9%AB%94%E5%9C%96%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
-    {id:'builtin-frame-minimap-ring',label:'Minimap Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:9.2,y:10.2,w:9.4,h:16.6,z:16,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-rat-city-ring',label:'Rat City Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:50,y:8.4,w:8.6,h:15.2,z:12,hidden:true,locked:false,rot:0,scene:'game'},
-    {id:'builtin-frame-jump-ring',label:'Jump Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:88.6,y:60.2,w:6.9,h:12.4,z:11,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-bite-ring',label:'Bite Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:88.6,y:75.2,w:6.9,h:12.4,z:10,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-pickup-ring',label:'Pickup Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:88.6,y:89.8,w:6.9,h:12.4,z:9,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-drop-ring',label:'Drop Host Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:11.8,y:60.2,w:6.9,h:12.4,z:8,hidden:true,locked:false,scene:'game'},
     {id:'builtin-frame-host-life',label:'Host Life Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png',x:6.1,y:50.7,w:31,h:7.8,z:18,hidden:true,locked:false,rot:90,scene:'game'},
     {id:'builtin-frame-loading',label:'Loading Window Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png',x:50,y:50,w:56,h:76,z:31,hidden:true,locked:false,scene:'loading'}
   ],
   mobile:[
     {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%95%B4%E9%AB%94%E5%9C%96%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
-    {id:'builtin-frame-minimap-ring',label:'Minimap Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:14.8,y:12.4,w:24.8,h:13.8,z:17,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-rat-city-ring',label:'Rat City Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:50,y:9,w:18,h:9.8,z:13,hidden:true,locked:false,rot:0,scene:'game'},
-    {id:'builtin-frame-jump-ring',label:'Jump Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:82,y:60.5,w:14.4,h:10.2,z:12,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-bite-ring',label:'Bite Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:82,y:74.5,w:14.4,h:10.2,z:11,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-pickup-ring',label:'Pickup Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:82,y:88.5,w:14.4,h:10.2,z:10,hidden:true,locked:false,scene:'game'},
-    {id:'builtin-frame-drop-ring',label:'Drop Host Ring',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%8C%89%E9%88%95%E4%BB%A5%E5%8F%8A%E5%9C%B0%E5%9C%96%E7%9A%84%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:18,y:60.5,w:14.4,h:10.2,z:9,hidden:true,locked:false,scene:'game'},
     {id:'builtin-frame-host-life',label:'Host Life Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png',x:8.8,y:51,w:27,h:7.2,z:18,hidden:true,locked:false,rot:90,scene:'game'},
     {id:'builtin-frame-loading',label:'Loading Window Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png',x:50,y:50,w:89,h:69,z:31,hidden:true,locked:false,scene:'loading'}
   ]
@@ -7290,12 +7108,7 @@ function ensureUILayoutBuiltins(config){
       }
       const frameZMap={
         'builtin-frame-gameplay':16,
-        'builtin-frame-host-life':14,
-        'builtin-frame-minimap-ring':13,
-        'builtin-frame-jump-ring':13,
-        'builtin-frame-bite-ring':12,
-        'builtin-frame-pickup-ring':11,
-        'builtin-frame-drop-ring':13
+        'builtin-frame-host-life':14
       };
       for(const frame of store.__customFrames){
         if(frameZMap[frame.id]!==undefined) frame.z=frameZMap[frame.id];
@@ -9784,6 +9597,9 @@ function throwHeldProp(host,chargeRatio=0){
   host.throwCharge=0;
   host.throwCharging=false;
   game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.35*prop.chaosWeight);
+  if(prop.kind==='stall' || prop.kind==='soup-pot') playSFX('stallBreak',{volume:0.72,cooldown:0.04,source:prop});
+  else if(prop.kind==='bin') playSFX('binFall',{volume:0.74,cooldown:0.04,source:prop});
+  else if(prop.kind==='car' || prop.kind==='sedan' || prop.kind==='mini-truck' || prop.kind==='scooter') playSFX('vehicleBreak',{volume:0.7,cooldown:0.04,source:prop});
   updateActionButtons();
   return true;
 }
@@ -10186,7 +10002,10 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   }
   if(p.kind==='soup-pot') activateBrothFX(p,angle,1.05);
   if(p.kind==='stall' && p.hasSoup && Math.random()<STALL_SOUP_CHANCE) activateBrothFX(p,angle,1.35);
-  if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE) activateFireFX(p,angle,source);
+  if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE){
+    activateFireFX(p,angle,source);
+    playSFX('stallFire',{volume:0.9,cooldown:0.05,source:p});
+  }
   registerChaosSpot(p.root.position.x,p.root.position.z,1.2+(p.kind==='stall'?0.8:0.3),6.5);
   if(p.spawnRatsOnTip>0){
     summonSpillRats(p.root.position.x,p.root.position.z,p.spawnRatsOnTip);
