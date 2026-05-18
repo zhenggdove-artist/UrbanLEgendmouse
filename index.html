@@ -1342,7 +1342,8 @@ function loadTextureAsync(path){
 function loadHumanTextureAsync(path){
   return loadWithTimeout(path,(res,rej)=>imageLoader.load(path,tex=>{
     tex.flipY=true;
-    tex.colorSpace=THREE.SRGBColorSpace;
+    const isColorMap=/(?:basecolor|albedo|diffuse)/i.test(path);
+    tex.colorSpace=isColorMap?THREE.SRGBColorSpace:THREE.NoColorSpace;
     tex.needsUpdate=true;
     res(pixelate(tex));
   },undefined,rej));
@@ -1655,6 +1656,22 @@ function ps1ifyCharacterMaterials(root,tint,skin=HUMAN_SKIN){
     });
     o.material=Array.isArray(o.material)?replaced:replaced[0];
   });
+}
+function ensureCharacterSkinPresent(inst,tint,skin){
+  if(!inst?.root || !skin) return;
+  let needsRepair=false;
+  inst.root.traverse(o=>{
+    if(!o.isMesh || needsRepair) return;
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of mats){
+      if(!m) continue;
+      if(skin.base && !m.map){
+        needsRepair=true;
+        break;
+      }
+    }
+  });
+  if(needsRepair) ps1ifyCharacterMaterials(inst.root,tint,skin);
 }
 
 // ===== Face texture (selfie or procedural default) =====
@@ -3675,6 +3692,7 @@ function setTempleLoopPortal(slot,plazaInfo){
 }
 function tryLoopTempleEntity(ent,prevX,prevZ){
   if(!ent?.root || !templeLoopPortals.a || !templeLoopPortals.b)return false;
+  if(ent.templeSwarmVisual)return false;
   if((ent.loopPortalLockUntil||0)>gameTime)return false;
   const pos=ent.root.position;
   const moveX=pos.x-prevX;
@@ -4684,6 +4702,7 @@ function buildHuman({position,role='wanderer'}={}){
     vel:new THREE.Vector3(),curSpeed:0,yaw:Math.random()*Math.PI*2,
     vy:0,isAir:false,controllable:false,parasitised:false,
     variantName:variant.name||'',
+    skinVariant:variant.skin||null,skinTint:tint.clone?.()||tint,skinCheckTimer:0,
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
     behaviour:role==='cleaner'?'seek':'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
@@ -5212,6 +5231,7 @@ function startTempleAwakeningLegacy(){
     spawnTempleSwarmRat(cursor,SWARM_COUNT,plazaSnapshot,target?.idol||game.templeEvent.idol||null,entrance);
     cursor++;
   }
+  enforceRatVisualBudget();
 }
 function startTempleAwakening(){
   startTempleAwakeningLegacy();
@@ -6982,14 +7002,7 @@ const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-top':'viewport-frame-bottom',
   'viewport-frame-bottom':'viewport-frame-top',
   'viewport-frame-left':'viewport-frame-right',
-  'viewport-frame-right':'viewport-frame-left',
-  'chaos-box':'rats-box',
-  'rats-box':'chaos-box',
-  'jump-btn':'bite-btn',
-  'bite-btn':'pickup-btn',
-  'pickup-btn':'bite-btn',
-  'exit-host-btn':'joystick-zone',
-  'joystick-zone':'exit-host-btn'
+  'viewport-frame-right':'viewport-frame-left'
 };
 const UI_LAYOUT_SNAP_PX=8;
 const ADMIN_STAGE_MOBILE_WIDTH=390;
@@ -7339,6 +7352,11 @@ function getUILayoutCustomFrameById(id){
 function getUILayoutCustomFrameElementId(id){ return `ui-layout-custom-frame-${id}`; }
 function getUILayoutBoundsForDef(def){
   if(def?.isSkinArt){
+    const parentDef=getUILayoutDef(def.parentId);
+    const parentMetrics=parentDef?ensureUILayoutMetrics(parentDef):null;
+    if(uiLayoutState.active && parentDef && parentMetrics){
+      return getUILayoutBoxRect(parentDef,parentMetrics);
+    }
     const parent=document.getElementById(def.parentId);
     if(parent){
       const r=parent.getBoundingClientRect();
@@ -7624,6 +7642,9 @@ function buildUILayoutMetricsFromRect(def,metrics,rect){
   metrics.h=+((rect.height/Math.max(bounds.height,1))*100).toFixed(3);
 }
 function measureUILayoutRect(def,metrics){
+  if(uiLayoutState.active && !def?.isCustomFrame && !def?.isSkinArt){
+    return getUILayoutBoxRect(def,metrics);
+  }
   const el=def.isCustomFrame
     ? document.getElementById(getUILayoutCustomFrameElementId(def.id))
     : document.getElementById(def.id);
@@ -10272,6 +10293,11 @@ function tickCleaner(cleaner,dt){
 function tickHumans(dt){
   const focusPos=getGameplayFocusPosition();
   for(const h of game.humans){
+    h.skinCheckTimer=(h.skinCheckTimer||0)-dt;
+    if(h.skinCheckTimer<=0){
+      ensureCharacterSkinPresent(h.inst,h.skinTint,h.skinVariant);
+      h.skinCheckTimer=1.6+Math.random()*0.9;
+    }
     if(h!==game.parasitisedHost) h._footstepTimer=0;
     if(!shouldSimulateHumanEntity(h,focusPos)){
       if(h.root) h.root.visible=false;
@@ -10473,6 +10499,8 @@ const HUMAN_RAT_TRANSFORM_TIME=2.4;      // seconds at full coverage → transfo
 const RAT_BLOOD_SPRAY_INTERVAL=0.18;     // throttle per-human blood spawns
 const HUMAN_ACTIVE_SIM_RADIUS=34;
 const HUMAN_ACTIVE_SIM_RADIUS_SQ=HUMAN_ACTIVE_SIM_RADIUS*HUMAN_ACTIVE_SIM_RADIUS;
+const MAX_ACTIVE_RAT_VISUALS=500;
+let ratVisualBudgetTimer=0;
 function getGameplayFocusPosition(){
   return game.controlled?.root?.position
     || game.parasitisedHost?.root?.position
@@ -10490,6 +10518,47 @@ function shouldSimulateHumanEntity(human,focusPos){
   const dx=human.root.position.x-focusPos.x;
   const dz=human.root.position.z-focusPos.z;
   return dx*dx+dz*dz<=HUMAN_ACTIVE_SIM_RADIUS_SQ;
+}
+function removeRatEntity(rat,{countAsVirtual=true}={}){
+  if(!rat || rat===player || rat===game.controlled) return false;
+  const idx=game.rats.indexOf(rat);
+  if(idx>=0) game.rats.splice(idx,1);
+  if(rat.root?.parent) rat.root.parent.remove(rat.root);
+  const swarmIdx=game.templeEvent.swarmSprites.indexOf(rat);
+  if(swarmIdx>=0) game.templeEvent.swarmSprites.splice(swarmIdx,1);
+  if(countAsVirtual) game.virtualRats=(game.virtualRats||0)+1;
+  return true;
+}
+function enforceRatVisualBudget(maxVisuals=MAX_ACTIVE_RAT_VISUALS){
+  const over=game.rats.length-maxVisuals;
+  if(over<=0) return 0;
+  const focus=getGameplayFocusPosition()||player?.root?.position||new THREE.Vector3();
+  const candidates=game.rats.filter(r=>
+    r!==player &&
+    r!==game.controlled &&
+    !r.templeSwarmVisual &&
+    !r.followStatue &&
+    !r.climbingHuman
+  );
+  candidates.sort((a,b)=>{
+    const adx=(a.root?.position?.x||0)-focus.x;
+    const adz=(a.root?.position?.z||0)-focus.z;
+    const bdx=(b.root?.position?.x||0)-focus.x;
+    const bdz=(b.root?.position?.z||0)-focus.z;
+    return (bdx*bdx+bdz*bdz)-(adx*adx+adz*adz);
+  });
+  let removed=0;
+  for(const rat of candidates){
+    if(game.rats.length<=maxVisuals) break;
+    if(removeRatEntity(rat,{countAsVirtual:true})) removed++;
+  }
+  return removed;
+}
+function tickRatVisualBudget(dt){
+  ratVisualBudgetTimer-=dt;
+  if(ratVisualBudgetTimer>0) return;
+  ratVisualBudgetTimer=0.25;
+  enforceRatVisualBudget();
 }
 function spawnRatBloodSpray(pos,count=2){
   for(let i=0;i<count;i++){
@@ -11314,6 +11383,7 @@ function renderGameToText(){
     nearestBiteable:game.controlMode==='rat'&&player?!!nearestBiteableHuman(player):false,
     chaos:+game.chaos.toFixed(3),
     rats:getTotalRatCount(),
+    visualRats:game.rats.length,
     temple:{
       inside:!!isPlayerInsideEventTemple(),
       gathering:!!game.templeEvent.gathering,
@@ -11354,6 +11424,7 @@ function stepFrame(dt){
     syncFollowerRatMovementSFX(dt);
     tickHumanRatAttackState(dt);
     tickTempleEvent(dt);
+    tickRatVisualBudget(dt);
     tickTransientFX(dt);
     if(game.controlMode==='rat'){tickActor(player,dt);tickRatBillboard(player,dt)}
     updateHUD(dt);
@@ -11497,7 +11568,7 @@ async function init(){
       loadFBXAsync('asset/都市傳說鼠王_女高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_女高中生/踢ATTACK.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_女高中生/清潔動作.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/basecolor_1024.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_roughness.JPEG'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_metallic.JPEG'),
