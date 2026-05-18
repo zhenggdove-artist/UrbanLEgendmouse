@@ -979,6 +979,7 @@ const SFX_DISTANCE_NEAR=2.2;
 const SFX_DISTANCE_FAR=34;
 const sfxState={
   unlocked:false,
+  unlockPromise:null,
   masterVolume:0.78,
   players:new Map(),
   loops:new Map(),
@@ -1011,21 +1012,28 @@ function getSFXPolyphony(key){
   return 3;
 }
 function warmSFXAudioElement(audio){
-  if(!audio) return;
+  if(!audio) return Promise.resolve(false);
   try{
     audio.muted=true;
     const p=audio.play();
     if(p?.then){
-      p.then(()=>{
+      return p.then(()=>{
         audio.pause();
         audio.currentTime=0;
         audio.muted=false;
-      }).catch(()=>{ audio.muted=false; });
-    }else{
-      audio.muted=false;
+        return true;
+      }).catch(()=>{
+        audio.muted=false;
+        return false;
+      });
     }
+    audio.pause();
+    audio.currentTime=0;
+    audio.muted=false;
+    return Promise.resolve(true);
   }catch(_){
     audio.muted=false;
+    return Promise.resolve(false);
   }
 }
 function ensureSFXPlayer(key){
@@ -1086,18 +1094,21 @@ async function preloadSFXPlayers(){
   if(failed) console.warn('[sfx] some audio files did not report ready before timeout; continuing after preload window',failed);
 }
 function unlockSFX(){
-  if(sfxState.unlocked) return;
+  if(sfxState.unlockPromise) return sfxState.unlockPromise;
   sfxState.unlocked=true;
+  const warms=[];
   for(const key of [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)]){
     const player=ensureSFXPlayer(key);
-    if(player?.warmed) continue;
+    if(!player || player.warmed) continue;
     player.warmed=true;
-    warmSFXAudioElement(player.audio);
-    warmSFXAudioElement(player.loopAudio);
-    for(const extra of player.pool.slice(1,Math.min(player.pool.length,4))){
-      warmSFXAudioElement(extra);
+    warms.push(warmSFXAudioElement(player.audio));
+    warms.push(warmSFXAudioElement(player.loopAudio));
+    for(const extra of player.pool){
+      warms.push(warmSFXAudioElement(extra));
     }
   }
+  sfxState.unlockPromise=Promise.allSettled(warms).then(()=>true);
+  return sfxState.unlockPromise;
 }
 function resolveSFXEmitterPosition(source){
   if(!source) return null;
@@ -1254,7 +1265,7 @@ const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:tr
 let templeIdolSource=null,templeIdolIdleSource=null,templeIdolWalkSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
 let templeIdolLoadPromise=null;
 const templeLoopPortals={a:null,b:null};
-const ASSET_LOAD_TIMEOUT_MS=20000;
+const ASSET_LOAD_TIMEOUT_MS=60000;
 
 function loadWithTimeout(label,executor,timeoutMs=ASSET_LOAD_TIMEOUT_MS){
   return new Promise((resolve,reject)=>{
@@ -7641,12 +7652,6 @@ function buildUILayoutMetricsFromRect(def,metrics,rect){
   metrics.h=+((rect.height/Math.max(bounds.height,1))*100).toFixed(3);
 }
 function measureUILayoutRect(def,metrics){
-  if(def?.isCustomFrame){
-    return getUILayoutBoxRect(def,metrics);
-  }
-  if(uiLayoutState.active && (def?.scene==='loading' || def?.scene==='ending' || UI_LAYOUT_TEXT_TARGETS.has(def?.id) || def?.id==='intro-progress-track')){
-    return getUILayoutBoxRect(def,metrics);
-  }
   const el=def.isCustomFrame
     ? document.getElementById(getUILayoutCustomFrameElementId(def.id))
     : document.getElementById(def.id);
@@ -7993,7 +7998,7 @@ function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
     corner,
     startX:e.clientX,
     startY:e.clientY,
-    startRect:getUILayoutBoxRect(def,metrics),
+    startRect:measureUILayoutRect(def,metrics),
     pointerId:e.pointerId
   };
   uiLayoutState.overlays.get(def.id)?.classList.add('active');
@@ -8209,9 +8214,8 @@ function handleUILayoutPointerMove(e){
   if(!drag||drag.pointerId!==e.pointerId) return;
   const def=getUILayoutDef(drag.id);
   if(!def) return;
-  const scale=getAdminStageZoom()||1;
-  const dx=(e.clientX-drag.startX)/scale;
-  const dy=(e.clientY-drag.startY)/scale;
+  const dx=e.clientX-drag.startX;
+  const dy=e.clientY-drag.startY;
   let next={...drag.startRect};
   if(drag.mode==='move'){
     next.left+=dx;
@@ -11216,16 +11220,16 @@ function setIntroProgress(p,label){
   renderIntroProgress();
 }
 startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
-startBtn.addEventListener('click',()=>{
+startBtn.addEventListener('click',async ()=>{
   if(gameState!=='intro')return;
   startBtn.disabled=true;startBtn.textContent='LOADING…';
   setIntroProgress(100);
+  await unlockSFX();
   introEl.style.display='none';
   document.body.classList.remove('intro-active');
   startGame();
 });
 function startGame(){
-  unlockSFX();
   gameState='playing';gameTime=0;
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
