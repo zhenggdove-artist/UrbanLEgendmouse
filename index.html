@@ -198,7 +198,7 @@
     background:rgba(20,16,32,0.55);border:2px solid rgba(255,255,255,0.18)}
   #joystick-stick{position:absolute;left:50%;top:50%;width:42px;height:42px;
     margin-left:-21px;margin-top:-21px;border-radius:50%;
-    background:rgba(255,255,255,0.86);box-shadow:0 4px 12px rgba(0,0,0,0.5);
+    background:#ff4fa8;box-shadow:0 4px 12px rgba(0,0,0,0.5),0 0 14px rgba(255,79,168,0.55);
     transition:transform .04s linear}
   .action-btn{position:fixed;width:74px;height:74px;border-radius:50%;border:none;
     color:#fff;font:700 12px/1 var(--ui-display-font);letter-spacing:0.08em;
@@ -214,7 +214,8 @@
   .ui-art-host.has-art .ui-art-layer{display:block}
   #chaos-box,#rats-box{overflow:visible}
   #chaos-box .ui-art-label,#rats-box .ui-art-label{display:none}
-  #chaos-box .ui-art-layer,#rats-box .ui-art-layer{top:50%;left:16%;width:18%;height:70%}
+  #chaos-box .ui-art-layer,#rats-box .ui-art-layer{top:50%;left:16%;width:18%;height:70%;
+    filter:drop-shadow(0 0 1px #fff7d6) drop-shadow(0 0 4px #ff5af7) drop-shadow(0 0 10px #7cf8ff) drop-shadow(0 0 18px #ff5af7)}
   #rat-city-btn .ui-art-layer{width:82%;height:72%}
   #jump-btn .ui-art-layer,#bite-btn .ui-art-layer,#pickup-btn .ui-art-layer,#exit-host-btn .ui-art-layer{width:68%;height:28%}
   .action-btn::before{content:none;position:absolute;left:50%;top:50%;
@@ -545,10 +546,10 @@
 <div id="rat-city-panel">
   <h3>RAT CITY</h3>
   <p>Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.</p>
-  <button id="rat-city-min" type="button">Mini</button>
-  <button id="rat-city-close" type="button">Back</button>
+  <button id="rat-city-min" type="button" aria-label="Minimize">-</button>
+  <button id="rat-city-close" type="button" aria-label="Back">↻</button>
   <div class="rat-city-row">
-    <input id="rat-city-name" type="text" maxlength="18" placeholder="ENTER NAME" />
+    <input id="rat-city-name" type="text" maxlength="18" placeholder="Rat King Name:" />
     <button id="rat-city-save" type="button">Save</button>
   </div>
   <div id="rat-city-score">CHAOS 0 · SCORE 0</div>
@@ -1045,6 +1046,44 @@ function primeSFXPlayers(){
   for(const key of [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)]){
     ensureSFXPlayer(key);
   }
+}
+function waitSFXAudioReady(audio,timeoutMs=9000){
+  return new Promise(resolve=>{
+    if(!audio || audio.readyState>=2){resolve(true);return;}
+    let done=false;
+    const finish=ok=>{
+      if(done) return;
+      done=true;
+      window.clearTimeout(timer);
+      audio.removeEventListener('canplaythrough',onReady);
+      audio.removeEventListener('canplay',onReady);
+      audio.removeEventListener('loadeddata',onReady);
+      audio.removeEventListener('error',onError);
+      resolve(ok);
+    };
+    const onReady=()=>finish(true);
+    const onError=()=>finish(false);
+    const timer=window.setTimeout(()=>finish(false),timeoutMs);
+    audio.addEventListener('canplaythrough',onReady,{once:true});
+    audio.addEventListener('canplay',onReady,{once:true});
+    audio.addEventListener('loadeddata',onReady,{once:true});
+    audio.addEventListener('error',onError,{once:true});
+    try{audio.load();}catch(_){finish(false);}
+  });
+}
+async function preloadSFXPlayers(){
+  primeSFXPlayers();
+  const waits=[];
+  for(const player of sfxState.players.values()){
+    waits.push(waitSFXAudioReady(player.audio));
+    waits.push(waitSFXAudioReady(player.loopAudio));
+    for(const extra of player.pool.slice(1,Math.min(player.pool.length,4))){
+      waits.push(waitSFXAudioReady(extra));
+    }
+  }
+  const results=await Promise.allSettled(waits);
+  const failed=results.filter(r=>r.status==='fulfilled' && !r.value).length + results.filter(r=>r.status==='rejected').length;
+  if(failed) console.warn('[sfx] some audio files did not report ready before timeout; continuing after preload window',failed);
 }
 function unlockSFX(){
   if(sfxState.unlocked) return;
@@ -4502,6 +4541,10 @@ function buildRat({isPlayer=false}={}){
 const HUMAN_WORLD_Y_OFFSET=-0.70;
 function buildHuman({position,role='wanderer'}={}){
   if(!HUMAN_VARIANTS.length){
+    console.error('[human] no loaded human variants; skipping NPC spawn instead of creating black placeholder pillars');
+    return null;
+  }
+  if(false){
     // FBX placeholder — capsule body so we never silently skip a spawn.
     const root=new THREE.Group();
     root.position.set(position.x,HUMAN_WORLD_Y_OFFSET,position.z);
@@ -6896,7 +6939,7 @@ const UI_LAYOUT_ART_TARGETS={
   'pickup-btn':'pickup-btn-art',
   'exit-host-btn':'exit-host-btn-art'
 };
-const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rats-win','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rats-win','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_STYLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn']);
 const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_DEFAULTS={
@@ -7441,6 +7484,16 @@ function applyUILayoutVisual(def,metrics,el){
     el.style.boxShadow=color?'0 16px 30px rgba(0,0,0,0.24)':'none';
     return;
   }
+  if(def.id==='joystick-zone'){
+    const stick=document.getElementById('joystick-stick');
+    if(stick){
+      stick.style.background=color||'#ff4fa8';
+      stick.style.boxShadow=color
+        ? `0 4px 12px rgba(0,0,0,0.5),0 0 14px ${color}`
+        : '0 4px 12px rgba(0,0,0,0.5),0 0 14px rgba(255,79,168,0.55)';
+    }
+    return;
+  }
   el.style.background=color||'';
 }
 function applyUILayoutTextStyleForTarget(def,metrics){
@@ -7493,11 +7546,19 @@ function applyUILayoutMetrics(def,metrics){
     delete el.dataset.uiLayoutHidden;
     el.style.display='';
   }
-  el.style.left=`${metrics.x}%`;
-  el.style.top=`${metrics.y}%`;
   el.style.position='fixed';
-  el.style.width=`${metrics.w}%`;
-  el.style.height=`${metrics.h}%`;
+  if(uiLayoutState.active){
+    const bounds=getUILayoutBoundsForDef(def);
+    el.style.left=`${bounds.left+metrics.x*0.01*bounds.width}px`;
+    el.style.top=`${bounds.top+metrics.y*0.01*bounds.height}px`;
+    el.style.width=`${Math.max(1,metrics.w*0.01*bounds.width)}px`;
+    el.style.height=`${Math.max(1,metrics.h*0.01*bounds.height)}px`;
+  }else{
+    el.style.left=`${metrics.x}%`;
+    el.style.top=`${metrics.y}%`;
+    el.style.width=`${metrics.w}%`;
+    el.style.height=`${metrics.h}%`;
+  }
   el.style.right='auto';
   el.style.bottom='auto';
   el.style.transform=getUILayoutTransform(metrics);
@@ -11081,7 +11142,7 @@ function updateHUD(dt){
     hostLifeFill.style.height='0%';
   }
   if(game.ratCityMode) renderRatCityLeaderboard();
-  if(game.controlMode==='rat'&&player){
+  if(gameState==='playing'&&game.controlMode==='rat'&&player){
     const ratPos=player.root.position;
     let nearest=Infinity;
     const lockTarget=nearestBiteableHuman(player);
@@ -11275,6 +11336,7 @@ function tick(){
 async function init(){
   setIntroProgress(2,'BOOT');
   primeSFXPlayers();
+  const sfxPreloadPromise=preloadSFXPlayers();
   loadRatCityLeaderboard();
   initSharedTextures();
   buildTaipeiSkyline();
@@ -11295,7 +11357,9 @@ async function init(){
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.right).then(frames=>{PLAYER_RAT_FRAMES.right=frames}),
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.back).then(frames=>{PLAYER_RAT_FRAMES.back=frames})
   ]);
-  setIntroProgress(8,'TEXTURES');
+  setIntroProgress(10,'AUDIO');
+  await sfxPreloadPromise;
+  setIntroProgress(12,'TEXTURES');
 
   // Start the render loop immediately so the intro card sits over a
   // live scene rather than a black square. Players still see progress
@@ -11415,71 +11479,102 @@ async function init(){
       loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_roughness.JPEG'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_metallic.JPEG'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
-    ]);
+    ].map(p=>p.catch(err=>{
+      console.error('[fbx] human asset failed but continuing variant batch',err);
+      return null;
+    })));
     HUMAN_VARIANTS.length=0;
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    const pushHumanVariant=config=>{
+      if(!config?.source){
+        console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
+        return;
+      }
+      const idle=config.idle||config.source;
+      HUMAN_VARIANTS.push(makeHumanVariant({
+        ...config,
+        idle,
+        walk:config.walk||idle,
+        run:config.run||config.walk||idle,
+        jump:config.jump||idle,
+        kick:config.kick||idle,
+        pickup:config.pickup||null,
+        clean:config.clean||idle,
+        skin:{
+          base:config.skin?.base||null,
+          normal:config.skin?.normal||null,
+          roughness:config.skin?.roughness||null,
+          metal:config.skin?.metal||null
+        }
+      }));
+    };
+    pushHumanVariant({
       name:'中年男子',
       source:idleHumanFBX,
       idle:idleHumanFBX,walk:walkHumanFBX,run:runHumanFBX,jump:jumpHumanFBX,kick:kickHumanFBX,pickup:pickupHumanFBX,clean:cleanHumanFBX,
       skin:{base:baseColourTex,normal:normalTex,roughness:roughTex,metal:metalTex}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'中年婦女',
       source:idleWomanFBX,
       idle:idleWomanFBX,walk:walkWomanFBX,run:runWomanFBX,jump:jumpWomanFBX,kick:kickWomanFBX,pickup:pickupWomanFBX,clean:cleanWomanFBX,
       skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'男高中生',
       source:idleBoyFBX,
       idle:idleBoyFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
       skin:{base:baseColourTexBoy,normal:normalTexBoy,roughness:roughTexBoy,metal:metalTexBoy}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'女高中生',
       source:idleSchoolgirlFBX,
       idle:idleBoyFBX,walk:walkSchoolgirlFBX,run:runSchoolgirlFBX,jump:jumpSchoolgirlFBX,kick:kickSchoolgirlFBX,pickup:null,clean:cleanSchoolgirlFBX,
       skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'花花大媽',
       source:idleMumFBX,
       idle:idleMumFBX,walk:walkMumFBX,run:runMumFBX,jump:jumpMumFBX,kick:kickMumFBX,pickup:null,clean:cleanMumFBX,
       skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'吊嘎阿伯',
       source:idleUncleFBX,
       idle:idleUncleFBX,walk:walkUncleFBX,run:runUncleFBX,jump:jumpUncleFBX,kick:kickUncleFBX,pickup:null,clean:cleanUncleFBX,
       skin:{base:baseColourTexUncle,normal:normalTexUncle,roughness:roughTexUncle,metal:metalTexUncle}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'女上班族',
       source:idleOLFBX,
       idle:idleOLFBX,walk:walkOLFBX,run:runOLFBX,jump:jumpOLFBX,kick:kickOLFBX,pickup:null,clean:cleanOLFBX,
       skin:{base:baseColourTexOL,normal:normalTexOL,roughness:roughTexOL,metal:metalTexOL}
-    }));
-    HUMAN_VARIANTS.push(makeHumanVariant({
+    });
+    pushHumanVariant({
       name:'男上班族',
       source:idleSalarymanFBX,
       idle:idleSalarymanFBX,walk:walkBoyFBX,run:runBoyFBX,jump:jumpBoyFBX,kick:kickBoyFBX,pickup:null,clean:cleanBoyFBX,
       skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
-    }));
+    });
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     const fallbackIdleClip=resolveAnimationClip(idleHumanFBX);
     for(const v of HUMAN_VARIANTS){
       v.clips.death=sharedDeathClip;
       if(!v.clips.idle) v.clips.idle=fallbackIdleClip;
     }
-    characterSource=HUMAN_VARIANTS[0].source;
-    HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
-    HUMAN_SKIN.normal=HUMAN_VARIANTS[0].skin.normal;
-    HUMAN_SKIN.roughness=HUMAN_VARIANTS[0].skin.roughness;
-    HUMAN_SKIN.metal=HUMAN_VARIANTS[0].skin.metal;
-    Object.assign(HUMAN_CLIPS,HUMAN_VARIANTS[0].clips);
+    if(HUMAN_VARIANTS.length){
+      characterSource=HUMAN_VARIANTS[0].source;
+      HUMAN_SKIN.base=HUMAN_VARIANTS[0].skin.base;
+      HUMAN_SKIN.normal=HUMAN_VARIANTS[0].skin.normal;
+      HUMAN_SKIN.roughness=HUMAN_VARIANTS[0].skin.roughness;
+      HUMAN_SKIN.metal=HUMAN_VARIANTS[0].skin.metal;
+      Object.assign(HUMAN_CLIPS,HUMAN_VARIANTS[0].clips);
+      console.log('[fbx] human variants loaded:',HUMAN_VARIANTS.map(v=>`${v.name||'human'} skin=${!!v.skin?.base} idle=${!!v.clips.idle} walk=${!!v.clips.walk}`).join(' | '));
+    }else{
+      console.error('[fbx] no human variants loaded; humans will not spawn until asset paths are fixed');
+    }
     console.log('[fbx] human clips loaded:',Object.keys(HUMAN_CLIPS).filter(k=>HUMAN_CLIPS[k]));
   }catch(e){
-    console.error('[fbx] load failed — humans will use placeholder capsules',e);
+    console.error('[fbx] human load setup failed; human NPC spawns are disabled instead of using black placeholder pillars',e);
   }
   await templeAssetsPromise;
   setIntroProgress(82,'WORLD');
