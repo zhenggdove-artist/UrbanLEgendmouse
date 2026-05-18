@@ -4997,17 +4997,19 @@ function startTempleGathering(){
   game.templeEvent.awakeningRequested=false;
   game.templeEvent.phase='idle';
   game.templeEvent.phaseTimer=0;
-  for(const rat of game.rats){
-    if(rat===player)continue;
-    rat.followPlayer=false;
-    rat.followStatue=false;
-    rat.templeBound=true;
-    rat.targetPos?.set(
-      game.templeEvent.altarFrontPos.x+rand(-1.4,1.4),
-      0,
-      game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
-    );
-  }
+}
+function getTemplePlazaSnapshotFromEventState(){
+  return clonePlazaInfoForIdol({
+    altarPos:game.templeEvent.altarPos,
+    altarTopPos:game.templeEvent.altarTopPos,
+    altarEdgeTopPos:game.templeEvent.altarEdgeTopPos,
+    altarFrontPos:game.templeEvent.altarFrontPos,
+    doorwayPos:game.templeEvent.doorwayPos,
+    streetPos:game.templeEvent.streetPos,
+    rearDoorwayPos:game.templeEvent.rearDoorwayPos||game.templeEvent.doorwayPos,
+    rearStreetPos:game.templeEvent.rearStreetPos||game.templeEvent.streetPos,
+    processionPath:game.templeEvent.processionPath||[]
+  });
 }
 function getActiveTempleSwarmPlazas(){
   const plazas=[];
@@ -5020,21 +5022,27 @@ function getActiveTempleSwarmPlazas(){
   }
   return plazas;
 }
-function getCurrentTempleSwarmPlaza(){
-  if(game.templeEvent.idol?.plazaSnapshot){
-    return clonePlazaInfoForIdol(game.templeEvent.idol.plazaSnapshot);
+function getCurrentTempleSwarmTarget(){
+  const zone=isPlayerInsideAnyTempleZone();
+  const idols=[game.templeEvent.idol,...game.templeEvent.secondaryIdols].filter(Boolean);
+  if(zone){
+    for(const idol of idols){
+      const snap=idol?.plazaSnapshot;
+      const altarX=snap?.altarPos?.x;
+      if(!Number.isFinite(altarX)) continue;
+      if(altarX>=zone.minX && altarX<=zone.maxX){
+        return {plaza:clonePlazaInfoForIdol(snap),idol,zone};
+      }
+    }
+    const liveAltarX=game.templeEvent.altarPos.x;
+    if(Number.isFinite(liveAltarX) && liveAltarX>=zone.minX && liveAltarX<=zone.maxX){
+      return {plaza:getTemplePlazaSnapshotFromEventState(),idol:game.templeEvent.idol||null,zone};
+    }
   }
-  return clonePlazaInfoForIdol({
-    altarPos:game.templeEvent.altarPos,
-    altarTopPos:game.templeEvent.altarTopPos,
-    altarEdgeTopPos:game.templeEvent.altarEdgeTopPos,
-    altarFrontPos:game.templeEvent.altarFrontPos,
-    doorwayPos:game.templeEvent.doorwayPos,
-    streetPos:game.templeEvent.streetPos,
-    rearDoorwayPos:game.templeEvent.rearDoorwayPos||game.templeEvent.doorwayPos,
-    rearStreetPos:game.templeEvent.rearStreetPos||game.templeEvent.streetPos,
-    processionPath:game.templeEvent.processionPath||[]
-  });
+  if(game.templeEvent.idol?.plazaSnapshot){
+    return {plaza:clonePlazaInfoForIdol(game.templeEvent.idol.plazaSnapshot),idol:game.templeEvent.idol,zone:null};
+  }
+  return {plaza:getTemplePlazaSnapshotFromEventState(),idol:game.templeEvent.idol||null,zone:null};
 }
 function getTempleSwarmEntrances(plazaSnapshot){
   const entries=[{
@@ -5048,6 +5056,49 @@ function getTempleSwarmEntrances(plazaSnapshot){
     });
   }
   return entries;
+}
+function getTempleEvacuationTargetForPosition(pos,plazaSnapshot=null){
+  const zone=pointInsideTempleZone(pos.x,pos.z,2.4);
+  if(!zone){
+    const target=plazaSnapshot?.streetPos||game.templeEvent.streetPos;
+    return target?{x:target.x,z:target.z}:null;
+  }
+  const targetInfo=plazaSnapshot
+    ? {plaza:plazaSnapshot}
+    : getCurrentTempleSwarmTarget();
+  const plaza=targetInfo?.plaza||getTemplePlazaSnapshotFromEventState();
+  const candidates=[plaza.streetPos,plaza.rearStreetPos].filter(Boolean);
+  if(!candidates.length) return null;
+  let best=candidates[0], bestDist=Infinity;
+  for(const c of candidates){
+    const dx=c.x-pos.x, dz=c.z-pos.z;
+    const d2=dx*dx+dz*dz;
+    if(d2<bestDist){
+      bestDist=d2;
+      best=c;
+    }
+  }
+  return {x:best.x,z:best.z};
+}
+function clearTempleRitualInterference(zone,plazaSnapshot){
+  if(!zone || !plazaSnapshot) return;
+  for(const rat of game.rats){
+    if(!rat?.root || rat===player || rat===game.controlled || rat.templeSwarmVisual) continue;
+    const inTemple=pointInsideTempleZone(rat.root.position.x,rat.root.position.z,2.8);
+    if(!inTemple) continue;
+    const exitTarget=getTempleEvacuationTargetForPosition(rat.root.position,plazaSnapshot);
+    rat.templeBound=false;
+    rat.followPlayer=false;
+    rat.followStatue=false;
+    rat.targetHuman=null;
+    rat.climbingHuman=null;
+    if(exitTarget){
+      rat.targetPos.set(exitTarget.x,0,exitTarget.z);
+      rat.yaw=Math.atan2(exitTarget.x-rat.root.position.x,exitTarget.z-rat.root.position.z);
+      rat.root.rotation.y=rat.yaw;
+    }
+    rat.root.position.y=(rat.baseY??0)+GROUND_Y_OFFSET;
+  }
 }
 function setTempleFlash(strength=0){
   game.templeEvent.flashStrength=clamp(strength,0,1);
@@ -5118,12 +5169,16 @@ function spawnTempleGlow(pos,count=44){
 }
 function startTempleAwakeningLegacy(){
   if(game.templeEvent.started||game.templeEvent.awakened)return;
+  const target=getCurrentTempleSwarmTarget();
+  if(target?.idol && target.idol!==game.templeEvent.idol){
+    promoteIdolToPrimary(target.idol);
+  }
   if(!game.templeEvent.idol){
     game.templeEvent.awakeningRequested=true;
     loadTempleIdolAssets().catch(()=>{});
     return;
   }
-  if(!game.templeEvent.gathering) startTempleGathering();
+  game.templeEvent.gathering=true;
   game.templeEvent.awakeningRequested=false;
   game.templeEvent.started=true;
   game.templeEvent.phase='gather';
@@ -5133,24 +5188,14 @@ function startTempleAwakeningLegacy(){
   game.templeEvent.glowCooldown=0;
   game.templeEvent.swarmSprites.length=0;
   setAllTempleIdolPhaseMaterials('gold');
-  for(const rat of game.rats){
-    if(rat===player)continue;
-    rat.followPlayer=false;
-    rat.followStatue=false;
-    rat.templeBound=true;
-    rat.targetPos?.set(
-      game.templeEvent.altarFrontPos.x+rand(-1.2,1.2),
-      0,
-      game.templeEvent.altarFrontPos.z+rand(-1.0,1.0)
-    );
-  }
   // Old flow restored: exactly 300 swarm rats for the temple the player
   // is currently standing in, split across that temple's front/rear
   // street entrances when both exist.
   const SWARM_COUNT=300;
   const visualFromVirtual=Math.min(game.virtualRats,SWARM_COUNT);
   game.virtualRats=Math.max(0,game.virtualRats-visualFromVirtual);
-  const plazaSnapshot=getCurrentTempleSwarmPlaza();
+  const plazaSnapshot=(target?.plaza)||getTemplePlazaSnapshotFromEventState();
+  clearTempleRitualInterference(target?.zone||isPlayerInsideAnyTempleZone(),plazaSnapshot);
   const entrances=getTempleSwarmEntrances(plazaSnapshot);
   let cursor=0;
   entrances.forEach((entrance,entranceIdx)=>{
@@ -5158,13 +5203,13 @@ function startTempleAwakeningLegacy(){
     const slotsLeft=entrances.length-entranceIdx;
     const burstCount=(slotsLeft<=1)?remaining:Math.floor(remaining/slotsLeft);
     for(let i=0;i<burstCount;i++){
-      spawnTempleSwarmRat(i,burstCount,plazaSnapshot,game.templeEvent.idol||null,entrance);
+      spawnTempleSwarmRat(i,burstCount,plazaSnapshot,target?.idol||game.templeEvent.idol||null,entrance);
       cursor++;
     }
   });
   while(cursor<SWARM_COUNT){
     const entrance=entrances[cursor%entrances.length];
-    spawnTempleSwarmRat(cursor,SWARM_COUNT,plazaSnapshot,game.templeEvent.idol||null,entrance);
+    spawnTempleSwarmRat(cursor,SWARM_COUNT,plazaSnapshot,target?.idol||game.templeEvent.idol||null,entrance);
     cursor++;
   }
 }
@@ -5309,17 +5354,17 @@ function tickTempleEvent(dt){
   // Gathering can begin even before the idol asset has finished loading
   // — the rats just walk toward the altar's recorded XZ. We only block
   // the swarm/awakening on idol availability.
-  if(!game.templeEvent.gathering && getTotalRatCount()>=TEMPLE_SWARM_TRIGGER){
-    startTempleGathering();
+  if(!game.templeEvent.gathering && getTotalRatCount()>=TEMPLE_SWARM_TRIGGER && isPlayerInsideEventTemple()){
+    startTempleAwakening();
   }
   const idol=game.templeEvent.idol;
   if(!idol){
-    if(game.templeEvent.gathering && !templeIdolSource){
+    if(getTotalRatCount()>=TEMPLE_SWARM_TRIGGER && isPlayerInsideEventTemple() && !templeIdolSource){
       loadTempleIdolAssets().catch(()=>{});
     }
     return;
   }
-  if(game.templeEvent.gathering && !game.templeEvent.started && isPlayerInsideEventTemple()){
+  if(getTotalRatCount()>=TEMPLE_SWARM_TRIGGER && isPlayerInsideEventTemple() && !game.templeEvent.started){
     startTempleAwakening();
   }
   tickTempleSwarmSpawnQueue();
@@ -7485,11 +7530,10 @@ function applyUILayoutMetrics(def,metrics){
   }
   el.style.position='fixed';
   if(uiLayoutState.active){
-    const bounds=getUILayoutBoundsForDef(def);
-    el.style.left=`${bounds.left+metrics.x*0.01*bounds.width}px`;
-    el.style.top=`${bounds.top+metrics.y*0.01*bounds.height}px`;
-    el.style.width=`${Math.max(1,metrics.w*0.01*bounds.width)}px`;
-    el.style.height=`${Math.max(1,metrics.h*0.01*bounds.height)}px`;
+    el.style.left=`${metrics.x}%`;
+    el.style.top=`${metrics.y}%`;
+    el.style.width=`${metrics.w}%`;
+    el.style.height=`${metrics.h}%`;
   }else{
     el.style.left=`${metrics.x}%`;
     el.style.top=`${metrics.y}%`;
@@ -7557,7 +7601,9 @@ function getUILayoutViewportBounds(){
   const stage=document.getElementById('admin-stage');
   if(uiLayoutState.active && stage){
     const r=stage.getBoundingClientRect();
-    return {left:r.left,top:r.top,width:r.width,height:r.height};
+    const baseWidth=stage.clientWidth||stage.offsetWidth||r.width;
+    const baseHeight=stage.clientHeight||stage.offsetHeight||r.height;
+    return {left:r.left,top:r.top,width:baseWidth,height:baseHeight};
   }
   return {left:0,top:0,width:window.innerWidth,height:window.innerHeight};
 }
@@ -10002,7 +10048,7 @@ function summonSpillRats(x,z,count=2){
     rat.targetPos.set(x,0,z);
     rat.moveIntent.y=-1;
     rat.followPlayer=(i===0)||Math.random()<0.32;
-    if(game.templeEvent.gathering && !game.templeEvent.awakened){
+    if(game.templeEvent.gathering && !game.templeEvent.started && !game.templeEvent.awakened){
       rat.templeBound=true;
       rat.followPlayer=false;
     }
@@ -10406,7 +10452,7 @@ function tickBreeding(dt){
   rat.targetPos.set(hotspot.x,0,hotspot.z);
   rat.moveIntent.y=-1;
   rat.followPlayer=Math.random()<0.28;
-  if(game.templeEvent.gathering && !game.templeEvent.awakened){
+  if(game.templeEvent.gathering && !game.templeEvent.started && !game.templeEvent.awakened){
     rat.templeBound=true;
     rat.followPlayer=false;
   }
@@ -10791,6 +10837,30 @@ function tickHumanRatAttackState(dt){
 function tickFollowerRats(dt){
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
+    if(game.templeEvent.started && !game.templeEvent.awakened && !r.templeSwarmVisual){
+      r.templeBound=false;
+      r.followStatue=false;
+      const templeZone=pointInsideTempleZone(r.root.position.x,r.root.position.z,2.8);
+      if(templeZone){
+        const exitTarget=getTempleEvacuationTargetForPosition(r.root.position);
+        if(exitTarget){
+          const dx=exitTarget.x-r.root.position.x;
+          const dz=exitTarget.z-r.root.position.z;
+          const yaw=Math.atan2(dx,dz);
+          const spd=2.1+game.chaos*1.5;
+          r.followPlayer=false;
+          r.root.position.x+=Math.sin(yaw)*spd*dt;
+          r.root.position.z+=Math.cos(yaw)*spd*dt;
+          r.root.position.y=(r.baseY??0)+GROUND_Y_OFFSET;
+          r.root.rotation.y=yaw;
+          r.curSpeed=spd;
+          if(r.moveIntent){r.moveIntent.x=0;r.moveIntent.y=-1}
+          tickActor(r,dt);
+          tickRatBillboard(r,dt);
+          continue;
+        }
+      }
+    }
     // Rat climbing a human takes priority over any other behaviour —
     // stick to the body until the human transforms or dies.
     if(r.climbingHuman){
@@ -11244,6 +11314,14 @@ function renderGameToText(){
     nearestBiteable:game.controlMode==='rat'&&player?!!nearestBiteableHuman(player):false,
     chaos:+game.chaos.toFixed(3),
     rats:getTotalRatCount(),
+    temple:{
+      inside:!!isPlayerInsideEventTemple(),
+      gathering:!!game.templeEvent.gathering,
+      started:!!game.templeEvent.started,
+      awakened:!!game.templeEvent.awakened,
+      phase:game.templeEvent.phase,
+      swarmVisuals:game.templeEvent.swarmSprites.filter(r=>r?.templeSwarmVisual).length
+    },
     tippedProps:game.props.filter(p=>p.tipped).length,
     cleaners:{
       total:game.humans.filter(h=>h.role==='cleaner').length,
