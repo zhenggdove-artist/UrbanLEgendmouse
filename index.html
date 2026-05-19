@@ -7711,11 +7711,15 @@ const UI_LAYOUT_DEFAULTS={
     "__viewportHeight": 844
   }
 };
-// RESTORED constants — an earlier auto-commit accidentally chopped these
-// two definitions out. Without them every code path that calls
-// getUILayoutDefs / resolveUILayoutArtTargetId / etc. throws
-// ReferenceError at script-eval time, which is why the loader stuck at
-// 0% — `init()` never even got the chance to run. Do not delete again.
+// RESTORED constants & functions — an earlier auto-commit (4923786)
+// chopped 17+ top-level declarations out of this region in one stroke,
+// including UI_LAYOUT_TARGET_DEFS, UI_LAYOUT_ART_TARGETS,
+// UI_LAYOUT_BUILTIN_FRAMES, UI_LAYOUT_TEXT_DEFAULTS, uiLayoutState,
+// applyAdminSceneClass, getHostLifeBarMetricsFromFrame, and more.
+// Without these declarations the entire module fails to evaluate
+// (every reference becomes a ReferenceError at script-eval time),
+// which is why the loader sat at 0% — init() never started.
+// Full block restored from commit 06f2796 verbatim.
 const UI_LAYOUT_TARGET_DEFS=[
   {id:'minimap',label:'Minimap',scene:'game'},
   {id:'mode-badge',label:'Mode Badge',scene:'game'},
@@ -7757,6 +7761,128 @@ const UI_LAYOUT_ART_TARGETS={
   'pickup-btn':'pickup-btn-art',
   'exit-host-btn':'exit-host-btn-art'
 };
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rats-win','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_TEXT_STYLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn']);
+const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_TEXT_DEFAULTS={
+  'rat-city-btn':'RAT CITY',
+  'start-btn':'BEGIN',
+  'rw-text':'RATS WIN',
+  'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
+  'rw-replay':'PLAY AGAIN',
+  'intro-copy':`This is an ancient prophecy.
+
+Under the call of the Rat King, vast hordes of rats march toward the city.
+They build their own civilization, a sign that the order of chaos is advancing.
+Ancient gods awaken beneath this chaotic order, and they will lead the rats to overthrow the age of humankind.
+
+You are an awakened Rat King.
+By biting humans, you can temporarily control them, and by destroying man-made structures, you can reshape the environment into a more suitable habitat for your fellow rats.
+
+A distant temple seems to be watching you.
+When your colony reaches 1000 rats, travel to the temple.
+The gods will descend.`
+};
+const UI_LAYOUT_DEFAULT_ART_SRCS={
+  'chaos-box-art':'./asset/ART/CAHOS.png',
+  'rats-box-art':'./asset/ART/RAT.png'
+};
+const UI_LAYOUT_BUILTIN_FRAMES={
+  desktop:[
+    {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%95%B4%E9%AB%94%E5%9C%96%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
+    {id:'builtin-frame-host-life',label:'Host Life Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png',x:6.1,y:50.7,w:31,h:7.8,z:18,hidden:true,locked:false,rot:90,scene:'game'},
+    {id:'builtin-frame-loading',label:'Loading Window Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png',x:50,y:50,w:56,h:76,z:31,hidden:true,locked:false,scene:'loading'}
+  ],
+  mobile:[
+    {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%95%B4%E9%AB%94%E5%9C%96%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
+    {id:'builtin-frame-host-life',label:'Host Life Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png',x:8.8,y:51,w:27,h:7.2,z:18,hidden:true,locked:false,rot:90,scene:'game'},
+    {id:'builtin-frame-loading',label:'Loading Window Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png',x:50,y:50,w:89,h:69,z:31,hidden:true,locked:false,scene:'loading'}
+  ]
+};
+const UI_LAYOUT_REMOVED_FRAME_IDS=new Set([
+  'builtin-frame-minimap-ring',
+  'builtin-frame-rat-city-ring',
+  'builtin-frame-jump-ring',
+  'builtin-frame-bite-ring',
+  'builtin-frame-pickup-ring',
+  'builtin-frame-drop-ring'
+]);
+// Sensible default rects for the new loading/ending targets so the user
+// can locate and resize them right after they appear in the editor.
+const UI_LAYOUT_INTRO_FALLBACK={
+  'intro-card':{x:50,y:55,w:42,h:56,z:30,hidden:false,locked:false},
+  'start-btn':{x:50,y:86,w:20,h:5,z:32,hidden:false,locked:false,text:'BEGIN'},
+  'intro-title':{x:50,y:30.5,w:26,h:4.8,z:31,hidden:false,locked:false},
+  'intro-tag':{x:50,y:36.6,w:20,h:1.8,z:31,hidden:false,locked:false},
+  'intro-copy':{x:50,y:53,w:45,h:30,z:31,hidden:false,locked:false},
+  'intro-progress-text':{x:50,y:76.6,w:24,h:1.7,z:32,hidden:false,locked:false},
+  'intro-progress-track':{x:50,y:80.4,w:28,h:0.9,z:32,hidden:false,locked:false},
+  'rats-win':{x:50,y:50,w:56,h:56,z:30,hidden:false,locked:false},
+  'rw-text':{x:50,y:43,w:58,h:7,z:31,hidden:false,locked:false,fontSize:24},
+  'rw-sub':{x:50,y:54,w:54,h:4,z:31,hidden:false,locked:false,fontSize:11},
+  'rw-replay':{x:50,y:69,w:18,h:6,z:31,hidden:false,locked:false}
+};
+const UI_LAYOUT_COMPARE_PAIRS={
+  'viewport-frame-top':'viewport-frame-bottom',
+  'viewport-frame-bottom':'viewport-frame-top',
+  'viewport-frame-left':'viewport-frame-right',
+  'viewport-frame-right':'viewport-frame-left'
+};
+const UI_LAYOUT_SNAP_PX=8;
+const ADMIN_STAGE_MOBILE_WIDTH=390;
+const ADMIN_STAGE_MOBILE_HEIGHT=844;
+function isLiveMobileDevice(){
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
+}
+const uiLayoutState={
+  active:false,mode:null,config:null,selectedId:null,selectedIds:[],editor:null,
+  overlays:new Map(),drag:null,toastTimer:null,clipboard:null,forcedMode:null,
+  adminZoom:1,listDrag:null,panelDrag:null,objectPanelCollapsed:false,
+  stagePan:{x:0,y:0},stagePanDrag:null,
+  objectPanelScrollTop:0,panelRect:{left:16,top:16,width:340,height:520},
+  customFrameSeq:0,history:[],historyIndex:-1,isRestoringHistory:false,
+  scene:'game',
+  loadingTextPanelRect:{left:24,top:96,width:320,height:420},
+  loadingTextPanelCollapsed:false
+};
+function getActiveLayoutScene(){
+  return uiLayoutState.scene||'game';
+}
+function defBelongsToScene(def,scene=getActiveLayoutScene()){
+  if(def?.isCustomFrame){
+    const frame=getUILayoutCustomFrameById(def.id);
+    return (frame?.scene||'game')===scene;
+  }
+  return (def?.scene||'game')===scene;
+}
+function applyAdminSceneClass(){
+  const body=document.body;
+  body.classList.toggle('scene-game',uiLayoutState.active && getActiveLayoutScene()==='game');
+  body.classList.toggle('scene-loading',uiLayoutState.active && getActiveLayoutScene()==='loading');
+  body.classList.toggle('scene-ending',uiLayoutState.active && getActiveLayoutScene()==='ending');
+}
+const layoutMobileQuery=window.matchMedia('(any-pointer: coarse), (max-width: 900px)');
+function cloneUILayoutConfig(v){ return JSON.parse(JSON.stringify(v)); }
+function getHostLifeBarMetricsFromFrame(frame,mode){
+  const fallback=(UI_LAYOUT_DEFAULTS[mode]&&UI_LAYOUT_DEFAULTS[mode]['host-life-box'])||{x:6.1,y:50.7,w:3,h:24.6,z:19,hidden:false,locked:false,rot:0};
+  if(!frame) return {...fallback};
+  const frameDisplayWidth=(Number.isFinite(frame.rot) && Math.abs(Math.round(frame.rot)%180)===90)
+    ? (Number.isFinite(frame.h)?frame.h:fallback.w)
+    : (Number.isFinite(frame.w)?frame.w:fallback.w);
+  const frameDisplayHeight=(Number.isFinite(frame.rot) && Math.abs(Math.round(frame.rot)%180)===90)
+    ? (Number.isFinite(frame.w)?frame.w:fallback.h)
+    : (Number.isFinite(frame.h)?frame.h:fallback.h);
+  return {
+    ...fallback,
+    x:Number.isFinite(frame.x)?frame.x:fallback.x,
+    y:Number.isFinite(frame.y)?frame.y:fallback.y,
+    w:Math.min(fallback.w,Math.max(2.2,frameDisplayWidth*0.36)),
+    h:Math.min(fallback.h,Math.max(14,frameDisplayHeight*0.8)),
+    z:(Number.isFinite(frame.z)?frame.z:fallback.z)+1,
+    hidden:false,
+    rot:0
+  };
+}
 function ensureUILayoutBuiltins(config){
   for(const mode of ['desktop','mobile']){
     const store=config[mode]||{};
