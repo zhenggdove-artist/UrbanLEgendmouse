@@ -662,7 +662,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','binding-inspector-test 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','no-fade-direct-weight 2026-05-19 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -5390,13 +5390,18 @@ function forceHumanActionPose(h,preferred='idle'){
   const act=actions[next];
   if(!act) return;
   for(const [name,a] of Object.entries(actions)){
-    a.enabled=true;
-    a.paused=false;
     if(name===next){
+      // Hard play: stop any prior fade, reset time, force enabled +
+      // running + full effective weight. Direct assignment. No fades.
+      a.stop();
       a.reset();
+      a.enabled=true;
+      a.paused=false;
       a.setEffectiveWeight(1);
+      a.weight=1;
       a.play();
     }else{
+      a.stop();
       a.setEffectiveWeight(0);
     }
   }
@@ -5517,11 +5522,40 @@ function tickActor(ent,dt){
       && ent.actionStamp!==ent.lastActionStamp;
     if(ent.animState!==next || shouldRestartAction){
       for(const [name,act] of Object.entries(ent.inst.actions)){
-        if(name===next){act.reset().fadeIn(0.12).play();}
-        else act.fadeOut(0.12);
+        if(name===next){
+          act.reset();
+          act.enabled=true;
+          act.paused=false;
+          act.setEffectiveWeight(1);
+          act.play();
+        }else{
+          // Stop the action outright instead of fadeOut. fadeOut sets
+          // a weight interpolant that lerps from current→0 and, when
+          // it finishes, three.js sets `this.enabled=false`. Combined
+          // with rapid idle↔walk transitions (every wander tick), this
+          // produces edge states where the previously-chosen action's
+          // weight is stuck at 0 AND enabled is false — even after a
+          // later transition, the action wouldn't snap back to weight=1
+          // until forceHumanActionPose ran again. Direct stop() + weight
+          // 0 skips that minefield, at the cost of a hard transition
+          // instead of a 0.12s crossfade (acceptable for PS1 look).
+          act.stop();
+          act.setEffectiveWeight(0);
+        }
       }
       ent.animState=next;
       if(shouldRestartAction) ent.lastActionStamp=ent.actionStamp;
+    }else{
+      // Steady state: re-assert the chosen action's full weight every
+      // frame. Cheap, and immune to whatever weight the action might
+      // have ended up at via an earlier fade interpolant.
+      const chosen=ent.inst.actions[next];
+      if(chosen && chosen.getEffectiveWeight?.()<0.999){
+        chosen.enabled=true;
+        chosen.paused=false;
+        chosen.setEffectiveWeight(1);
+        if(!chosen.isRunning?.()) chosen.play();
+      }
     }
   }
   let scale;
