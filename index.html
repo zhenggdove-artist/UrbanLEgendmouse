@@ -40,34 +40,34 @@
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
   #mobile-vhs-overlay{
-    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.42;mix-blend-mode:multiply;
+    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.28;mix-blend-mode:multiply;
     background:
       repeating-linear-gradient(
         to bottom,
         rgba(0,0,0,0.00) 0px,
         rgba(0,0,0,0.00) 2px,
-        rgba(0,0,0,0.28) 3px,
-        rgba(0,0,0,0.28) 4px
+        rgba(0,0,0,0.22) 3px,
+        rgba(0,0,0,0.22) 4px
       ),
       radial-gradient(
         circle at center,
         rgba(255,255,255,0.00) 0%,
-        rgba(0,0,0,0.18) 68%,
-        rgba(0,0,0,0.42) 100%
+        rgba(0,0,0,0.14) 68%,
+        rgba(0,0,0,0.34) 100%
       );
   }
   body.mobile-vhs #mobile-vhs-overlay{display:block !important}
   #mobile-vhs-overlay::before{
-    content:'';position:absolute;inset:0;opacity:0.20;
-    background:linear-gradient(90deg, rgba(255,0,120,0.16), transparent 48%, rgba(0,255,255,0.14));
+    content:'';position:absolute;inset:0;opacity:0.08;
+    background:linear-gradient(90deg, rgba(255,0,120,0.08), transparent 48%, rgba(0,255,255,0.07));
   }
   #mobile-vhs-overlay::after{
-    content:'';position:absolute;inset:0;opacity:0.12;
+    content:'';position:absolute;inset:0;opacity:0.06;
     background:
       repeating-linear-gradient(
       90deg,
-      rgba(255,255,255,0.06) 0px,
-      rgba(255,255,255,0.06) 1px,
+      rgba(255,255,255,0.03) 0px,
+      rgba(255,255,255,0.03) 1px,
       transparent 2px,
       transparent 6px
     );
@@ -686,8 +686,8 @@ const IS_MOBILE_DEVICE =
   /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') ||
   (typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches) ||
   window.innerWidth <= 900;
-document.body.classList.add('mobile-vhs');
-console.log('[VHS TEST] mobile overlay forced',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
+document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
+console.log('[mobile-vhs]',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
 // Cap PBR character textures at 512px on the long axis on mobile.
 // Saves roughly 4× VRAM and matches the PS1 aesthetic anyway — the
 // renderer is already running at <500px wide, so 1024² source is wasted.
@@ -1340,11 +1340,11 @@ function unlockSFX(keys=ALL_SFX_KEYS){
     const player=ensureSFXPlayer(key);
     if(!player || player.warmed) continue;
     player.warmed=true;
-    warms.push(...warmSFXKey(key,{fullPool:false}));
+    warms.push(...warmSFXKey(key,{fullPool:true}));
   }
   const quickUnlock=Promise.race([
     Promise.allSettled(warms).then(()=>true),
-    new Promise(resolve=>window.setTimeout(()=>resolve(true),250))
+    new Promise(resolve=>window.setTimeout(()=>resolve(true),450))
   ]);
   sfxState.unlockPromise=quickUnlock;
   window.setTimeout(()=>{
@@ -1352,7 +1352,7 @@ function unlockSFX(keys=ALL_SFX_KEYS){
       const player=ensureSFXPlayer(key);
       if(!player || player.warmed) continue;
       player.warmed=true;
-      warmSFXKey(key,{fullPool:false});
+      warmSFXKey(key,{fullPool:true});
     }
   },0);
   return sfxState.unlockPromise;
@@ -12301,6 +12301,7 @@ function setIntroProgress(p,label){
 startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
 startBtn.addEventListener('click',()=>{
   if(gameState!=='intro')return;
+  unlockSFX();
   startBtn.disabled=true;startBtn.textContent='LOADING…';
   setIntroProgress(100);
   introEl.style.display='none';
@@ -12595,11 +12596,23 @@ async function init(){
     pushHumanVariant({
       name:'中年男子',
       source:idleHumanFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTex,normal:normalTex,roughness:roughTex,metal:metalTex}
     });
     pushHumanVariant({
       name:'中年婦女',
       source:idleWomanFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
     });
     pushHumanVariant({
@@ -12615,26 +12628,56 @@ async function init(){
     pushHumanVariant({
       name:'女高中生',
       source:idleSchoolgirlFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
     });
     pushHumanVariant({
       name:'花花大媽',
       source:idleMumFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
     });
     pushHumanVariant({
       name:'吊嘎阿伯',
       source:idleUncleFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTexUncle,normal:normalTexUncle,roughness:roughTexUncle,metal:metalTexUncle}
     });
     pushHumanVariant({
       name:'女上班族',
       source:idleOLFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTexOL,normal:normalTexOL,roughness:roughTexOL,metal:metalTexOL}
     });
     pushHumanVariant({
       name:'男上班族',
       source:idleSalarymanFBX,
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX,
       skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
     });
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
