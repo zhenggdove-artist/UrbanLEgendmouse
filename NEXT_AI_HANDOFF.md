@@ -75,10 +75,19 @@ Related docs:
     - follower rat full-sim budget added, and `followPlayer` removed from `isRatCriticalForFullSim`
     - per-frame `ensureChunksAroundX(player.root.position.x)` replaced by `maybeEnsureChunksAroundPlayer()`
     - live cleaner branch removed from `tickHumans()`
+    - animation clip validation added:
+      - incompatible filtered clips now return `null`
+      - empty / near-empty clips are skipped before creating `AnimationAction`
+      - human variant clip track counts are logged to console at load time
+      - variants without usable idle + walk/run are filtered out of active human usage
+    - mobile VHS restored as a CSS overlay (`#mobile-vhs-overlay`) while keeping mobile direct render
+    - bite lock cache now uses `humansGrid` lookup instead of the new path doing a full-table human scan
+    - `tickProps()` now ticks `activeProps` only instead of sweeping all props every frame
+    - follower full-sim budget now updates at 5 Hz instead of sorting every frame
   - still pending / partial:
-    - bite lock is not yet fully migrated to humans-grid cache
+    - old disabled bite-lock block still exists as dead code and can be physically deleted later
     - full swarm-visual system is not yet implemented
-    - props active-set / moved-grid refresh / full spatial-grid rollout still remain
+    - props moved-grid refresh / full spatial-grid rollout still remain
 
 ## Most important current state
 
