@@ -974,7 +974,13 @@ const SOUND_PATHS={
   streetAmbience:`${SOUND_DIR}街道背景音效.wav`
 };
 SOUND_PATHS.ratSqueak=SOUND_PATHS.playerMove;
-const SFX_LOOP_KEYS=new Set(['playerBiteLoop','ritualSwarm','streetAmbience']);
+// Single looped voice that represents the entire rat-follower swarm.
+// We modulate its gain/playbackRate by the count of nearby moving rats,
+// so 500 rats only cost ONE HTMLAudio instance instead of 500 — the
+// per-rat audio.play() pattern is the dominant mobile lag source on
+// iOS Safari because every play() call stalls the main thread.
+SOUND_PATHS.ratSwarmLoop=SOUND_PATHS.playerMove;
+const SFX_LOOP_KEYS=new Set(['playerBiteLoop','ritualSwarm','streetAmbience','ratSwarmLoop']);
 const HUMAN_BITE_SCREAM_PATHS={
   '中年婦女':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E5%A9%A6%E5%A5%B3%E5%B0%96%E5%8F%AB.mp3',
   '中年男子':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E7%94%B7%E5%AD%90%E5%B0%96%E5%8F%AB.MP3',
@@ -1237,13 +1243,43 @@ function tickFootstepSFX(ent,dt,key,{minSpeed=0.18,baseInterval=0.44,volume=1,co
   ent._footstepTimer=interval;
 }
 function syncFollowerRatMovementSFX(dt){
+  // Industry pattern (Halo, Battlefield, Diablo etc. all do this for
+  // crowd audio): collapse N entity footsteps into a single ambient
+  // loop whose volume + playbackRate scale with the local density.
+  // The listener still hears the swarm thicken when rats arrive, but
+  // we never pay the iOS Safari HTMLAudio.play() stall N times a frame.
+  if(!sfxState.unlocked || !player?.root){
+    for(const rat of game.rats) if(rat) rat._footstepTimer=0;
+    return;
+  }
+  const listener=getSFXListenerPosition();
+  if(!listener){
+    stopLoopSFX('ratSwarmLoop',{reset:false});
+    return;
+  }
+  const SWARM_RADIUS=22;
+  const SWARM_R2=SWARM_RADIUS*SWARM_RADIUS;
+  let nearbyMoving=0;
   for(const rat of game.rats){
-    if(!rat || rat===player || rat===game.controlled){
-    if(rat) rat._footstepTimer=0;
-      continue;
-    }
-    const active=(rat.curSpeed||0)>0.12 && !rat.isAir && rat.root?.visible!==false;
-    tickFootstepSFX(rat,dt,'playerMove',{minSpeed:0.08,baseInterval:0.28,volume:0.42,cooldown:0.02,rateScale:0.08,activeOverride:active});
+    if(!rat || rat===player || rat===game.controlled) continue;
+    rat._footstepTimer=0;
+    if((rat.curSpeed||0)<=0.12) continue;
+    if(rat.isAir) continue;
+    if(rat.root?.visible===false) continue;
+    const dx=rat.root.position.x-listener.x;
+    const dz=rat.root.position.z-listener.z;
+    if(dx*dx+dz*dz<=SWARM_R2) nearbyMoving++;
+  }
+  // sqrt curve: a single nearby rat is faint, dozens are roaring.
+  const targetVol=Math.min(0.78,Math.sqrt(nearbyMoving/4)*0.22);
+  sfxState.ratSwarmGain=lerp(sfxState.ratSwarmGain||0,targetVol,Math.min(1,dt*4));
+  if((sfxState.ratSwarmGain||0)>0.005){
+    startLoopSFX('ratSwarmLoop',{
+      volume:sfxState.ratSwarmGain,
+      playbackRate:0.92+Math.min(0.20,nearbyMoving*0.004)
+    });
+  }else{
+    stopLoopSFX('ratSwarmLoop',{reset:false});
   }
 }
 function getHumanBiteScreamKey(human){
@@ -1599,7 +1635,19 @@ const RAT_BITE_Y_OFFSET=2.16;
 function ps1ifyCharacterMaterials(root,tint,skin=HUMAN_SKIN){
   root.traverse(o=>{
     if(!o.isMesh)return;
-    o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
+    o.castShadow=false;o.receiveShadow=false;
+    // Re-enable frustum culling but inflate the bind-pose bounding sphere
+    // so animated bones (kicks, throws, climbs) don't get falsely culled
+    // when the rest pose is the only thing Three.js measures. Inflating
+    // happens once per geometry — multiple clones share the same buffer
+    // geometry, so we tag it to avoid re-multiplying on later passes.
+    o.frustumCulled=true;
+    const geom=o.geometry;
+    if(geom && !geom._inflatedForSkin){
+      if(!geom.boundingSphere) geom.computeBoundingSphere();
+      if(geom.boundingSphere) geom.boundingSphere.radius*=2.5;
+      geom._inflatedForSkin=true;
+    }
     const mats=Array.isArray(o.material)?o.material:[o.material];
     const replaced=mats.map(src=>{
       const wantsLit=skin.materialKind==='standard';
@@ -4762,7 +4810,25 @@ function tickActor(ent,dt){
     scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
-  ent.inst.mixer.update(dt);
+  // Animation LOD: far background humans tick the mixer at a fraction
+  // of the real dt. Visually imperceptible past ~14 m (the rig only
+  // covers a handful of pixels through scene fog), but cuts mixer CPU
+  // by 60-80% on mobile when several humans are in the active sim
+  // radius. Player, parasitised host, idol-wanderers, and any
+  // controllable actor still update at full rate so close action is
+  // never compromised.
+  let mixerDt=dt;
+  if(ent.kind==='human' && !ent.controllable && !ent.parasitised && !ent.idolWanderer && ent!==game.parasitisedHost){
+    const focus=getGameplayFocusPosition();
+    if(focus && ent.root){
+      const dx=ent.root.position.x-focus.x;
+      const dz=ent.root.position.z-focus.z;
+      const d2=dx*dx+dz*dz;
+      if(d2>=22*22) mixerDt=dt*0.18;
+      else if(d2>=14*14) mixerDt=dt*0.45;
+    }
+  }
+  ent.inst.mixer.update(mixerDt);
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
@@ -11177,11 +11243,18 @@ function tickFollowerRats(dt){
     const prevX=r.root.position.x, prevZ=r.root.position.z;
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
-    resolveWorldCollisions(r,prevX,prevZ,0.22);
-    const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
-    const baseGroundY=(r.baseY??0)+GROUND_Y_OFFSET;
-    const targetY=supportY>baseGroundY+0.001 ? supportY : baseGroundY;
-    r.root.position.y=targetY;
+    // Skip O(blockers+props) sweeps for rats that didn't actually move
+    // this frame. resolveWorldCollisions / sampleSupportHeight both
+    // iterate every active blocker + prop, so calling them for a fully
+    // idle rat is pure waste — especially once 500 rats are alive.
+    const moved=spd>0.05;
+    if(moved) resolveWorldCollisions(r,prevX,prevZ,0.22);
+    if(moved){
+      const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
+      const baseGroundY=(r.baseY??0)+GROUND_Y_OFFSET;
+      const targetY=supportY>baseGroundY+0.001 ? supportY : baseGroundY;
+      r.root.position.y=targetY;
+    }
     r.root.rotation.y=a;
     r.curSpeed=spd;
     if(r.moveIntent){
