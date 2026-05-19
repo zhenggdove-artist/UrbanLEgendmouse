@@ -39,39 +39,33 @@
   input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
+  /* MOBILE PERF FIX
+     Previous version used `mix-blend-mode:multiply` over the full screen
+     plus two pseudo-element overlays (::before / ::after) each with
+     their own gradient backgrounds. mix-blend-mode forces the browser
+     to keep a separate compositing layer covering the WebGL canvas and
+     re-blend it every frame the canvas pixels change. When the rat is
+     idle the canvas changes little and the cost hides; the moment the
+     player joystick moves, the camera follows and the canvas
+     invalidates every frame, so the compositor pays full-screen
+     multiply blend per frame — that is exactly the "lags when moving
+     the rat, fine when standing still" symptom. Desktop never gets
+     `body.mobile-vhs` so it skips this overlay entirely; that is why
+     desktop has no lag.
+     Fix: drop mix-blend-mode (use plain alpha compositing), drop the
+     two pseudo-element overlays. Keep just one radial vignette so the
+     PS1/VHS look is preserved with a fraction of the compositor cost. */
   #mobile-vhs-overlay{
-    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.22;mix-blend-mode:multiply;
+    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.32;
     background:
-      repeating-linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.00) 0px,
-        rgba(0,0,0,0.00) 2px,
-        rgba(0,0,0,0.26) 3px,
-        rgba(0,0,0,0.26) 4px
-      ),
       radial-gradient(
         circle at center,
-        rgba(255,255,255,0.00) 0%,
-        rgba(0,0,0,0.16) 68%,
-        rgba(0,0,0,0.38) 100%
+        rgba(0,0,0,0) 0%,
+        rgba(0,0,0,0.18) 68%,
+        rgba(0,0,0,0.42) 100%
       );
   }
   body.mobile-vhs #mobile-vhs-overlay{display:block !important}
-  #mobile-vhs-overlay::before{
-    content:'';position:absolute;inset:0;opacity:0.04;
-    background:linear-gradient(90deg, rgba(255,0,120,0.05), transparent 48%, rgba(0,255,255,0.04));
-  }
-  #mobile-vhs-overlay::after{
-    content:'';position:absolute;inset:0;opacity:0.03;
-    background:
-      repeating-linear-gradient(
-      90deg,
-      rgba(255,255,255,0.015) 0px,
-      rgba(255,255,255,0.015) 1px,
-      transparent 2px,
-      transparent 6px
-    );
-  }
   #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none;display:none}
   #viewport-frame .viewport-edge{position:fixed;background-position:center;background-repeat:no-repeat;pointer-events:none}
   #viewport-frame-top{left:50%;top:8.4%;transform:translate(-50%,-50%);width:100%;height:34%;
@@ -1589,7 +1583,6 @@ const gltfLoader=new GLTFLoader();
 const imageLoader=new THREE.TextureLoader();
 let crawlFBX=null,runFBX=null;
 let characterSource=null;
-let humanAnimationSource=null;
 const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
 const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 const HUMAN_VARIANTS=[];
@@ -1813,49 +1806,47 @@ function remapTrackNameForSource(source,trackName){
   return trackName;
 }
 function getSourceCompatibleClip(source,srcClip){
+  // 12-hr-ago working behaviour restored: just FILTER the clip's tracks
+  // to the bones that actually exist on the variant's own skeleton. Do
+  // NOT rewrite track names — Tripo's auto-rigged meshes share bone
+  // names well enough that filtering is sufficient, and any further
+  // "smart" retargeting was what caused the AnimationActions to bind
+  // to nothing → T-pose sliding NPCs.
   const clip=resolveAnimationClip(srcClip);
-  if(!clip || !source) return clip;
-  let cached=SOURCE_CLIP_FILTER_CACHE.get(source);
-  if(!cached){
-    cached={clips:new WeakMap()};
-    SOURCE_CLIP_FILTER_CACHE.set(source,cached);
-  }else if(!cached.clips){
-    cached.clips=new WeakMap();
+  if(!clip || !source?.traverse) return clip;
+  let clipCache=SOURCE_CLIP_FILTER_CACHE.get(source);
+  if(!clipCache || !(clipCache instanceof Map)){
+    clipCache=new Map();
+    SOURCE_CLIP_FILTER_CACHE.set(source,clipCache);
   }
-  const existing=cached.clips.get(clip);
-  if(existing) return existing;
-  const retargeted=clip.clone();
-  retargeted.tracks=retargeted.tracks.map(track=>{
-    const next=track.clone();
-    next.name=remapTrackNameForSource(source,track.name);
-    return next;
+  const cacheKey=`${clip.name}::${clip.duration}::${clip.tracks.length}`;
+  if(clipCache.has(cacheKey)) return clipCache.get(cacheKey);
+  const sourceNodeNames=getSourceNodeNames(source);
+  const filteredTracks=clip.tracks.filter(track=>{
+    const nodeName=(track?.name||'').split('.')[0];
+    return !nodeName || sourceNodeNames.has(nodeName);
   });
-  cached.clips.set(clip,retargeted);
-  return retargeted;
+  const filteredClip=(filteredTracks.length===clip.tracks.length)
+    ? clip
+    : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
+  clipCache.set(cacheKey,filteredClip);
+  return filteredClip;
 }
-function makeHumanVariant({name='',source,animationSource=null,idle,walk,run,jump,kick,pickup,clean,skin}){
-  const safeIdle=getSourceCompatibleClip(source,idle);
-  const safeWalk=getSourceCompatibleClip(source,walk);
-  const safeRun=getSourceCompatibleClip(source,run);
-  const safeJump=getSourceCompatibleClip(source,jump);
-  const safeKick=getSourceCompatibleClip(source,kick);
-  const safePickup=getSourceCompatibleClip(source,pickup);
-  const safeClean=getSourceCompatibleClip(source,clean);
+function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
   return {
     name,
     source,
-    animationSource:animationSource||source,
     skin,
     clips:{
-      idle:safeIdle,
-      walk:safeWalk,
-      run:safeRun,
-      jump:safeJump,
-      kick:safeKick,
-      pickup:safePickup,
+      idle:getSourceCompatibleClip(source,idle),
+      walk:getSourceCompatibleClip(source,walk),
+      run:getSourceCompatibleClip(source,run),
+      jump:getSourceCompatibleClip(source,jump),
+      kick:getSourceCompatibleClip(source,kick),
+      pickup:getSourceCompatibleClip(source,pickup),
       punch:null,
       punchcombo:null,
-      clean:safeClean
+      clean:getSourceCompatibleClip(source,clean)
     }
   };
 }
@@ -4932,7 +4923,11 @@ async function warmChunksDuringIntro(chunkIds,{progressStart=90,progressEnd=99,l
    final height matches. Mixamo bones use centimetres internally, so
    targeting metres here means small rats (0.30 m) end up at scale
    ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
-function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,animationSource=null,skin=HUMAN_SKIN}){
+function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,skin=HUMAN_SKIN}){
+  // 12-hr-ago shape restored: bind the AnimationMixer directly to the
+  // cloned variant root. No second skeleton, no per-frame bone copy.
+  // The clip's tracks are already filtered (see getSourceCompatibleClip)
+  // so only bone names that exist on this variant's skeleton remain.
   const root=SkeletonUtils.clone(source);
   ps1ifyCharacterMaterials(root,tint,skin);
   const outer=new THREE.Group();
@@ -4966,18 +4961,11 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   if(headBone && !headBone.userData.originalScale){
     headBone.userData.originalScale=headBone.scale.clone();
   }
-  const animRoot=(animationSource && animationSource!==source) ? SkeletonUtils.clone(animationSource) : root;
-  const mixer=new THREE.AnimationMixer(animRoot);
-  const retargetPairs=(animRoot!==root) ? buildRetargetBonePairs(root,animRoot) : null;
+  const mixer=new THREE.AnimationMixer(root);
   const actions={};
   if(clips){
     for(const [name,srcClip] of Object.entries(clips)){
-      if(!isUsableClip(srcClip)){
-        if(srcClip){
-          console.warn('[SKIP EMPTY CLIP]',name,srcClip?.name,srcClip?.tracks?.length);
-        }
-        continue;
-      }
+      if(!srcClip) continue;
       const act=mixer.clipAction(srcClip);
       act.enabled=true;
       if(name==='idle'||name==='walk'||name==='run'||name==='clean'){
@@ -4994,9 +4982,7 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   }
   const action=clip?mixer.clipAction(clip):null;
   if(action){action.setEffectiveTimeScale(1);action.play()}
-  const inst={outer,root,mixer,action,actions,headBone,height:finalH,baseY:0,animRoot,retargetPairs};
-  if(retargetPairs?.length) syncRetargetPose(inst);
-  return inst;
+  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY:0,animRoot:root,retargetPairs:null};
 }
 
 /* ============================================================
@@ -5145,7 +5131,6 @@ function buildHuman({position,role='wanderer'}={}){
     tint,
     clips:variant.clips,
     source:variant.source,
-    animationSource:variant.animationSource||humanAnimationSource||variant.source,
     skin:variant.skin
   });
   const root=inst.outer;
@@ -12626,84 +12611,90 @@ async function init(){
   const templeAssetsPromise=loadTempleIdolAssets().catch(()=>{});
 
   try{
-    // All eight NPC variants now share 男高中生's mesh, skeleton, and the
-    // five boy animation clips (idle / walk / run / jump / kick) plus the
-    // shared death clip. Per-variant differentiation is the BaseColor skin
-    // texture only. This is the user's explicit architecture request and
-    // the only reliable JS-side fix for the T-pose+sliding bug: the prior
-    // per-variant FBX meshes had Tripo-generated skeletons whose bone
-    // names did not match the boy's skeleton, so the runtime retargeter
-    // silently produced empty AnimationActions. Sharing the mesh removes
-    // that entire failure mode AND cuts boot bandwidth/VRAM by ~8×.
+    // 12-hr-ago working configuration restored. Each variant keeps its
+    // OWN FBX mesh + own BaseColor texture; every variant shares the
+    // boy's idle/walk/run/jump/kick + clean (清潔姿勢) + death clips.
+    // getSourceCompatibleClip filters those clips to the bones that
+    // actually exist in each variant's skeleton, so the mixer binds
+    // cleanly and the NPCs animate instead of T-pose-sliding.
     const [
-      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,
-      deathHumanFBX,
-      skinMidMan,
-      skinMidWoman,
-      skinBoy,
-      skinSchoolgirl,
-      skinMum,
-      skinUncle,
-      skinOL,
-      skinSalaryman
+      idleHumanFBX,
+      baseColourTex,
+      idleWomanFBX,
+      baseColourTexWoman,
+      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,cleanBoyFBX,
+      baseColourTexBoy,
+      idleSchoolgirlFBX,
+      baseColourTexSchoolgirl,
+      idleMumFBX,
+      baseColourTexMum,
+      idleUncleFBX,
+      baseColourTexUncle,
+      idleOLFBX,
+      baseColourTexOL,
+      idleSalarymanFBX,
+      baseColourTexSalaryman,
+      deathHumanFBX
     ]=await Promise.all([
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx',onRunProgress),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx',onRunProgress),
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/站著發呆.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/清潔姿勢.fbx').catch(()=>null),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg')
+      loadFBXAsync('asset/都市傳說鼠王_男上班族/發呆.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
     ].map(p=>p.catch(err=>{
-      console.error('[fbx] human asset failed but continuing',err);
+      console.error('[fbx] human asset failed but continuing variant batch',err);
       return null;
     })));
-    humanAnimationSource=idleBoyFBX||humanAnimationSource;
     HUMAN_VARIANTS.length=0;
-    const sharedClips={
+    const sharedHumanClips={
       idle:idleBoyFBX,
       walk:walkBoyFBX,
       run:runBoyFBX,
       jump:jumpBoyFBX,
       kick:kickBoyFBX,
-      clean:idleBoyFBX
+      pickup:null,
+      clean:cleanBoyFBX||idleBoyFBX
     };
-    const variantTable=[
-      ['中年男子',skinMidMan],
-      ['中年婦女',skinMidWoman],
-      ['男高中生',skinBoy],
-      ['女高中生',skinSchoolgirl],
-      ['花花大媽',skinMum],
-      ['吊嘎阿伯',skinUncle],
-      ['女上班族',skinOL],
-      ['男上班族',skinSalaryman]
-    ];
-    if(!idleBoyFBX){
-      console.error('[fbx] 男高中生 mesh failed to load; cannot build any human variants');
-    }else{
-      for(const [name,baseColour] of variantTable){
-        HUMAN_VARIANTS.push(makeHumanVariant({
-          name,
-          source:idleBoyFBX,
-          animationSource:idleBoyFBX,
-          idle:sharedClips.idle,
-          walk:sharedClips.walk,
-          run:sharedClips.run,
-          jump:sharedClips.jump,
-          kick:sharedClips.kick,
-          pickup:null,
-          clean:sharedClips.clean,
-          skin:{base:baseColour||null,normal:null,roughness:null,metal:null}
-        }));
+    const pushHumanVariant=config=>{
+      if(!config?.source){
+        console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
+        return;
       }
-    }
+      HUMAN_VARIANTS.push(makeHumanVariant({
+        ...config,
+        skin:{
+          base:config.skin?.base||null,
+          normal:null,
+          roughness:null,
+          metal:null
+        }
+      }));
+    };
+    pushHumanVariant({name:'中年男子',source:idleHumanFBX,...sharedHumanClips,skin:{base:baseColourTex}});
+    pushHumanVariant({name:'中年婦女',source:idleWomanFBX,...sharedHumanClips,skin:{base:baseColourTexWoman}});
+    pushHumanVariant({name:'男高中生',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexBoy}});
+    pushHumanVariant({name:'女高中生',source:idleSchoolgirlFBX,...sharedHumanClips,skin:{base:baseColourTexSchoolgirl}});
+    pushHumanVariant({name:'花花大媽',source:idleMumFBX,...sharedHumanClips,skin:{base:baseColourTexMum}});
+    pushHumanVariant({name:'吊嘎阿伯',source:idleUncleFBX,...sharedHumanClips,skin:{base:baseColourTexUncle}});
+    pushHumanVariant({name:'女上班族',source:idleOLFBX,...sharedHumanClips,skin:{base:baseColourTexOL}});
+    pushHumanVariant({name:'男上班族',source:idleSalarymanFBX,...sharedHumanClips,skin:{base:baseColourTexSalaryman}});
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     for(const v of HUMAN_VARIANTS){
       v.clips.death=sharedDeathClip;
