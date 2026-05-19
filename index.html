@@ -643,6 +643,35 @@ function pixelate(tex){
   return tex;
 }
 
+// Mobile devices use a tile-based deferred (TBDR) GPU and a fraction
+// of the desktop's VRAM bandwidth. Render-target switches, large
+// textures, and full-screen post passes all hurt them disproportionately.
+// We detect once at boot and use this constant to pick lighter code
+// paths (single-pass render, downscaled textures, etc.).
+const IS_MOBILE_DEVICE=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'')
+  || (typeof window.matchMedia==='function' && window.matchMedia('(any-pointer: coarse)').matches);
+// Cap PBR character textures at 512px on the long axis on mobile.
+// Saves roughly 4× VRAM and matches the PS1 aesthetic anyway — the
+// renderer is already running at <500px wide, so 1024² source is wasted.
+function downscaleTextureForMobile(tex){
+  if(!IS_MOBILE_DEVICE) return tex;
+  const img=tex.image;
+  if(!img) return tex;
+  const sw=img.width||img.naturalWidth||0;
+  const sh=img.height||img.naturalHeight||0;
+  if(sw<=512 && sh<=512) return tex;
+  const scale=512/Math.max(sw,sh);
+  const dw=Math.max(2,Math.round(sw*scale));
+  const dh=Math.max(2,Math.round(sh*scale));
+  const c=document.createElement('canvas');
+  c.width=dw;c.height=dh;
+  const cx=c.getContext('2d');
+  cx.drawImage(img,0,0,dw,dh);
+  tex.image=c;
+  tex.needsUpdate=true;
+  return tex;
+}
+
 // ===== Renderer (low internal resolution → upscale with NearestFilter) =====
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:'low-power'});
@@ -759,12 +788,26 @@ camera.position.set(0,0.4,2);
 camera.lookAt(0,0.2,0);
 
 function onResize(){
-  // The canvas covers the viewport; the back-buffer stays at LOW_W×LOW_H.
-  renderer.setSize(W(),H(),false);
-  vhsUniforms.resolution.value.set(W(),H());
-  // Update camera aspect to match the low-res buffer (NOT the viewport),
-  // so the framing stays stable when the user rotates their phone.
-  camera.aspect=LOW_W/LOW_H;
+  if(IS_MOBILE_DEVICE){
+    // Mobile path: render DIRECTLY into a small canvas backing buffer,
+    // then let CSS `image-rendering:pixelated` upscale to the viewport.
+    // This skips the lowResRT pass and VHS shader entirely — on TBDR
+    // GPUs the render-target switch is one of the most expensive
+    // per-frame operations. Buffer size is matched to the viewport
+    // aspect so geometry isn't squashed when phones rotate.
+    const aspect=W()/Math.max(1,H());
+    const backingH=480;
+    const backingW=Math.max(2,Math.round(backingH*aspect));
+    renderer.setSize(backingW,backingH,false);
+    vhsUniforms.resolution.value.set(backingW,backingH);
+    camera.aspect=backingW/backingH;
+  }else{
+    // Desktop: keep the canvas at viewport size; the LowResRT pass
+    // renders the scene at 480×270 then blits up through the VHS shader.
+    renderer.setSize(W(),H(),false);
+    vhsUniforms.resolution.value.set(W(),H());
+    camera.aspect=LOW_W/LOW_H;
+  }
   camera.updateProjectionMatrix();
   if(window.__uiLayoutConfig) applyUILayoutConfig();
 }
@@ -1243,11 +1286,12 @@ function tickFootstepSFX(ent,dt,key,{minSpeed=0.18,baseInterval=0.44,volume=1,co
   ent._footstepTimer=interval;
 }
 function syncFollowerRatMovementSFX(dt){
-  // Industry pattern (Halo, Battlefield, Diablo etc. all do this for
-  // crowd audio): collapse N entity footsteps into a single ambient
-  // loop whose volume + playbackRate scale with the local density.
-  // The listener still hears the swarm thicken when rats arrive, but
-  // we never pay the iOS Safari HTMLAudio.play() stall N times a frame.
+  // Two-tier crowd audio (Halo / Diablo pattern). 1-3 nearby rats →
+  // each plays its own footstep so the player can localise individuals.
+  // 4+ rats → switch entirely to a single layered swarm loop, whose
+  // volume + playback rate scale with the crowd size. We never pay
+  // the iOS Safari `HTMLAudio.play()` cost for more than three rats
+  // at once, but the listener always hears the swarm thicken.
   if(!sfxState.unlocked || !player?.root){
     for(const rat of game.rats) if(rat) rat._footstepTimer=0;
     return;
@@ -1259,27 +1303,43 @@ function syncFollowerRatMovementSFX(dt){
   }
   const SWARM_RADIUS=22;
   const SWARM_R2=SWARM_RADIUS*SWARM_RADIUS;
-  let nearbyMoving=0;
+  const INDIVIDUAL_LIMIT=3;
+  const nearby=[];
   for(const rat of game.rats){
-    if(!rat || rat===player || rat===game.controlled) continue;
-    rat._footstepTimer=0;
-    if((rat.curSpeed||0)<=0.12) continue;
-    if(rat.isAir) continue;
-    if(rat.root?.visible===false) continue;
+    if(!rat || rat===player || rat===game.controlled){ if(rat) rat._footstepTimer=0; continue; }
+    if((rat.curSpeed||0)<=0.12 || rat.isAir || rat.root?.visible===false){
+      rat._footstepTimer=0;
+      continue;
+    }
     const dx=rat.root.position.x-listener.x;
     const dz=rat.root.position.z-listener.z;
-    if(dx*dx+dz*dz<=SWARM_R2) nearbyMoving++;
+    const d2=dx*dx+dz*dz;
+    if(d2<=SWARM_R2) nearby.push({rat,d2});
+    else rat._footstepTimer=0;
   }
-  // sqrt curve: a single nearby rat is faint, dozens are roaring.
-  const targetVol=Math.min(0.78,Math.sqrt(nearbyMoving/4)*0.22);
-  sfxState.ratSwarmGain=lerp(sfxState.ratSwarmGain||0,targetVol,Math.min(1,dt*4));
-  if((sfxState.ratSwarmGain||0)>0.005){
+  if(nearby.length<=INDIVIDUAL_LIMIT){
+    // Few rats → play each one's footsteps individually for localised
+    // detail. No swarm loop in this tier.
+    stopLoopSFX('ratSwarmLoop',{reset:false});
+    sfxState.ratSwarmGain=0;
+    for(const {rat} of nearby){
+      tickFootstepSFX(rat,dt,'playerMove',{
+        minSpeed:0.08,baseInterval:0.28,volume:0.42,
+        cooldown:0.02,rateScale:0.08,activeOverride:true
+      });
+    }
+  }else{
+    // Crowd tier → silence per-rat play() calls, play the layered
+    // swarm loop. Volume rises with the square-root of the crowd size
+    // so 30 rats sound bigger than 5 without saturating at 10.
+    for(const {rat} of nearby) rat._footstepTimer=0;
+    const count=nearby.length;
+    const targetVol=Math.min(0.82, 0.34 + Math.sqrt((count-INDIVIDUAL_LIMIT)/4)*0.16);
+    sfxState.ratSwarmGain=lerp(sfxState.ratSwarmGain||0,targetVol,Math.min(1,dt*4));
     startLoopSFX('ratSwarmLoop',{
       volume:sfxState.ratSwarmGain,
-      playbackRate:0.92+Math.min(0.20,nearbyMoving*0.004)
+      playbackRate:0.94+Math.min(0.18,count*0.003)
     });
-  }else{
-    stopLoopSFX('ratSwarmLoop',{reset:false});
   }
 }
 function getHumanBiteScreamKey(human){
@@ -1389,7 +1449,7 @@ function loadHumanTextureAsync(path){
     const isColorMap=/(?:basecolor|albedo|diffuse)/i.test(path);
     tex.colorSpace=isColorMap?THREE.SRGBColorSpace:THREE.NoColorSpace;
     tex.needsUpdate=true;
-    res(pixelate(tex));
+    res(pixelate(downscaleTextureForMobile(tex)));
   },undefined,rej));
 }
 /* obsolete human texture readability workaround removed from the load path
@@ -1637,15 +1697,16 @@ function ps1ifyCharacterMaterials(root,tint,skin=HUMAN_SKIN){
     if(!o.isMesh)return;
     o.castShadow=false;o.receiveShadow=false;
     // Re-enable frustum culling but inflate the bind-pose bounding sphere
-    // so animated bones (kicks, throws, climbs) don't get falsely culled
-    // when the rest pose is the only thing Three.js measures. Inflating
-    // happens once per geometry — multiple clones share the same buffer
-    // geometry, so we tag it to avoid re-multiplying on later passes.
+    // generously so animated bones (kicks, jumps, climbs) don't get
+    // falsely culled — Three.js never recomputes the sphere as bones
+    // move, so we have to size it for the worst-case pose up front.
+    // 5× of bind radius is roughly half the rig's height in local units,
+    // big enough for any Mixamo clip. Done once per shared geometry.
     o.frustumCulled=true;
     const geom=o.geometry;
     if(geom && !geom._inflatedForSkin){
       if(!geom.boundingSphere) geom.computeBoundingSphere();
-      if(geom.boundingSphere) geom.boundingSphere.radius*=2.5;
+      if(geom.boundingSphere) geom.boundingSphere.radius*=5;
       geom._inflatedForSkin=true;
     }
     const mats=Array.isArray(o.material)?o.material:[o.material];
@@ -4440,19 +4501,19 @@ function generateChunk(idx){
     }
     return {x,z};
   };
+  // All NPCs are wanderers — the cleaner role has been removed at user
+  // request. Tipped props now stay tipped (no tidy progression).
   const soloCount=2+(Math.random()<0.75?1:0)+(Math.random()<0.35?1:0);
-  const cleanerQuota=1+(Math.random()<0.42?1:0);
   for(let i=0;i<soloCount;i++){
     const {x,z}=pickHumanSpawn();
-    const role=i<cleanerQuota?'cleaner':'wanderer';
-    spawnChunkHuman(chunk,x,z,role);
+    spawnChunkHuman(chunk,x,z,'wanderer');
   }
   const groupCount=1+((Math.random()<0.28 && idx%2===0)?1:0);
   for(let g=0;g<groupCount;g++){
     const size=3+Math.floor(Math.random()*5);
     const {x:leadX,z:leadZ}=pickHumanSpawn();
     const groupId=`chunk-${idx}-group-${g}`;
-    const leader=spawnChunkHuman(chunk,leadX,leadZ,Math.random()<0.22?'cleaner':'wanderer',{id:groupId});
+    const leader=spawnChunkHuman(chunk,leadX,leadZ,'wanderer',{id:groupId});
     if(!leader)continue;
     leader.groupLeader=null;
     for(let memberIndex=1;memberIndex<size;memberIndex++){
@@ -4781,7 +4842,6 @@ function tickActor(ent,dt){
       next='death';
     }else if(ent.kind==='human'){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
-      else if(ent.behaviour==='tidy' && ent.inst.actions.clean) next='clean';
       else if(ent.isAir && ent.inst.actions.jump) next='jump';
       else if(ent.panicTimer>0 && ent.inst.actions.run) next='run';
       else if(ent.controllable && ent.curSpeed>1.25 && ent.inst.actions.run) next='run';
@@ -4810,13 +4870,15 @@ function tickActor(ent,dt){
     scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
-  // Animation LOD: far background humans tick the mixer at a fraction
-  // of the real dt. Visually imperceptible past ~14 m (the rig only
-  // covers a handful of pixels through scene fog), but cuts mixer CPU
-  // by 60-80% on mobile when several humans are in the active sim
-  // radius. Player, parasitised host, idol-wanderers, and any
-  // controllable actor still update at full rate so close action is
-  // never compromised.
+  // Animation LOD via frame stride (industry standard — Unity calls
+  // this "Animation Update Rate Optimization"). Instead of slowing the
+  // mixer's dt (which made limbs lag behind the body when turning and
+  // produced visible jitter), we skip mixer.update on N-1 frames and
+  // catch up with the accumulated real dt on the Nth frame. The walk
+  // cycle therefore advances at TRUE wall-clock rate; only the visual
+  // sampling frequency is reduced. At distance the rig is only a few
+  // pixels tall so the stride is invisible.
+  let runMixer=true;
   let mixerDt=dt;
   if(ent.kind==='human' && !ent.controllable && !ent.parasitised && !ent.idolWanderer && ent!==game.parasitisedHost){
     const focus=getGameplayFocusPosition();
@@ -4824,11 +4886,27 @@ function tickActor(ent,dt){
       const dx=ent.root.position.x-focus.x;
       const dz=ent.root.position.z-focus.z;
       const d2=dx*dx+dz*dz;
-      if(d2>=22*22) mixerDt=dt*0.18;
-      else if(d2>=14*14) mixerDt=dt*0.45;
+      const stride=(d2>=22*22)?4:(d2>=14*14)?2:1;
+      if(stride>1){
+        ent._mixerStrideCount=(ent._mixerStrideCount||0)+1;
+        ent._mixerPendingDt=(ent._mixerPendingDt||0)+dt;
+        if(ent._mixerStrideCount>=stride){
+          mixerDt=ent._mixerPendingDt;
+          ent._mixerStrideCount=0;
+          ent._mixerPendingDt=0;
+        }else{
+          runMixer=false;
+        }
+      }else if(ent._mixerStrideCount){
+        // Stepped back into close range — flush accumulated dt so the
+        // mixer doesn't snap forward by several frames on the next call.
+        mixerDt=dt+ent._mixerPendingDt;
+        ent._mixerStrideCount=0;
+        ent._mixerPendingDt=0;
+      }
     }
   }
-  ent.inst.mixer.update(mixerDt);
+  if(runMixer) ent.inst.mixer.update(mixerDt);
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
@@ -5028,10 +5106,13 @@ function setAllTempleIdolPhaseMaterials(mode){
 }
 function isPlayerInsideAnyTempleZone(){
   // Either temple counts — the loop portal makes them functionally one.
-  if(!player?.root) return null;
-  const {x,z}=player.root.position;
+  // Use the position of whatever the player is currently controlling
+  // (parasitised host while in host mode, otherwise the rat) so the
+  // ritual still triggers when a human body is the visible avatar.
+  const pos=getGameplayFocusPosition()||player?.root?.position;
+  if(!pos) return null;
   for(const zone of TEMPLE_KEEP_OUT_ZONES){
-    if(x>=zone.minX && x<=zone.maxX && z>=zone.minZ && z<=zone.maxZ){
+    if(pos.x>=zone.minX && pos.x<=zone.maxX && pos.z>=zone.minZ && pos.z<=zone.maxZ){
       return zone;
     }
   }
@@ -10501,6 +10582,19 @@ function tickHumans(dt){
         h.panicTimer=Math.max(h.panicTimer,1.75);
         h.panicTurnTimer=0;
       }
+      // Awakened temple idol panics nearby civilians — they bolt in
+      // random directions when the giant walking statue passes within
+      // 14 m. Triggers the same panic state used by rat pressure, so
+      // existing flee-from-environment logic handles the movement.
+      if(game.templeEvent.idol && game.templeEvent.awakened && !h.dead && !h.transformedToIdol && !h.idolWanderer){
+        const idol=game.templeEvent.idol;
+        const idx=h.root.position.x-idol.root.position.x;
+        const idz=h.root.position.z-idol.root.position.z;
+        if(idx*idx+idz*idz<14*14){
+          h.panicTimer=Math.max(h.panicTimer||0,1.6);
+          h.panicTurnTimer=0;
+        }
+      }
     }
     if(h.downTimer>0){
       h.downTimer=Math.max(0,h.downTimer-dt);
@@ -10537,9 +10631,10 @@ function tickHumans(dt){
       h._footstepTimer=0;
       continue;
     }
-    if(h.role==='cleaner'){
-      tickCleaner(h,dt);
-    }else if(!h.controllable){
+    // Cleaner role removed — every NPC now falls through the wanderer
+    // path. tickCleaner is kept as dead code only in case the role
+    // reappears later; nothing in the live spawn path produces it.
+    if(!h.controllable){
       h.cleanBar.root.visible=false;
       if(h.groupLeader && h.groupLeader!==h){
         if(h.groupLeader.dead || h.groupLeader.parasitised){
@@ -11613,11 +11708,21 @@ function tick(){
     stepFrame(dt);
     vhsUniforms.time.value=now*0.001;
 
-    // Two-pass render — scene → low-res target → screen quad.
-    renderer.setRenderTarget(lowResRT);
-    renderer.render(scene,camera);
-    renderer.setRenderTarget(null);
-    renderer.render(screenScene,screenCam);
+    if(IS_MOBILE_DEVICE){
+      // Single-pass render straight to the canvas backing buffer (which
+      // is itself low-res — see onResize). No render-target switch, no
+      // full-screen VHS quad. This is the dominant mobile-perf win on
+      // TBDR GPUs, where every setRenderTarget call flushes the tile
+      // store back to memory.
+      renderer.setRenderTarget(null);
+      renderer.render(scene,camera);
+    }else{
+      // Desktop two-pass render — scene → low-res target → VHS quad.
+      renderer.setRenderTarget(lowResRT);
+      renderer.render(scene,camera);
+      renderer.setRenderTarget(null);
+      renderer.render(screenScene,screenCam);
+    }
   }catch(e){console.error('[tick] update failed:',e)}
 }
 
@@ -11683,7 +11788,7 @@ async function init(){
       baseColourTex,normalTex,roughTex,metalTex,
       idleWomanFBX,
       baseColourTexWoman,normalTexWoman,roughTexWoman,metalTexWoman,
-      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,cleanBoyFBX,
+      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,
       baseColourTexBoy,normalTexBoy,roughTexBoy,metalTexBoy,
       idleSchoolgirlFBX,
       baseColourTexSchoolgirl,normalTexSchoolgirl,roughTexSchoolgirl,metalTexSchoolgirl,
@@ -11712,7 +11817,6 @@ async function init(){
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/清潔姿勢.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_Normal_Bake.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_roughness.JPEG'),
@@ -11778,7 +11882,7 @@ async function init(){
       jump:jumpBoyFBX,
       kick:kickBoyFBX,
       pickup:null,
-      clean:cleanBoyFBX
+      clean:null
     };
     pushHumanVariant({
       name:'中年男子',
