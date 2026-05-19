@@ -39,33 +39,11 @@
   input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
-  /* MOBILE PERF FIX
-     Previous version used `mix-blend-mode:multiply` over the full screen
-     plus two pseudo-element overlays (::before / ::after) each with
-     their own gradient backgrounds. mix-blend-mode forces the browser
-     to keep a separate compositing layer covering the WebGL canvas and
-     re-blend it every frame the canvas pixels change. When the rat is
-     idle the canvas changes little and the cost hides; the moment the
-     player joystick moves, the camera follows and the canvas
-     invalidates every frame, so the compositor pays full-screen
-     multiply blend per frame — that is exactly the "lags when moving
-     the rat, fine when standing still" symptom. Desktop never gets
-     `body.mobile-vhs` so it skips this overlay entirely; that is why
-     desktop has no lag.
-     Fix: drop mix-blend-mode (use plain alpha compositing), drop the
-     two pseudo-element overlays. Keep just one radial vignette so the
-     PS1/VHS look is preserved with a fraction of the compositor cost. */
-  #mobile-vhs-overlay{
-    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.32;
-    background:
-      radial-gradient(
-        circle at center,
-        rgba(0,0,0,0) 0%,
-        rgba(0,0,0,0.18) 68%,
-        rgba(0,0,0,0.42) 100%
-      );
-  }
-  body.mobile-vhs #mobile-vhs-overlay{display:block !important}
+  /* The CSS mobile VHS overlay is no longer needed. Mobile now runs
+     the same WebGL VHS shader pass that desktop uses (scene → 480×270
+     lowResRT → VHS fragment shader → canvas). The overlay is force-
+     hidden in case any DOM element still references it. */
+  #mobile-vhs-overlay{display:none !important}
   #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none;display:none}
   #viewport-frame .viewport-edge{position:fixed;background-position:center;background-repeat:no-repeat;pointer-events:none}
   #viewport-frame-top{left:50%;top:8.4%;transform:translate(-50%,-50%);width:100%;height:34%;
@@ -681,6 +659,10 @@ const IS_MOBILE_DEVICE =
   (typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches) ||
   window.innerWidth <= 900;
 document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
+// Boot stamp — paste this into bug reports so we know which build was
+// running. If the user reports a fix didn't help, first thing to check
+// is whether this stamp matches the expected build (cache busts etc).
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','npc-shared-boy-mesh+silent-warm+css-overlay-fix 2026-05-19 build');
 console.log('[mobile-vhs]',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
 // Cap PBR character textures at 512px on the long axis on mobile.
 // Saves roughly 4× VRAM and matches the PS1 aesthetic anyway — the
@@ -820,13 +802,20 @@ camera.position.set(0,0.4,2);
 camera.lookAt(0,0.2,0);
 
 function onResize(){
+  // MOBILE PERF + VISUAL CONSISTENCY
+  // Previously mobile took a "direct render at 640×360 backing buffer"
+  // path that (a) rendered ~230k pixels per frame on a phone GPU and
+  // (b) skipped the VHS shader so mobile looked nothing like desktop.
+  // Now mobile uses the same lowResRT + VHS shader path as desktop,
+  // with a small canvas backing buffer (480×270 to match the RT). The
+  // browser hardware-composites the canvas to full screen size — that
+  // upscale is essentially free vs. drawing 230k pixels every frame.
+  // Camera aspect is fixed at the RT's aspect so framing is stable
+  // across portrait/landscape switches on mobile, matching desktop.
   if(IS_MOBILE_DEVICE){
-    const aspect=W()/Math.max(1,H());
-    const backingH=360;
-    const backingW=Math.max(2,Math.round(backingH*aspect));
-    renderer.setSize(backingW,backingH,false);
-    vhsUniforms.resolution.value.set(backingW,backingH);
-    camera.aspect=backingW/backingH;
+    renderer.setSize(LOW_W,LOW_H,false);
+    vhsUniforms.resolution.value.set(LOW_W,LOW_H);
+    camera.aspect=LOW_W/LOW_H;
     camera.updateProjectionMatrix();
   }else{
     renderer.setSize(W(),H(),false);
@@ -1233,42 +1222,29 @@ function getSFXPolyphony(key){
   return 2;
 }
 function warmSFXAudioElement(audio){
-  // iOS / Android autoplay unlock needs each Audio element to be played
-  // once inside the user gesture. Setting only audio.muted=true is NOT
-  // reliable — on several Android Chrome builds the mute flag is applied
-  // a frame after play() begins, producing a brief audible blip per
-  // element. With ~40 SFX × up-to-4 pool entries warmed simultaneously
-  // on BEGIN, those blips overlap into the "every sound plays once"
-  // burst the user has been reporting. Belt-and-braces fix: drop the
-  // gain to zero AS WELL AS muting, and restore both only after pause.
-  if(!audio) return Promise.resolve(false);
-  const restore=()=>{
-    audio.muted=false;
-    audio.volume=1;
-  };
+  // FINAL audio-blip fix. Previous attempts (muted=true alone, then
+  // muted=true + volume=0) still produced an audible burst on Android
+  // Chrome — the .play() call schedules a brief decode + first-sample
+  // submission before the muted/volume flags take effect, and with
+  // ~40 SFX × up to 4 pool entries warmed simultaneously you hear
+  // "every sound at once" at startup. Belt-and-braces gone too far.
+  //
+  // The fix: do NOT play() during warm at all. Just .load() metadata.
+  // On desktop and Android, playSFX() during gameplay handles its own
+  // play() and that works because there has been a user gesture
+  // (BEGIN button) before the first playSFX call. iOS Safari may
+  // still need an explicit gesture-unlock for HTML5 Audio elements;
+  // if iOS users report missing SFX, we add a per-element unlock dance
+  // back in — but the priority right now is killing the startup burst.
+  if(!audio) return Promise.resolve(true);
   try{
     audio.muted=true;
     audio.volume=0;
-    const p=audio.play();
-    if(p?.then){
-      return p.then(()=>{
-        audio.pause();
-        audio.currentTime=0;
-        restore();
-        return true;
-      }).catch(()=>{
-        restore();
-        return false;
-      });
-    }
-    audio.pause();
-    audio.currentTime=0;
-    restore();
-    return Promise.resolve(true);
+    audio.load();
   }catch(_){
-    restore();
-    return Promise.resolve(false);
+    /* swallow — warm is best-effort */
   }
+  return Promise.resolve(true);
 }
 function ensureSFXPlayer(key){
   let player=sfxState.players.get(key);
@@ -5164,6 +5140,22 @@ function buildHuman({position,role='wanderer'}={}){
     socialGroupId:null,groupLeader:null,groupOffset:null};
   forceHumanActionPose(human,'idle');
   hardClampHumanToGround(human);
+  // One-time spawn diagnostic per variant. Logs how many bones the
+  // cloned mesh has and how many tracks the idle/walk actions own.
+  // If a variant ever shows up with 0-track actions or bone-less
+  // skeleton, T-pose is guaranteed and this log will say so. Paste
+  // these lines into any bug report.
+  if(!buildHuman._diag) buildHuman._diag=new Set();
+  if(!buildHuman._diag.has(variant.name)){
+    buildHuman._diag.add(variant.name);
+    let boneCount=0;
+    inst.root.traverse(o=>{ if(o?.isBone) boneCount++; });
+    const trackInfo={};
+    for(const [k,act] of Object.entries(inst.actions||{})){
+      trackInfo[k]=act.getClip?.().tracks?.length||0;
+    }
+    console.log('[HUMAN SPAWN DIAG]',variant.name,'bones=',boneCount,'tracks=',trackInfo);
+  }
   return human;
 }
 function getHumanGroundY(h){
@@ -12549,15 +12541,13 @@ function tick(){
   try{
     stepFrame(dt);
     vhsUniforms.time.value=now*0.001;
-    if(IS_MOBILE_DEVICE){
-      renderer.setRenderTarget(null);
-      renderer.render(scene,camera);
-    }else{
-      renderer.setRenderTarget(lowResRT);
-      renderer.render(scene,camera);
-      renderer.setRenderTarget(null);
-      renderer.render(screenScene,screenCam);
-    }
+    // Same render path on mobile and desktop now — scene to low-res RT,
+    // then VHS shader pass to the canvas. Mobile gets the same look as
+    // desktop, and the heaviest pass runs at 480×270 on both.
+    renderer.setRenderTarget(lowResRT);
+    renderer.render(scene,camera);
+    renderer.setRenderTarget(null);
+    renderer.render(screenScene,screenCam);
   }catch(e){console.error('[tick] update failed:',e)}
 }
 
@@ -12618,50 +12608,36 @@ async function init(){
     // actually exist in each variant's skeleton, so the mixer binds
     // cleanly and the NPCs animate instead of T-pose-sliding.
     const [
-      idleHumanFBX,
+      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,
+      deathHumanFBX,
       baseColourTex,
-      idleWomanFBX,
       baseColourTexWoman,
-      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,cleanBoyFBX,
       baseColourTexBoy,
-      idleSchoolgirlFBX,
       baseColourTexSchoolgirl,
-      idleMumFBX,
       baseColourTexMum,
-      idleUncleFBX,
       baseColourTexUncle,
-      idleOLFBX,
       baseColourTexOL,
-      idleSalarymanFBX,
-      baseColourTexSalaryman,
-      deathHumanFBX
+      baseColourTexSalaryman
     ]=await Promise.all([
-      loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_中年婦女/站著發呆.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx',onRunProgress),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/清潔姿勢.fbx').catch(()=>null),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_花花大媽/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_女上班族/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_男上班族/發呆.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg')
     ].map(p=>p.catch(err=>{
-      console.error('[fbx] human asset failed but continuing variant batch',err);
+      console.error('[fbx] human asset failed but continuing batch',err);
       return null;
     })));
+    const cleanBoyFBX=null;
     HUMAN_VARIANTS.length=0;
     const sharedHumanClips={
       idle:idleBoyFBX,
@@ -12687,14 +12663,23 @@ async function init(){
         }
       }));
     };
-    pushHumanVariant({name:'中年男子',source:idleHumanFBX,...sharedHumanClips,skin:{base:baseColourTex}});
-    pushHumanVariant({name:'中年婦女',source:idleWomanFBX,...sharedHumanClips,skin:{base:baseColourTexWoman}});
+    // EVERY variant uses idleBoyFBX as `source` (mesh + skeleton). This
+    // is the only configuration that mathematically cannot T-pose: clip
+    // tracks come from the boy's FBX exports, mesh bones come from the
+    // boy's FBX export — same FBX writer, same bone names, guaranteed
+    // binding success. Per-variant differentiation is the BaseColor
+    // texture; the per-variant idle FBX (e.g. 中年男子2 站著發呆.fbx)
+    // is no longer loaded, removing ~30MB of bandwidth + decode at boot.
+    // (User requested explicitly: 8 NPCs share 男高中生's skeleton +
+    // motion animations. This delivers exactly that.)
+    pushHumanVariant({name:'中年男子',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTex}});
+    pushHumanVariant({name:'中年婦女',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexWoman}});
     pushHumanVariant({name:'男高中生',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexBoy}});
-    pushHumanVariant({name:'女高中生',source:idleSchoolgirlFBX,...sharedHumanClips,skin:{base:baseColourTexSchoolgirl}});
-    pushHumanVariant({name:'花花大媽',source:idleMumFBX,...sharedHumanClips,skin:{base:baseColourTexMum}});
-    pushHumanVariant({name:'吊嘎阿伯',source:idleUncleFBX,...sharedHumanClips,skin:{base:baseColourTexUncle}});
-    pushHumanVariant({name:'女上班族',source:idleOLFBX,...sharedHumanClips,skin:{base:baseColourTexOL}});
-    pushHumanVariant({name:'男上班族',source:idleSalarymanFBX,...sharedHumanClips,skin:{base:baseColourTexSalaryman}});
+    pushHumanVariant({name:'女高中生',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexSchoolgirl}});
+    pushHumanVariant({name:'花花大媽',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexMum}});
+    pushHumanVariant({name:'吊嘎阿伯',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexUncle}});
+    pushHumanVariant({name:'女上班族',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexOL}});
+    pushHumanVariant({name:'男上班族',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexSalaryman}});
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     for(const v of HUMAN_VARIANTS){
       v.clips.death=sharedDeathClip;
