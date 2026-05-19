@@ -19,6 +19,7 @@ Related docs:
 - `index.html` has uncommitted changes.
 - `NEXT_AI_HANDOFF.md` has been updated to reflect the latest state.
 - No push was done in this handoff step.
+- User referred to `index(1).html`, but that file does not exist in the current workspace. All current work is being applied against `index.html`.
 
 ## Restore points / progress log
 
@@ -50,9 +51,34 @@ Related docs:
     - rats with `targetHuman`
 - Explicit non-goals:
   - no reduction to visible rat population
-  - no impostor conversion
-  - no changes to temple ritual rat choreography
+- no impostor conversion
+- no changes to temple ritual rat choreography
 - If this introduces pathing weirdness, revert only the rat LOD block around `tickFollowerRats()` and the new rat LOD constants/helpers, while keeping RP-2026-05-19-A intact.
+
+### RP-2026-05-19-C: staged stability + mobile perf repair
+
+- Purpose: follow the user's requested repair order instead of broad speculative optimisation.
+- Planned order in this restore point:
+  - human LOD reactivation safety, ground clamping, pose refresh guards
+  - mobile direct-render path restore, VHS/postprocess disabled on mobile
+  - follower-rat full-sim budget so `followPlayer` no longer implies full actor simulation
+  - remove live cleaner path and stop chunk ensure from firing every frame
+- Revert guidance:
+  - if human animation or positioning breaks, revert only the human safety block first
+  - if mobile rendering regresses visually/perf-wise, revert only the renderer/tick mobile path block
+  - if rat following logic breaks, revert only the follower full-sim budget block
+- Current completion inside this restore point:
+  - completed:
+    - human ground clamp helpers + LOD deactivate/reactivate helpers
+    - mobile renderer switched back to direct render on phone
+    - renderer power preference moved to `high-performance`
+    - follower rat full-sim budget added, and `followPlayer` removed from `isRatCriticalForFullSim`
+    - per-frame `ensureChunksAroundX(player.root.position.x)` replaced by `maybeEnsureChunksAroundPlayer()`
+    - live cleaner branch removed from `tickHumans()`
+  - still pending / partial:
+    - bite lock is not yet fully migrated to humans-grid cache
+    - full swarm-visual system is not yet implemented
+    - props active-set / moved-grid refresh / full spatial-grid rollout still remain
 
 ## Most important current state
 
