@@ -662,7 +662,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','tpose-isolation-test+ui-restored 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','binding-inspector-test 2026-05-19 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -673,9 +673,8 @@ console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','tpose-isolation-test+u
 //     driven by its bones, e.g. bones[] points elsewhere, bind matrix
 //     is wrong, the material lost USE_SKINNING.)
 // Each press also logs which bone was used and the new rotation value.
-window.addEventListener('keydown',e=>{
-  if(e.key!=='t' && e.key!=='T') return;
-  if(!window.game?.humans?.length){ console.warn('[T-TEST] no humans yet'); return; }
+function pickNearestVisibleHuman(){
+  if(!window.game?.humans?.length) return null;
   let nearest=null, nd=Infinity;
   const fp=window.player?.root?.position;
   for(const h of window.game.humans){
@@ -685,15 +684,60 @@ window.addEventListener('keydown',e=>{
     const d=dx*dx+dz*dz;
     if(d<nd){ nd=d; nearest=h; }
   }
-  if(!nearest){ console.warn('[T-TEST] no visible human found'); return; }
-  let headBone=null;
-  nearest.inst.root.traverse(o=>{
-    if(o?.isBone && o.name && /head/i.test(o.name) && !/_end/i.test(o.name) && !headBone) headBone=o;
-  });
-  if(!headBone){ console.warn('[T-TEST] no head bone on',nearest.variantName); return; }
-  headBone.rotation.y+=Math.PI/4;
-  headBone.updateMatrixWorld(true);
-  console.log('[T-TEST] rotated head of',nearest.variantName,'bone=',headBone.name,'new y=',headBone.rotation.y.toFixed(3));
+  return nearest;
+}
+window.addEventListener('keydown',e=>{
+  const k=e.key?.toLowerCase?.();
+  if(k==='t'){
+    const nearest=pickNearestVisibleHuman();
+    if(!nearest){ console.warn('[T-TEST] no visible human found'); return; }
+    let headBone=null;
+    nearest.inst.root.traverse(o=>{
+      if(o?.isBone && o.name && /head/i.test(o.name) && !/_end/i.test(o.name) && !headBone) headBone=o;
+    });
+    if(!headBone){ console.warn('[T-TEST] no head bone on',nearest.variantName); return; }
+    headBone.rotation.y+=Math.PI/4;
+    headBone.updateMatrixWorld(true);
+    console.log('[T-TEST] rotated head of',nearest.variantName,'bone=',headBone.name,'new y=',headBone.rotation.y.toFixed(3));
+  }
+  else if(k==='b'){
+    // B-TEST: dump mixer's actual PropertyBindings for the idle action.
+    // PropertyBinding parses the clip's track names and looks up nodes
+    // on the mixer's root. If the lookup fails (cannot find a node with
+    // a matching name), the binding silently becomes a no-op — that is
+    // the classic Three.js silent-skip failure mode for animation. This
+    // dump tells us exactly which tracks resolved to a real bone target
+    // and which resolved to null.
+    const nearest=pickNearestVisibleHuman();
+    if(!nearest?.inst?.actions?.idle){ console.warn('[B-TEST] no idle action'); return; }
+    const action=nearest.inst.actions.idle;
+    const clip=action.getClip?.();
+    const tracks=clip?.tracks||[];
+    const bindings=action._propertyBindings||[];
+    let bound=0,unbound=0;
+    const sample=[];
+    for(const b of bindings){
+      const target=b?.binding?.node;
+      if(target) bound++; else unbound++;
+      if(sample.length<6){
+        sample.push((b?.binding?.path||'?')+' → '+(target?.name||'NULL'));
+      }
+    }
+    let firstBoneName='-';
+    nearest.inst.root.traverse(o=>{ if(o?.isBone && !firstBoneName==='-') return; if(o?.isBone && firstBoneName==='-') firstBoneName=o.name; });
+    console.log(
+      '[B-TEST] variant='+nearest.variantName+
+      ' actionRunning='+(action.isRunning?.())+
+      ' actionWeight='+(action.getEffectiveWeight?.())+
+      ' actionTime='+(action.time?.toFixed(3))+
+      ' clipTracks='+tracks.length+
+      ' bindings='+bindings.length+
+      ' bound='+bound+' unbound='+unbound+
+      ' firstBoneInClone='+firstBoneName+
+      ' firstTrack='+(tracks[0]?.name||'-')+
+      ' samples='+JSON.stringify(sample)
+    );
+  }
 });
 console.log('[mobile-vhs]',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
 // Cap PBR character textures at 512px on the long axis on mobile.
