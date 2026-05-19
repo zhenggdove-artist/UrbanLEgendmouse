@@ -662,7 +662,39 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','raw-clips+rat-sprites-restored+swarm-off+skeleton-rebind 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','tpose-isolation-test+ui-restored 2026-05-19 build');
+// T-POSE ROOT-CAUSE ISOLATION TEST
+// Press [T] in-game to manually rotate the nearest visible human's
+// head bone 45°. We use this to disambiguate WHERE the bug lives:
+//   - Head visibly turns → skinning works, animation binding is broken.
+//     (Mixer/clip names mismatch, missing tracks, PropertyBinding fail.)
+//   - Head stays still → skinning itself is broken in the clone.
+//     (SkeletonUtils.clone produced a SkinnedMesh that isn't actually
+//     driven by its bones, e.g. bones[] points elsewhere, bind matrix
+//     is wrong, the material lost USE_SKINNING.)
+// Each press also logs which bone was used and the new rotation value.
+window.addEventListener('keydown',e=>{
+  if(e.key!=='t' && e.key!=='T') return;
+  if(!window.game?.humans?.length){ console.warn('[T-TEST] no humans yet'); return; }
+  let nearest=null, nd=Infinity;
+  const fp=window.player?.root?.position;
+  for(const h of window.game.humans){
+    if(!h?.inst?.root || h.root?.visible===false) continue;
+    if(!fp){ nearest=h; break; }
+    const dx=h.root.position.x-fp.x, dz=h.root.position.z-fp.z;
+    const d=dx*dx+dz*dz;
+    if(d<nd){ nd=d; nearest=h; }
+  }
+  if(!nearest){ console.warn('[T-TEST] no visible human found'); return; }
+  let headBone=null;
+  nearest.inst.root.traverse(o=>{
+    if(o?.isBone && o.name && /head/i.test(o.name) && !/_end/i.test(o.name) && !headBone) headBone=o;
+  });
+  if(!headBone){ console.warn('[T-TEST] no head bone on',nearest.variantName); return; }
+  headBone.rotation.y+=Math.PI/4;
+  headBone.updateMatrixWorld(true);
+  console.log('[T-TEST] rotated head of',nearest.variantName,'bone=',headBone.name,'new y=',headBone.rotation.y.toFixed(3));
+});
 console.log('[mobile-vhs]',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
 // Cap PBR character textures at 512px on the long axis on mobile.
 // Saves roughly 4× VRAM and matches the PS1 aesthetic anyway — the
@@ -12626,6 +12658,11 @@ function renderGameToText(){
   return JSON.stringify(payload);
 }
 window.render_game_to_text=renderGameToText;
+// Expose game state for the [T] keypress isolation test (and any
+// other in-browser debugging). Module-scope variables are otherwise
+// inaccessible from the console / from the keydown handler.
+window.game=game;
+Object.defineProperty(window,'player',{get(){return player;},configurable:true});
 
 // ===== Main loop =====
 let last=performance.now();
