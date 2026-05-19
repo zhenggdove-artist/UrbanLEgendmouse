@@ -40,34 +40,34 @@
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
   #mobile-vhs-overlay{
-    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.28;mix-blend-mode:multiply;
+    position:fixed;inset:0;pointer-events:none;z-index:999999;display:none;opacity:0.22;mix-blend-mode:multiply;
     background:
       repeating-linear-gradient(
         to bottom,
         rgba(0,0,0,0.00) 0px,
         rgba(0,0,0,0.00) 2px,
-        rgba(0,0,0,0.22) 3px,
-        rgba(0,0,0,0.22) 4px
+        rgba(0,0,0,0.26) 3px,
+        rgba(0,0,0,0.26) 4px
       ),
       radial-gradient(
         circle at center,
         rgba(255,255,255,0.00) 0%,
-        rgba(0,0,0,0.14) 68%,
-        rgba(0,0,0,0.34) 100%
+        rgba(0,0,0,0.16) 68%,
+        rgba(0,0,0,0.38) 100%
       );
   }
   body.mobile-vhs #mobile-vhs-overlay{display:block !important}
   #mobile-vhs-overlay::before{
-    content:'';position:absolute;inset:0;opacity:0.08;
-    background:linear-gradient(90deg, rgba(255,0,120,0.08), transparent 48%, rgba(0,255,255,0.07));
+    content:'';position:absolute;inset:0;opacity:0.04;
+    background:linear-gradient(90deg, rgba(255,0,120,0.05), transparent 48%, rgba(0,255,255,0.04));
   }
   #mobile-vhs-overlay::after{
-    content:'';position:absolute;inset:0;opacity:0.06;
+    content:'';position:absolute;inset:0;opacity:0.03;
     background:
       repeating-linear-gradient(
       90deg,
-      rgba(255,255,255,0.03) 0px,
-      rgba(255,255,255,0.03) 1px,
+      rgba(255,255,255,0.015) 0px,
+      rgba(255,255,255,0.015) 1px,
       transparent 2px,
       transparent 6px
     );
@@ -1710,8 +1710,72 @@ function getSourceNodeNames(source){
   });
   return names;
 }
+function getSourceNodeAliasMap(source){
+  let cached=SOURCE_CLIP_FILTER_CACHE.get(source);
+  if(cached?.aliasMap) return cached.aliasMap;
+  const aliasMap=new Map();
+  source?.traverse?.(node=>{
+    const original=node?.name;
+    if(!original) return;
+    const lower=original.toLowerCase();
+    aliasMap.set(lower,original);
+    const stripped=lower.split(/[|/:]/).pop();
+    if(stripped && !aliasMap.has(stripped)) aliasMap.set(stripped,original);
+    const mixamoIdx=lower.indexOf('mixamorig');
+    if(mixamoIdx>=0){
+      const mixamoName=lower.slice(mixamoIdx);
+      if(mixamoName && !aliasMap.has(mixamoName)) aliasMap.set(mixamoName,original);
+    }
+  });
+  if(!cached){
+    cached={};
+    SOURCE_CLIP_FILTER_CACHE.set(source,cached);
+  }
+  cached.aliasMap=aliasMap;
+  return aliasMap;
+}
+function remapTrackNameForSource(source,trackName){
+  if(!trackName || !source) return trackName;
+  const dotIdx=trackName.indexOf('.');
+  if(dotIdx<=0) return trackName;
+  const nodeName=trackName.slice(0,dotIdx);
+  const propPath=trackName.slice(dotIdx);
+  const aliasMap=getSourceNodeAliasMap(source);
+  const exact=aliasMap.get(nodeName.toLowerCase());
+  if(exact) return `${exact}${propPath}`;
+  const stripped=nodeName.toLowerCase().split(/[|/:]/).pop();
+  if(stripped){
+    const match=aliasMap.get(stripped);
+    if(match) return `${match}${propPath}`;
+  }
+  const mixamoIdx=nodeName.toLowerCase().indexOf('mixamorig');
+  if(mixamoIdx>=0){
+    const mixamoName=nodeName.toLowerCase().slice(mixamoIdx);
+    const match=aliasMap.get(mixamoName);
+    if(match) return `${match}${propPath}`;
+  }
+  return trackName;
+}
 function getSourceCompatibleClip(source,srcClip){
-  return resolveAnimationClip(srcClip);
+  const clip=resolveAnimationClip(srcClip);
+  if(!clip || !source) return clip;
+  let cached=SOURCE_CLIP_FILTER_CACHE.get(source);
+  if(!cached){
+    cached={clips:new WeakMap()};
+    SOURCE_CLIP_FILTER_CACHE.set(source,cached);
+  }else if(!cached.clips){
+    cached.clips=new WeakMap();
+  }
+  const existing=cached.clips.get(clip);
+  if(existing) return existing;
+  const retargeted=clip.clone();
+  retargeted.tracks=retargeted.tracks.map(track=>{
+    const next=track.clone();
+    next.name=remapTrackNameForSource(source,track.name);
+    return next;
+  });
+  cached.clips.set(clip,retargeted);
+  return retargeted;
 }
 function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
   const safeIdle=getSourceCompatibleClip(source,idle);
