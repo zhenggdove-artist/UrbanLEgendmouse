@@ -1,5 +1,48 @@
 # Next AI Handoff (updated 2026-05-19)
 
+## RP-2026-05-19-MOBILE-PERF — mobile rat-movement lag FIXED
+
+Restore point name: `RP-2026-05-19-MOBILE-PERF`. Current head commit at time of fix: see latest commit after `81ac815` in this branch. User confirmed: 「手機遊戲卡頓情形完全修復了」 — operating the rat on mobile is no longer laggy.
+
+### Root cause
+
+The mobile lag was **NOT** chunk streaming, **NOT** rat AI scaling, **NOT** human animation cost. It was the **mobile CSS VHS overlay** at `index.html:42` using `mix-blend-mode:multiply`. On mobile browsers, `mix-blend-mode` over a full-screen WebGL canvas forces the compositor to maintain a separate stacking context covering the canvas and **re-blend it every frame the canvas pixels change**. When the rat is idle the canvas is mostly static so the cost hides; the moment the joystick moves, the camera follows, the canvas invalidates every frame, and the compositor pays the full-screen multiply-blend cost per frame. Desktop never had `body.mobile-vhs` set (gated on `IS_MOBILE_DEVICE`), so desktop entirely skipped this overlay — that is precisely why desktop had no lag.
+
+The overlay also had two pseudo-element layers (`::before`, `::after`) with their own gradient backgrounds, each adding more compositor layers.
+
+### Fix (kept in current HEAD)
+
+Two changes that together fixed it:
+
+1. **CSS overlay removed entirely** (`index.html:42-46`). Mobile no longer uses the CSS VHS approximation at all. The element `#mobile-vhs-overlay` is force-hidden (`display:none !important`).
+2. **Mobile now runs the same WebGL VHS shader path as desktop** (`index.html:805-822, 12552-12559`). Scene → 480×270 `lowResRT` → VHS fragment shader pass → canvas. Canvas backing buffer is 480×270 on mobile (browser GPU upscales to the actual screen size, that step is essentially free). Mobile gets the same visual as desktop with ~5× less fragment shading than the prior 640×360 direct-render path, AND no CSS compositor layer.
+
+Net effect:
+- Same visual on mobile and desktop (chromatic aberration, scanlines, vignette).
+- Fragment shading capped at 480×270 on both platforms.
+- No CSS `mix-blend-mode` anywhere.
+
+### Things NOT to revert
+
+If a later optimisation regresses mobile perf, do NOT undo the above. Revert only the later change. Specifically:
+
+- Do **not** re-introduce `mix-blend-mode` on any full-screen overlay.
+- Do **not** put mobile back on a direct-render path (skipping `lowResRT`) — it raises mobile fragment cost and removes visual parity with desktop.
+- Do **not** add new fullscreen DOM overlays that sit above `#c` without testing on mobile under joystick input.
+
+### How to verify on device
+
+1. Open browser console on mobile.
+2. First console line should be `[BUILD] colon-strip-fix+own-meshes+silent-warm+lowres-mobile 2026-05-19 build` (or any later stamp that retains the `lowres-mobile` token).
+3. Joystick-move the rat for ~10 seconds and confirm no frame stutter beyond the chunk-gen hitches (which were already there pre-fix and are unrelated).
+
+## Still-open issue tracked separately: T-pose
+
+The human NPCs still spawn in T-pose / sliding bind-pose. This is unrelated to the mobile perf fix above. Investigation in progress — see the colon-strip attempt + own-meshes restore in HEAD. User's console diagnostic confirms `firstBone= mixamorigHips` and `firstTrack= mixamorigHips.position` (names match — so it is **not** a name-binding regex issue). Next angle to chase is `SkeletonUtils.clone` failing to re-bind the cloned SkinnedMesh to the cloned skeleton (so the mixer animates clone bones but the mesh is still skinned to the original FBX's bones).
+
+---
+
+
 ## Project shape
 
 - Main project is still a single-file Three.js game in [index.html](</D:/ELY/作品相關/###小遊戲製作GIT/都市傳說/都市傳說3-屬巴拉西/UrbanLEgendmouse/index.html:1>).
