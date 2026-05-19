@@ -662,7 +662,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','no-fade-direct-weight 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','no-fade-direct-weight+ground-y-1.5 2026-05-19 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -5221,7 +5221,11 @@ function buildRat({isPlayer=false}={}){
    Human — same Mixamo skin, scaled to 1.72 m, playing Fast Run.fbx.
    Per-role tint distinguishes wanderers from cleaners.
    ============================================================ */
-const HUMAN_WORLD_Y_OFFSET=0;
+// User-tuned: with the new no-fade direct-weight animation path the
+// idle clip's first keyframe positions the rig above its bind pose,
+// so without an offset NPCs hover ~half a model height in the air.
+// Dropping by 1.5 m puts their feet back on the ground.
+const HUMAN_WORLD_Y_OFFSET=-1.5;
 let humanBelowGroundFixCount=0;
 let humanPoseRefreshCount=0;
 const DEBUG_HUMAN_VALIDATION=true;
