@@ -20,6 +20,40 @@ Related docs:
 - `NEXT_AI_HANDOFF.md` has been updated to reflect the latest state.
 - No push was done in this handoff step.
 
+## Restore points / progress log
+
+### RP-2026-05-19-A: visual correctness baseline restored
+
+- Purpose: restore the last known-safe presentation baseline after a bad mobile perf pass.
+- `index.html` changes in this restore point:
+  - mobile render path restored to the shared `lowResRT -> VHS screen quad` path
+  - human `AnimationMixer` frame-stride optimisation removed
+  - humans now return to normal per-frame mixer updates
+- Reason this exists:
+  - mobile VHS filter had disappeared
+  - humans / possessed host could appear in T-pose or sink into the ground
+- If a later optimisation breaks human animation or VHS again, revert only the later optimisation and keep this baseline.
+
+### RP-2026-05-19-B: rat LOD perf pass (current head)
+
+- Purpose: reduce rat CPU cost without reducing visible rat count.
+- Scope intentionally limited to ordinary street rats.
+- What changed:
+  - added distance-based rat LOD timers for `brain` work and `world probe` work
+  - far / non-critical rats now retarget less often and run collision/support sampling less often
+  - critical rats still run full simulation every frame:
+    - ritual / `templeBound`
+    - `templeSwarmVisual`
+    - `followPlayer`
+    - `followStatue`
+    - `climbingHuman`
+    - rats with `targetHuman`
+- Explicit non-goals:
+  - no reduction to visible rat population
+  - no impostor conversion
+  - no changes to temple ritual rat choreography
+- If this introduces pathing weirdness, revert only the rat LOD block around `tickFollowerRats()` and the new rat LOD constants/helpers, while keeping RP-2026-05-19-A intact.
+
 ## Most important current state
 
 ### 1. Temple ritual / awakening
@@ -81,6 +115,11 @@ Local smoke-test result from latest run:
 Known remaining issue:
 
 - User still reports the game feels slow / heavy after ritual start. Next AI should profile update hot paths around rat AI, ritual swarm movement, and any remaining expensive per-frame UI/editor work before touching preload strategy. User explicitly does not want “load later during gameplay” as the solution.
+
+Latest perf direction:
+
+- The newest pass targets ordinary rat AI cadence first, rather than touching ritual rats or human animation again.
+- If performance is still poor, the next highest-CP targets are remaining full-table scans such as `nearestChaosSpot`, cleaner mess search, and host melee prop scan.
 
 ### 3. Human NPC models / skins
 

@@ -788,26 +788,12 @@ camera.position.set(0,0.4,2);
 camera.lookAt(0,0.2,0);
 
 function onResize(){
-  if(IS_MOBILE_DEVICE){
-    // Mobile path: render DIRECTLY into a small canvas backing buffer,
-    // then let CSS `image-rendering:pixelated` upscale to the viewport.
-    // This skips the lowResRT pass and VHS shader entirely — on TBDR
-    // GPUs the render-target switch is one of the most expensive
-    // per-frame operations. Buffer size is matched to the viewport
-    // aspect so geometry isn't squashed when phones rotate.
-    const aspect=W()/Math.max(1,H());
-    const backingH=480;
-    const backingW=Math.max(2,Math.round(backingH*aspect));
-    renderer.setSize(backingW,backingH,false);
-    vhsUniforms.resolution.value.set(backingW,backingH);
-    camera.aspect=backingW/backingH;
-  }else{
-    // Desktop: keep the canvas at viewport size; the LowResRT pass
-    // renders the scene at 480×270 then blits up through the VHS shader.
-    renderer.setSize(W(),H(),false);
-    vhsUniforms.resolution.value.set(W(),H());
-    camera.aspect=LOW_W/LOW_H;
-  }
+  // Same path on desktop and mobile: canvas covers the viewport, scene
+  // renders into LowResRT, then a fullscreen VHS quad blits up. The
+  // earlier mobile-direct-render branch dropped VHS entirely; restored.
+  renderer.setSize(W(),H(),false);
+  vhsUniforms.resolution.value.set(W(),H());
+  camera.aspect=LOW_W/LOW_H;
   camera.updateProjectionMatrix();
   if(window.__uiLayoutConfig) applyUILayoutConfig();
 }
@@ -4986,43 +4972,11 @@ function tickActor(ent,dt){
     scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
-  // Animation LOD via frame stride (industry standard — Unity calls
-  // this "Animation Update Rate Optimization"). Instead of slowing the
-  // mixer's dt (which made limbs lag behind the body when turning and
-  // produced visible jitter), we skip mixer.update on N-1 frames and
-  // catch up with the accumulated real dt on the Nth frame. The walk
-  // cycle therefore advances at TRUE wall-clock rate; only the visual
-  // sampling frequency is reduced. At distance the rig is only a few
-  // pixels tall so the stride is invisible.
-  let runMixer=true;
-  let mixerDt=dt;
-  if(ent.kind==='human' && !ent.controllable && !ent.parasitised && !ent.idolWanderer && ent!==game.parasitisedHost){
-    const focus=getGameplayFocusPosition();
-    if(focus && ent.root){
-      const dx=ent.root.position.x-focus.x;
-      const dz=ent.root.position.z-focus.z;
-      const d2=dx*dx+dz*dz;
-      const stride=(d2>=22*22)?4:(d2>=14*14)?2:1;
-      if(stride>1){
-        ent._mixerStrideCount=(ent._mixerStrideCount||0)+1;
-        ent._mixerPendingDt=(ent._mixerPendingDt||0)+dt;
-        if(ent._mixerStrideCount>=stride){
-          mixerDt=ent._mixerPendingDt;
-          ent._mixerStrideCount=0;
-          ent._mixerPendingDt=0;
-        }else{
-          runMixer=false;
-        }
-      }else if(ent._mixerStrideCount){
-        // Stepped back into close range — flush accumulated dt so the
-        // mixer doesn't snap forward by several frames on the next call.
-        mixerDt=dt+ent._mixerPendingDt;
-        ent._mixerStrideCount=0;
-        ent._mixerPendingDt=0;
-      }
-    }
-  }
-  if(runMixer) ent.inst.mixer.update(mixerDt);
+  // Keep human mixers on a normal per-frame update. The earlier
+  // frame-stride optimisation caused newly visible / reactivated humans
+  // to linger in bind pose and occasionally fight the foot alignment
+  // logic, which showed up as T-pose + sinking reports on device.
+  ent.inst.mixer.update(dt);
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
@@ -10913,6 +10867,14 @@ const RAT_BLOOD_SPRAY_INTERVAL=0.18;     // throttle per-human blood spawns
 const HUMAN_ACTIVE_SIM_RADIUS=34;
 const HUMAN_ACTIVE_SIM_RADIUS_SQ=HUMAN_ACTIVE_SIM_RADIUS*HUMAN_ACTIVE_SIM_RADIUS;
 const MAX_ACTIVE_RAT_VISUALS=500;
+const RAT_FULL_BRAIN_RADIUS=16;
+const RAT_FULL_BRAIN_RADIUS_SQ=RAT_FULL_BRAIN_RADIUS*RAT_FULL_BRAIN_RADIUS;
+const RAT_MID_BRAIN_RADIUS=30;
+const RAT_MID_BRAIN_RADIUS_SQ=RAT_MID_BRAIN_RADIUS*RAT_MID_BRAIN_RADIUS;
+const RAT_MID_BRAIN_INTERVAL=0.10;
+const RAT_FAR_BRAIN_INTERVAL=0.22;
+const RAT_MID_WORLD_INTERVAL=0.08;
+const RAT_FAR_WORLD_INTERVAL=0.18;
 let ratVisualBudgetTimer=0;
 function getGameplayFocusPosition(){
   return game.controlled?.root?.position
@@ -10932,7 +10894,32 @@ function shouldSimulateHumanEntity(human,focusPos){
   const dz=human.root.position.z-focusPos.z;
   return dx*dx+dz*dz<=HUMAN_ACTIVE_SIM_RADIUS_SQ;
 }
-function removeRatEntity(rat,{countAsVirtual=true}={}){
+function isRatCriticalForFullSim(rat){
+  return !!(
+    rat?.followPlayer ||
+    rat?.followStatue ||
+    rat?.templeBound ||
+    rat?.templeSwarmVisual ||
+    rat?.climbingHuman ||
+    rat?.targetHuman
+  );
+}
+function getRatLODConfig(rat,focusPos){
+  if(!rat?.root || !focusPos || isRatCriticalForFullSim(rat)){
+    return {brainInterval:0,worldInterval:0};
+  }
+  const dx=rat.root.position.x-focusPos.x;
+  const dz=rat.root.position.z-focusPos.z;
+  const d2=dx*dx+dz*dz;
+  if(d2<=RAT_FULL_BRAIN_RADIUS_SQ){
+    return {brainInterval:0,worldInterval:0};
+  }
+  if(d2<=RAT_MID_BRAIN_RADIUS_SQ){
+    return {brainInterval:RAT_MID_BRAIN_INTERVAL,worldInterval:RAT_MID_WORLD_INTERVAL};
+  }
+  return {brainInterval:RAT_FAR_BRAIN_INTERVAL,worldInterval:RAT_FAR_WORLD_INTERVAL};
+}
+function removeRatEntity(rat,{countAsVirtual=true}={}){ 
   if(!rat || rat===player || rat===game.controlled) return false;
   const idx=game.rats.indexOf(rat);
   if(idx>=0) game.rats.splice(idx,1);
@@ -11314,8 +11301,24 @@ function tickHumanRatAttackState(dt){
   }
 }
 function tickFollowerRats(dt){
+  const focusPos=getGameplayFocusPosition()||player?.root?.position||null;
   for(const r of game.rats){
     if(r===player||r===game.controlled)continue;
+    const lod=getRatLODConfig(r,focusPos);
+    const runBrain=lod.brainInterval<=0
+      || !r._brainPrimed
+      || ((r._brainCooldown=(r._brainCooldown||0)-dt)<=0);
+    if(runBrain){
+      r._brainPrimed=true;
+      r._brainCooldown=lod.brainInterval;
+    }
+    const runWorldProbe=lod.worldInterval<=0
+      || !r._worldProbePrimed
+      || ((r._worldProbeCooldown=(r._worldProbeCooldown||0)-dt)<=0);
+    if(runWorldProbe){
+      r._worldProbePrimed=true;
+      r._worldProbeCooldown=lod.worldInterval;
+    }
     // Evict non-ritual rats that drift into the temple during the climb,
     // but keep templeBound rats (the ones that gathered at the doorway
     // during the player's approach) — those ARE the ritual.
@@ -11437,7 +11440,11 @@ function tickFollowerRats(dt){
       tickRatBillboard(r,dt);
       continue;
     }
-    const chaosTarget=nearestChaosSpot(r.root.position);
+    let chaosTarget=r._cachedChaosTarget||null;
+    if(runBrain){
+      chaosTarget=nearestChaosSpot(r.root.position);
+      r._cachedChaosTarget=chaosTarget||null;
+    }
     let target=chaosTarget || player.root.position;
     if(r.templeBound && game.templeEvent.idol && !game.templeEvent.awakened){
       target={x:game.templeEvent.altarPos.x,z:game.templeEvent.altarPos.z};
@@ -11493,7 +11500,7 @@ function tickFollowerRats(dt){
       const backZ=player.root.position.z-Math.cos(player.yaw)*rand(0.9,1.8);
       target={x:backX,z:clamp(backZ,ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4)};
     }
-    if(target && target.x!==undefined){
+    if(target && target.x!==undefined && runBrain){
       r.roamTimer=(r.roamTimer||0)-dt;
       if(r.roamTimer<=0 || !r.targetPos){
         const jitterAmount=r.followPlayer?0.55:1.8;
@@ -11503,8 +11510,8 @@ function tickFollowerRats(dt){
         r.roamTimer=r.followPlayer?rand(0.18,0.42):rand(0.35,1.2);
       }
     }
-    const tx=r.targetPos?.x ?? player.root.position.x;
-    const tz=r.targetPos?.z ?? player.root.position.z;
+    const tx=(r.targetPos&&Number.isFinite(r.targetPos.x)) ? r.targetPos.x : (target?.x ?? player.root.position.x);
+    const tz=(r.targetPos&&Number.isFinite(r.targetPos.z)) ? r.targetPos.z : (target?.z ?? player.root.position.z);
     const dx=tx-r.root.position.x;
     const dz=tz-r.root.position.z;
     const a=Math.atan2(dx,dz);
@@ -11519,12 +11526,15 @@ function tickFollowerRats(dt){
     // iterate every active blocker + prop, so calling them for a fully
     // idle rat is pure waste — especially once 500 rats are alive.
     const moved=spd>0.05;
-    if(moved) resolveWorldCollisions(r,prevX,prevZ,0.22);
-    if(moved){
+    if(moved && runWorldProbe) resolveWorldCollisions(r,prevX,prevZ,0.22);
+    if(moved && runWorldProbe){
       const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
       const baseGroundY=(r.baseY??0)+GROUND_Y_OFFSET;
       const targetY=supportY>baseGroundY+0.001 ? supportY : baseGroundY;
       r.root.position.y=targetY;
+      r._cachedSupportY=targetY;
+    }else if(moved){
+      r.root.position.y=r._cachedSupportY ?? ((r.baseY??0)+GROUND_Y_OFFSET);
     }
     r.root.rotation.y=a;
     r.curSpeed=spd;
@@ -11913,21 +11923,10 @@ function tick(){
     stepFrame(dt);
     vhsUniforms.time.value=now*0.001;
 
-    if(IS_MOBILE_DEVICE){
-      // Single-pass render straight to the canvas backing buffer (which
-      // is itself low-res — see onResize). No render-target switch, no
-      // full-screen VHS quad. This is the dominant mobile-perf win on
-      // TBDR GPUs, where every setRenderTarget call flushes the tile
-      // store back to memory.
-      renderer.setRenderTarget(null);
-      renderer.render(scene,camera);
-    }else{
-      // Desktop two-pass render — scene → low-res target → VHS quad.
-      renderer.setRenderTarget(lowResRT);
-      renderer.render(scene,camera);
-      renderer.setRenderTarget(null);
-      renderer.render(screenScene,screenCam);
-    }
+    renderer.setRenderTarget(lowResRT);
+    renderer.render(scene,camera);
+    renderer.setRenderTarget(null);
+    renderer.render(screenScene,screenCam);
   }catch(e){console.error('[tick] update failed:',e)}
 }
 
