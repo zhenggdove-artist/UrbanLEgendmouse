@@ -1576,6 +1576,7 @@ const gltfLoader=new GLTFLoader();
 const imageLoader=new THREE.TextureLoader();
 let crawlFBX=null,runFBX=null;
 let characterSource=null;
+let humanAnimationSource=null;
 const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
 const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 const HUMAN_VARIANTS=[];
@@ -1734,6 +1735,48 @@ function getSourceNodeAliasMap(source){
   cached.aliasMap=aliasMap;
   return aliasMap;
 }
+function getBoneAliasMap(root){
+  const aliasMap=new Map();
+  root?.traverse?.(node=>{
+    if(!node?.isBone || !node.name) return;
+    const original=node.name;
+    const lower=original.toLowerCase();
+    aliasMap.set(lower,node);
+    const stripped=lower.split(/[|/:]/).pop();
+    if(stripped && !aliasMap.has(stripped)) aliasMap.set(stripped,node);
+    const mixamoIdx=lower.indexOf('mixamorig');
+    if(mixamoIdx>=0){
+      const mixamoName=lower.slice(mixamoIdx);
+      if(mixamoName && !aliasMap.has(mixamoName)) aliasMap.set(mixamoName,node);
+    }
+  });
+  return aliasMap;
+}
+function buildRetargetBonePairs(targetRoot,driverRoot){
+  const driverMap=getBoneAliasMap(driverRoot);
+  const pairs=[];
+  targetRoot?.traverse?.(node=>{
+    if(!node?.isBone || !node.name) return;
+    const lower=node.name.toLowerCase();
+    const stripped=lower.split(/[|/:]/).pop();
+    const mixamoIdx=lower.indexOf('mixamorig');
+    const mixamoName=mixamoIdx>=0 ? lower.slice(mixamoIdx) : '';
+    const driverBone=
+      driverMap.get(lower) ||
+      (stripped ? driverMap.get(stripped) : null) ||
+      (mixamoName ? driverMap.get(mixamoName) : null);
+    if(driverBone) pairs.push([node,driverBone]);
+  });
+  return pairs;
+}
+function syncRetargetPose(inst){
+  if(!inst?.retargetPairs?.length) return;
+  for(const [targetBone,driverBone] of inst.retargetPairs){
+    targetBone.quaternion.copy(driverBone.quaternion);
+    targetBone.scale.copy(driverBone.scale);
+  }
+  inst.root?.updateMatrixWorld?.(true);
+}
 function remapTrackNameForSource(source,trackName){
   if(!trackName || !source) return trackName;
   const dotIdx=trackName.indexOf('.');
@@ -1777,7 +1820,7 @@ function getSourceCompatibleClip(source,srcClip){
   cached.clips.set(clip,retargeted);
   return retargeted;
 }
-function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
+function makeHumanVariant({name='',source,animationSource=null,idle,walk,run,jump,kick,pickup,clean,skin}){
   const safeIdle=getSourceCompatibleClip(source,idle);
   const safeWalk=getSourceCompatibleClip(source,walk);
   const safeRun=getSourceCompatibleClip(source,run);
@@ -1788,6 +1831,7 @@ function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,s
   return {
     name,
     source,
+    animationSource:animationSource||source,
     skin,
     clips:{
       idle:safeIdle,
@@ -4875,7 +4919,7 @@ async function warmChunksDuringIntro(chunkIds,{progressStart=90,progressEnd=99,l
    final height matches. Mixamo bones use centimetres internally, so
    targeting metres here means small rats (0.30 m) end up at scale
    ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
-function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,skin=HUMAN_SKIN}){
+function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,animationSource=null,skin=HUMAN_SKIN}){
   const root=SkeletonUtils.clone(source);
   ps1ifyCharacterMaterials(root,tint,skin);
   const outer=new THREE.Group();
@@ -4909,7 +4953,9 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   if(headBone && !headBone.userData.originalScale){
     headBone.userData.originalScale=headBone.scale.clone();
   }
-  const mixer=new THREE.AnimationMixer(root);
+  const animRoot=(animationSource && animationSource!==source) ? SkeletonUtils.clone(animationSource) : root;
+  const mixer=new THREE.AnimationMixer(animRoot);
+  const retargetPairs=(animRoot!==root) ? buildRetargetBonePairs(root,animRoot) : null;
   const actions={};
   if(clips){
     for(const [name,srcClip] of Object.entries(clips)){
@@ -4935,7 +4981,9 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   }
   const action=clip?mixer.clipAction(clip):null;
   if(action){action.setEffectiveTimeScale(1);action.play()}
-  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY:0};
+  const inst={outer,root,mixer,action,actions,headBone,height:finalH,baseY:0,animRoot,retargetPairs};
+  if(retargetPairs?.length) syncRetargetPose(inst);
+  return inst;
 }
 
 /* ============================================================
@@ -5079,7 +5127,14 @@ function buildHuman({position,role='wanderer'}={}){
     ? new THREE.Color('#a8c8e8')
     : new THREE.Color(pick(['#f0d6d0','#d9d6cf','#e6c7b5','#d7d6e8','#c9d3d8']));
   const variant=pick(HUMAN_VARIANTS);
-  const inst=buildSkinnedActor({targetHeight:1.52,tint,clips:variant.clips,source:variant.source,skin:variant.skin});
+  const inst=buildSkinnedActor({
+    targetHeight:1.52,
+    tint,
+    clips:variant.clips,
+    source:variant.source,
+    animationSource:variant.animationSource||humanAnimationSource||variant.source,
+    skin:variant.skin
+  });
   const root=inst.outer;
   root.position.set(position.x,HUMAN_WORLD_Y_OFFSET+GROUND_Y_OFFSET,position.z);
   scene.add(root);
@@ -5164,6 +5219,7 @@ function forceHumanActionPose(h,preferred='idle'){
   h.animState=next;
   humanPoseRefreshCount++;
   h.inst.mixer.update(1/30);
+  syncRetargetPose(h.inst);
   if(h.inst.outer) h.inst.outer.updateMatrixWorld(true);
   if(h.root) h.root.updateMatrixWorld(true);
 }
@@ -5292,6 +5348,7 @@ function tickActor(ent,dt){
   // to linger in bind pose and occasionally fight the foot alignment
   // logic, which showed up as T-pose + sinking reports on device.
   ent.inst.mixer.update(dt);
+  if(ent.kind==='human') syncRetargetPose(ent.inst);
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
@@ -12632,6 +12689,7 @@ async function init(){
       console.error('[fbx] human asset failed but continuing variant batch',err);
       return null;
     })));
+    humanAnimationSource=idleBoyFBX||humanAnimationSource;
     HUMAN_VARIANTS.length=0;
     const pushHumanVariant=config=>{
       if(!config?.source){
@@ -12642,6 +12700,7 @@ async function init(){
       HUMAN_VARIANTS.push(makeHumanVariant({
         ...config,
         source:config.source,
+        animationSource:config.animationSource||humanAnimationSource||config.source,
         idle,
         walk:config.walk||idle,
         run:config.run||config.walk||idle,
