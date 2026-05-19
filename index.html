@@ -40,38 +40,39 @@
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
   #mobile-vhs-overlay{
-    position:fixed;inset:0;pointer-events:none;z-index:12;display:none;opacity:0.34;mix-blend-mode:screen;
+    position:fixed;inset:0;pointer-events:none;z-index:16;display:none;opacity:0.52;mix-blend-mode:normal;
     background:
       repeating-linear-gradient(
         to bottom,
-        rgba(255,255,255,0.10) 0px,
-        rgba(255,255,255,0.10) 1px,
-        rgba(0,0,0,0.18) 2px,
-        rgba(0,0,0,0.18) 4px
+        rgba(255,255,255,0.13) 0px,
+        rgba(255,255,255,0.13) 1px,
+        rgba(0,0,0,0.22) 2px,
+        rgba(0,0,0,0.22) 4px
       ),
       radial-gradient(
         circle at center,
-        rgba(255,255,255,0.03) 0%,
-        rgba(0,0,0,0.16) 72%,
+        rgba(255,255,255,0.00) 0%,
+        rgba(0,0,0,0.12) 62%,
         rgba(0,0,0,0.38) 100%
       );
   }
-  body.mobile-vhs #mobile-vhs-overlay{display:block}
+  body.mobile-vhs #mobile-vhs-overlay{display:block !important}
   #mobile-vhs-overlay::before{
     content:'';position:absolute;inset:0;opacity:0.18;
-    background-image:linear-gradient(90deg, rgba(255,0,120,0.12), rgba(0,255,255,0.10));
+    background:linear-gradient(90deg, rgba(255,0,120,0.18), transparent 48%, rgba(0,255,255,0.16));
     transform:translateX(1px);
   }
   #mobile-vhs-overlay::after{
-    content:'';position:absolute;inset:0;opacity:0.10;
-    background:repeating-radial-gradient(
-      circle at 20% 30%,
-      rgba(255,255,255,0.22) 0px,
-      rgba(255,255,255,0.22) 1px,
+    content:'';position:absolute;inset:0;opacity:0.16;
+    background:
+      repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,0.04) 0px,
+      rgba(255,255,255,0.04) 1px,
       transparent 2px,
       transparent 5px
     );
-    animation:mobileVhsNoise 0.18s steps(2,end) infinite;
+    animation:mobileVhsNoise 0.45s steps(2,end) infinite;
   }
   @keyframes mobileVhsNoise{
     0%{transform:translate(0,0)}
@@ -688,9 +689,12 @@ function pixelate(tex){
 // textures, and full-screen post passes all hurt them disproportionately.
 // We detect once at boot and use this constant to pick lighter code
 // paths (single-pass render, downscaled textures, etc.).
-const IS_MOBILE_DEVICE=/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'')
-  || (typeof window.matchMedia==='function' && window.matchMedia('(any-pointer: coarse)').matches);
+const IS_MOBILE_DEVICE =
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') ||
+  (typeof window.matchMedia === 'function' && window.matchMedia('(any-pointer: coarse)').matches) ||
+  window.innerWidth <= 900;
 document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
+console.log('[mobile-vhs]',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
 // Cap PBR character textures at 512px on the long axis on mobile.
 // Saves roughly 4× VRAM and matches the PS1 aesthetic anyway — the
 // renderer is already running at <500px wide, so 1024² source is wasted.
@@ -1123,8 +1127,9 @@ function propAABB(p){
 }
 function rebuildRatsGrid(){
   ratsGrid.clear();
-  for(let i=0;i<game.rats.length;i++){
-    const rat=game.rats[i];
+  const source=IS_MOBILE_DEVICE ? activeFollowerRats : game.rats;
+  for(let i=0;i<source.length;i++){
+    const rat=source[i];
     if(!rat?.root) continue;
     const x=rat.root.position.x, z=rat.root.position.z;
     const gx=Math.floor(x/SPATIAL_GRID_CELL);
@@ -1147,6 +1152,13 @@ function rebuildHumansGrid(){
     if(!cell){ cell=[]; humansGrid.set(k,cell); }
     cell.push(h);
   }
+}
+let humansGridTimer=0;
+function maybeRebuildHumansGrid(dt){
+  humansGridTimer-=dt;
+  if(humansGridTimer>0) return;
+  humansGridTimer=IS_MOBILE_DEVICE ? 0.15 : 0;
+  rebuildHumansGrid();
 }
 // Reused scratch buffers so query callers don't allocate every frame.
 const _blockersNearScratch=[];
@@ -1458,6 +1470,19 @@ function syncFollowerRatMovementSFX(dt){
     for(const rat of game.rats) if(rat) rat._footstepTimer=0;
     return;
   }
+  if(IS_MOBILE_DEVICE){
+    const moving=(player.curSpeed || 0)>0.12;
+    const count=moving ? Math.min(getTotalRatCount(),80) : 0;
+    if(count>3){
+      startLoopSFX('ratSwarmLoop',{
+        volume:Math.min(0.82,0.30+Math.sqrt(count/12)*0.15),
+        playbackRate:0.94+Math.min(0.18,count*0.003)
+      });
+    }else{
+      stopLoopSFX('ratSwarmLoop',{reset:false});
+    }
+    return;
+  }
   const listener=getSFXListenerPosition();
   if(!listener){
     stopLoopSFX('ratSwarmLoop',{reset:false});
@@ -1673,7 +1698,12 @@ function resolveAnimationClip(src){
   return null;
 }
 function isUsableClip(clip){
-  return !!(clip && clip.tracks && clip.tracks.length>=8 && clip.duration>0.05);
+  return !!(
+    clip &&
+    Array.isArray(clip.tracks) &&
+    clip.tracks.length>0 &&
+    clip.duration>0.05
+  );
 }
 function isUsableAction(action){
   const clip=action?.getClip?.();
@@ -1688,34 +1718,7 @@ function getSourceNodeNames(source){
   return names;
 }
 function getSourceCompatibleClip(source,srcClip){
-  const clip=resolveAnimationClip(srcClip);
-  if(!clip || !source?.traverse) return clip;
-  let clipCache=SOURCE_CLIP_FILTER_CACHE.get(source);
-  if(!clipCache){
-    clipCache=new Map();
-    SOURCE_CLIP_FILTER_CACHE.set(source,clipCache);
-  }
-  const cacheKey=`${clip.name}::${clip.duration}::${clip.tracks.length}`;
-  if(clipCache.has(cacheKey)) return clipCache.get(cacheKey);
-  const sourceNodeNames=getSourceNodeNames(source);
-  const filteredTracks=clip.tracks.filter(track=>{
-    const nodeName=(track?.name||'').split('.')[0];
-    return !nodeName || sourceNodeNames.has(nodeName);
-  });
-  if(filteredTracks.length<8){
-    console.warn('[ANIM CLIP INCOMPATIBLE]',{
-      clip:clip.name,
-      originalTracks:clip.tracks.length,
-      filteredTracks:filteredTracks.length
-    });
-    clipCache.set(cacheKey,null);
-    return null;
-  }
-  const filteredClip=(filteredTracks.length===clip.tracks.length)
-    ? clip
-    : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
-  clipCache.set(cacheKey,filteredClip);
-  return filteredClip;
+  return resolveAnimationClip(srcClip);
 }
 function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
   const safeIdle=getSourceCompatibleClip(source,idle);
@@ -4755,7 +4758,10 @@ function ensureChunksAroundX(x){
 }
 let lastEnsuredChunkIndex=null;
 let lastEnsureChunkX=Infinity;
-function maybeEnsureChunksAroundPlayer(){
+let chunkEnsureTimer=0;
+function maybeEnsureChunksAroundPlayer(dt){
+  chunkEnsureTimer-=dt;
+  if(chunkEnsureTimer>0) return;
   if(!player?.root) return;
   const x=player.root.position.x;
   const c=Math.floor(x/CHUNK_SIZE);
@@ -4766,9 +4772,12 @@ function maybeEnsureChunksAroundPlayer(){
     nearPrefetch ||
     Math.abs(x-lastEnsureChunkX)>CHUNK_SIZE*0.5
   ){
+    chunkEnsureTimer=0.25;
     ensureChunksAroundX(x);
     lastEnsuredChunkIndex=c;
     lastEnsureChunkX=x;
+  }else{
+    chunkEnsureTimer=0.15;
   }
 }
 function waitForMainThreadBreath(){
@@ -5100,6 +5109,32 @@ function forceHumanActionPose(h,preferred='idle'){
   h.inst.mixer.update(1/30);
   if(h.inst.outer) h.inst.outer.updateMatrixWorld(true);
   if(h.root) h.root.updateMatrixWorld(true);
+}
+const DEBUG_HUMAN_ACTION_VARIANTS_LOGGED=new Set();
+function debugHumanAction(h){
+  if(!h?.inst?.actions) return;
+  const report={};
+  for(const [name,act] of Object.entries(h.inst.actions)){
+    const clip=act.getClip?.();
+    report[name]={
+      tracks:clip?.tracks?.length || 0,
+      duration:clip?.duration || 0,
+      running:act.isRunning?.() || false,
+      weight:act.getEffectiveWeight?.() || 0,
+      time:act.time || 0
+    };
+  }
+  if(h.root?.visible && h.kind==='human'){
+    const variantKey=h.variantName||'human';
+    if(!DEBUG_HUMAN_ACTION_VARIANTS_LOGGED.has(variantKey)){
+      DEBUG_HUMAN_ACTION_VARIANTS_LOGGED.add(variantKey);
+      console.log('[HUMAN ACTION DEBUG]',variantKey,report);
+    }
+    const active=Object.values(report).some(a=>a.running && a.weight>0.01 && a.tracks>0);
+    if(!active){
+      console.warn('[HUMAN NO ACTIVE VALID ACTION]',h.variantName,report);
+    }
+  }
 }
 function deactivateHumanForLOD(h){
   if(!h || !h.root) return;
@@ -10717,7 +10752,12 @@ function tickProps(dt){
       p.throwVel.y-=GRAVITY*0.92*dt;
       p.root.rotation.x+=p.throwSpin*dt;
       p.root.rotation.z+=p.throwSpin*0.65*dt;
-      for(const h of game.humans){
+      const nearHumans=getHumansNear(
+        p.root.position.x,
+        p.root.position.z,
+        1.2
+      );
+      for(const h of nearHumans){
         if(h===p.throwOwner||h===game.parasitisedHost||h.downTimer>0)continue;
         const dx=h.root.position.x-p.root.position.x;
         const dz=h.root.position.z-p.root.position.z;
@@ -10915,6 +10955,7 @@ function tickHumans(dt){
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       tickActor(h,dt);
       h._footstepTimer=0;
+      debugHumanAction(h);
       continue;
     }
     // Idol-form humans get their feet hard-clamped every frame so the
@@ -10942,6 +10983,7 @@ function tickHumans(dt){
       h.cleanBar.root.visible=false;
       h._footstepTimer=0;
       tickActor(h,dt);
+      debugHumanAction(h);
       continue;
     }
     if(!h.controllable && !h.parasitised){
@@ -10973,6 +11015,7 @@ function tickHumans(dt){
       tickActor(h,dt);
       hardClampHumanToGround(h);
       debugValidateHuman(h);
+      debugHumanAction(h);
       continue;
     }
     if(h.panicTimer>0 && !h.controllable){
@@ -11001,6 +11044,7 @@ function tickHumans(dt){
       h._footstepTimer=0;
       hardClampHumanToGround(h);
       debugValidateHuman(h);
+      debugHumanAction(h);
       continue;
     }
     if(!h.controllable){
@@ -11030,6 +11074,7 @@ function tickHumans(dt){
           h._footstepTimer=0;
           hardClampHumanToGround(h);
           debugValidateHuman(h);
+          debugHumanAction(h);
           continue;
         }
       }
@@ -11051,6 +11096,7 @@ function tickHumans(dt){
     h._footstepTimer=0;
     hardClampHumanToGround(h);
     debugValidateHuman(h);
+    debugHumanAction(h);
   }
 }
 
@@ -11092,7 +11138,7 @@ const RAT_BLOOD_SPRAY_INTERVAL=0.18;     // throttle per-human blood spawns
 const HUMAN_ACTIVE_SIM_RADIUS=34;
 const HUMAN_ACTIVE_SIM_RADIUS_SQ=HUMAN_ACTIVE_SIM_RADIUS*HUMAN_ACTIVE_SIM_RADIUS;
 const MAX_ACTIVE_RAT_VISUALS_DESKTOP=220;
-const MAX_ACTIVE_RAT_VISUALS_MOBILE=90;
+const MAX_ACTIVE_RAT_VISUALS_MOBILE=40;
 const MAX_FULLSIM_FOLLOWER_RATS_MOBILE=20;
 const MAX_FULLSIM_FOLLOWER_RATS_DESKTOP=56;
 const RAT_FULL_BRAIN_RADIUS=16;
@@ -11105,6 +11151,14 @@ const RAT_MID_WORLD_INTERVAL=0.08;
 const RAT_FAR_WORLD_INTERVAL=0.18;
 let ratVisualBudgetTimer=0;
 let followerBudgetTimer=0;
+const activeFollowerRats=[];
+let activeFollowerRefreshTimer=0;
+let ratSwarmPoints=null;
+let swarmData=[];
+let swarmVisualTimer=0;
+let swarmGroundY=GROUND_Y_OFFSET;
+let sharedChaosTarget=null;
+let sharedChaosTargetTimer=0;
 function getMaxActiveRatVisuals(){
   return IS_MOBILE_DEVICE ? MAX_ACTIVE_RAT_VISUALS_MOBILE : MAX_ACTIVE_RAT_VISUALS_DESKTOP;
 }
@@ -11113,6 +11167,119 @@ function getGameplayFocusPosition(){
     || game.parasitisedHost?.root?.position
     || player?.root?.position
     || null;
+}
+function refreshActiveFollowerRats(dt){
+  activeFollowerRefreshTimer-=dt;
+  if(activeFollowerRefreshTimer>0) return;
+  activeFollowerRefreshTimer=0.25;
+  activeFollowerRats.length=0;
+  if(!player?.root) return;
+  const max=IS_MOBILE_DEVICE ? 20 : 56;
+  const px=player.root.position.x;
+  const pz=player.root.position.z;
+  for(const r of game.rats){
+    if(!r || r===player || r===game.controlled) continue;
+    const critical=
+      r.climbingHuman ||
+      r.targetHuman ||
+      r.templeBound ||
+      r.templeSwarmVisual ||
+      r.followStatue;
+    if(critical){
+      r.fullFollowerSim=true;
+      activeFollowerRats.push(r);
+      continue;
+    }
+    if(!r.followPlayer) continue;
+    const dx=r.root.position.x-px;
+    const dz=r.root.position.z-pz;
+    const d2=dx*dx+dz*dz;
+    if(d2<9 && activeFollowerRats.length<max){
+      r.fullFollowerSim=true;
+      activeFollowerRats.push(r);
+    }else{
+      r.fullFollowerSim=false;
+      r.root.visible=false;
+    }
+  }
+}
+function initRatSwarmVisual(){
+  if(ratSwarmPoints || !scene) return;
+  game.virtualRats=game.virtualRats || 0;
+  const max=IS_MOBILE_DEVICE ? 360 : 900;
+  const geo=new THREE.BufferGeometry();
+  const positions=new Float32Array(max*3);
+  const sizes=new Float32Array(max);
+  swarmData.length=0;
+  for(let i=0;i<max;i++){
+    positions[i*3+0]=0;
+    positions[i*3+1]=0;
+    positions[i*3+2]=0;
+    sizes[i]=Math.random()*0.08+0.04;
+    swarmData[i]={
+      angle:Math.random()*Math.PI*2,
+      back:Math.random()*4.5,
+      side:(Math.random()-0.5)*3.0,
+      phase:Math.random()*Math.PI*2,
+      speed:0.8+Math.random()*1.4
+    };
+  }
+  geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  geo.setAttribute('size',new THREE.BufferAttribute(sizes,1));
+  const mat=new THREE.PointsMaterial({
+    color:'#1a0b12',
+    size:0.08,
+    sizeAttenuation:true,
+    transparent:true,
+    opacity:0.82,
+    depthWrite:false
+  });
+  ratSwarmPoints=new THREE.Points(geo,mat);
+  ratSwarmPoints.frustumCulled=false;
+  scene.add(ratSwarmPoints);
+}
+function getVisibleSwarmCount(){
+  const total=getTotalRatCount();
+  if(IS_MOBILE_DEVICE) return Math.floor(Math.min(360,Math.max(40,total*0.45)));
+  return Math.floor(Math.min(900,Math.max(80,total*0.65)));
+}
+function updateRatSwarmVisual(dt){
+  if(!ratSwarmPoints) initRatSwarmVisual();
+  if(!player?.root || !ratSwarmPoints) return;
+  swarmVisualTimer-=dt;
+  if(swarmVisualTimer>0) return;
+  swarmVisualTimer=IS_MOBILE_DEVICE ? 1/18 : 1/30;
+  const count=getVisibleSwarmCount();
+  const pos=ratSwarmPoints.geometry.attributes.position;
+  const arr=pos.array;
+  const px=player.root.position.x;
+  const pz=player.root.position.z;
+  const yaw=player.yaw || player.root.rotation.y || 0;
+  const fx=Math.sin(yaw);
+  const fz=Math.cos(yaw);
+  const rx=Math.cos(yaw);
+  const rz=-Math.sin(yaw);
+  const speed=player.curSpeed || 0;
+  const trailScale=speed>2 ? 1.8 : speed>0.2 ? 1.0 : 0.35;
+  const sideScale=speed>2 ? 0.8 : 1.4;
+  const t=performance.now()*0.001;
+  for(let i=0;i<count;i++){
+    const s=swarmData[i];
+    const wiggle=Math.sin(t*s.speed+s.phase);
+    const back=s.back*trailScale;
+    const side=s.side*sideScale+wiggle*0.4;
+    arr[i*3+0]=px-fx*back+rx*side;
+    arr[i*3+1]=swarmGroundY+0.03+Math.sin(t*4+s.phase)*0.025;
+    arr[i*3+2]=pz-fz*back+rz*side;
+  }
+  ratSwarmPoints.geometry.setDrawRange(0,count);
+  pos.needsUpdate=true;
+}
+function updateSharedChaosTarget(dt){
+  sharedChaosTargetTimer-=dt;
+  if(sharedChaosTargetTimer>0) return;
+  sharedChaosTargetTimer=IS_MOBILE_DEVICE ? 0.25 : 0.12;
+  sharedChaosTarget=player?.root ? nearestChaosSpot(player.root.position) : null;
 }
 function shouldSimulateHumanEntity(human,focusPos){
   if(!human?.root || !focusPos) return true;
@@ -11561,8 +11728,11 @@ function tickHumanRatAttackState(dt){
 }
 function tickFollowerRats(dt){
   const focusPos=getGameplayFocusPosition()||player?.root?.position||null;
-  for(const r of game.rats){
+  const list=IS_MOBILE_DEVICE ? activeFollowerRats : game.rats;
+  for(const r of list){
     if(r===player||r===game.controlled)continue;
+    if(!r?.root) continue;
+    r.root.visible=true;
     const lod=getRatLODConfig(r,focusPos);
     const runBrain=lod.brainInterval<=0
       || !r._brainPrimed
@@ -11699,9 +11869,9 @@ function tickFollowerRats(dt){
       tickRatBillboard(r,dt);
       continue;
     }
-    let chaosTarget=r._cachedChaosTarget||null;
+    let chaosTarget=IS_MOBILE_DEVICE ? sharedChaosTarget : (r._cachedChaosTarget||null);
     if(runBrain){
-      chaosTarget=nearestChaosSpot(r.root.position);
+      chaosTarget=IS_MOBILE_DEVICE ? sharedChaosTarget : nearestChaosSpot(r.root.position);
       r._cachedChaosTarget=chaosTarget||null;
     }
     let target=chaosTarget || player.root.position;
@@ -12197,8 +12367,10 @@ function stepFrame(dt){
     gameTime+=dt;
     // Rebuild the rats spatial grid once per tick so countNearbyGroundRats
     // and any other proximity query share one consistent snapshot.
+    refreshActiveFollowerRats(dt);
     rebuildRatsGrid();
-    rebuildHumansGrid();
+    maybeRebuildHumansGrid(dt);
+    updateSharedChaosTarget(dt);
     syncPlayerBiteLoop();
     syncStreetAmbience(dt);
     if(game.ratCityMode && ratCityAutoRotate) game.ratCityAngle+=dt*0.22;
@@ -12212,6 +12384,7 @@ function stepFrame(dt){
     tickBreeding(dt);
     enforceFollowerRatFullSimBudget(dt);
     tickFollowerRats(dt);
+    updateRatSwarmVisual(dt);
     syncFollowerRatMovementSFX(dt);
     tickHumanRatAttackState(dt);
     tickTempleEvent(dt);
@@ -12219,7 +12392,7 @@ function stepFrame(dt){
     tickTransientFX(dt);
     if(game.controlMode==='rat'){tickActor(player,dt);tickRatBillboard(player,dt)}
     updateHUD(dt);
-    maybeEnsureChunksAroundPlayer();
+    maybeEnsureChunksAroundPlayer(dt);
   }else if(gameState==='intro'){
     if(startBtn.disabled) renderIntroProgress();
     syncStreetAmbience(dt);
@@ -12393,6 +12566,15 @@ async function init(){
         console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
         return;
       }
+      config={
+        ...config,
+        source:idleBoyFBX,
+        idle:idleBoyFBX,
+        walk:walkBoyFBX,
+        run:runBoyFBX,
+        jump:jumpBoyFBX,
+        kick:kickBoyFBX
+      };
       const idle=config.idle||config.source;
       HUMAN_VARIANTS.push(makeHumanVariant({
         ...config,
