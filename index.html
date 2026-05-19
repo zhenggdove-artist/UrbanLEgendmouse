@@ -662,7 +662,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','npc-shared-boy-mesh+silent-warm+css-overlay-fix 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','colon-strip-fix+own-meshes+silent-warm+lowres-mobile 2026-05-19 build');
 console.log('[mobile-vhs]',IS_MOBILE_DEVICE,navigator.userAgent,window.innerWidth,window.innerHeight);
 // Cap PBR character textures at 512px on the long axis on mobile.
 // Saves roughly 4× VRAM and matches the PS1 aesthetic anyway — the
@@ -1594,8 +1594,43 @@ function loadWithTimeout(label,executor,timeoutMs=ASSET_LOAD_TIMEOUT_MS){
     }
   });
 }
+/* TRUE T-POSE ROOT CAUSE FIX
+   Mixamo FBX files use bone names with a colon (e.g. "mixamorig:Hips",
+   "mixamorig:LeftArm"). Three.js's PropertyBinding regex treats `:`
+   as a RESERVED character and CANNOT parse track names of the form
+   "mixamorig:Hips.quaternion" — binding silently fails for EVERY
+   colon-named track, so the AnimationMixer produces no bone motion
+   and the mesh stays in bind pose (T-pose, sliding around).
+   Confirmed by reading the FBX binaries: every NPC FBX uses
+   `mixamorig:` prefixed bone names.
+   Fix: immediately after loading any FBX, walk the hierarchy and
+   replace `:` with `_` in every node name. Also do the same in every
+   animation clip's track names. After this, bone names are
+   "mixamorig_Hips" and track names are "mixamorig_Hips.quaternion",
+   which PropertyBinding parses correctly — animations bind. */
+function sanitiseFBXNames(fbx){
+  if(!fbx) return fbx;
+  if(fbx.traverse){
+    fbx.traverse(node=>{
+      if(node && typeof node.name==='string' && node.name.indexOf(':')!==-1){
+        node.name=node.name.replace(/:/g,'_');
+      }
+    });
+  }
+  if(Array.isArray(fbx.animations)){
+    for(const clip of fbx.animations){
+      if(!clip || !Array.isArray(clip.tracks)) continue;
+      for(const track of clip.tracks){
+        if(track && typeof track.name==='string' && track.name.indexOf(':')!==-1){
+          track.name=track.name.replace(/:/g,'_');
+        }
+      }
+    }
+  }
+  return fbx;
+}
 function loadFBXAsync(path,onProgress){
-  return loadWithTimeout(path,(res,rej)=>fbxLoader.load(path,res,onProgress,rej));
+  return loadWithTimeout(path,(res,rej)=>fbxLoader.load(path,fbx=>res(sanitiseFBXNames(fbx)),onProgress,rej));
 }
 function loadGLTFAsync(path,onProgress){
   return new Promise((res,rej)=>gltfLoader.load(path,res,onProgress,rej));
@@ -5149,12 +5184,21 @@ function buildHuman({position,role='wanderer'}={}){
   if(!buildHuman._diag.has(variant.name)){
     buildHuman._diag.add(variant.name);
     let boneCount=0;
-    inst.root.traverse(o=>{ if(o?.isBone) boneCount++; });
+    let firstBone=null;
+    inst.root.traverse(o=>{
+      if(o?.isBone){
+        boneCount++;
+        if(!firstBone) firstBone=o.name;
+      }
+    });
     const trackInfo={};
+    let firstTrack=null;
     for(const [k,act] of Object.entries(inst.actions||{})){
-      trackInfo[k]=act.getClip?.().tracks?.length||0;
+      const clip=act.getClip?.();
+      trackInfo[k]=clip?.tracks?.length||0;
+      if(!firstTrack && clip?.tracks?.[0]) firstTrack=clip.tracks[0].name;
     }
-    console.log('[HUMAN SPAWN DIAG]',variant.name,'bones=',boneCount,'tracks=',trackInfo);
+    console.log('[HUMAN SPAWN DIAG]',variant.name,'bones=',boneCount,'firstBone=',firstBone,'tracks=',trackInfo,'firstTrack=',firstTrack);
   }
   return human;
 }
@@ -12607,32 +12651,52 @@ async function init(){
     // getSourceCompatibleClip filters those clips to the bones that
     // actually exist in each variant's skeleton, so the mixer binds
     // cleanly and the NPCs animate instead of T-pose-sliding.
+    // Each NPC variant loads its OWN FBX mesh (so its texture maps to
+    // the correct UVs and we don't get the stretched-skin look). Animation
+    // clips all come from the boy's set. Bone names from every FBX are
+    // sanitised at load time (sanitiseFBXNames strips `:`), so when a
+    // walkBoyFBX clip is applied to e.g. 中年男子2's mesh, the bone
+    // names match exactly across FBXs and binding succeeds.
     const [
-      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,
-      deathHumanFBX,
+      idleHumanFBX,
       baseColourTex,
+      idleWomanFBX,
       baseColourTexWoman,
+      idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,
       baseColourTexBoy,
+      idleSchoolgirlFBX,
       baseColourTexSchoolgirl,
+      idleMumFBX,
       baseColourTexMum,
+      idleUncleFBX,
       baseColourTexUncle,
+      idleOLFBX,
       baseColourTexOL,
-      baseColourTexSalaryman
+      idleSalarymanFBX,
+      baseColourTexSalaryman,
+      deathHumanFBX
     ]=await Promise.all([
+      loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_中年婦女/站著發呆.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx',onRunProgress),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx',onRunProgress),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_花花大媽/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_女上班族/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg')
+      loadFBXAsync('asset/都市傳說鼠王_男上班族/發呆.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
     ].map(p=>p.catch(err=>{
       console.error('[fbx] human asset failed but continuing batch',err);
       return null;
@@ -12663,23 +12727,14 @@ async function init(){
         }
       }));
     };
-    // EVERY variant uses idleBoyFBX as `source` (mesh + skeleton). This
-    // is the only configuration that mathematically cannot T-pose: clip
-    // tracks come from the boy's FBX exports, mesh bones come from the
-    // boy's FBX export — same FBX writer, same bone names, guaranteed
-    // binding success. Per-variant differentiation is the BaseColor
-    // texture; the per-variant idle FBX (e.g. 中年男子2 站著發呆.fbx)
-    // is no longer loaded, removing ~30MB of bandwidth + decode at boot.
-    // (User requested explicitly: 8 NPCs share 男高中生's skeleton +
-    // motion animations. This delivers exactly that.)
-    pushHumanVariant({name:'中年男子',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTex}});
-    pushHumanVariant({name:'中年婦女',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexWoman}});
+    pushHumanVariant({name:'中年男子',source:idleHumanFBX,...sharedHumanClips,skin:{base:baseColourTex}});
+    pushHumanVariant({name:'中年婦女',source:idleWomanFBX,...sharedHumanClips,skin:{base:baseColourTexWoman}});
     pushHumanVariant({name:'男高中生',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexBoy}});
-    pushHumanVariant({name:'女高中生',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexSchoolgirl}});
-    pushHumanVariant({name:'花花大媽',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexMum}});
-    pushHumanVariant({name:'吊嘎阿伯',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexUncle}});
-    pushHumanVariant({name:'女上班族',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexOL}});
-    pushHumanVariant({name:'男上班族',source:idleBoyFBX,...sharedHumanClips,skin:{base:baseColourTexSalaryman}});
+    pushHumanVariant({name:'女高中生',source:idleSchoolgirlFBX,...sharedHumanClips,skin:{base:baseColourTexSchoolgirl}});
+    pushHumanVariant({name:'花花大媽',source:idleMumFBX,...sharedHumanClips,skin:{base:baseColourTexMum}});
+    pushHumanVariant({name:'吊嘎阿伯',source:idleUncleFBX,...sharedHumanClips,skin:{base:baseColourTexUncle}});
+    pushHumanVariant({name:'女上班族',source:idleOLFBX,...sharedHumanClips,skin:{base:baseColourTexOL}});
+    pushHumanVariant({name:'男上班族',source:idleSalarymanFBX,...sharedHumanClips,skin:{base:baseColourTexSalaryman}});
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     for(const v of HUMAN_VARIANTS){
       v.clips.death=sharedDeathClip;
