@@ -7711,6 +7711,52 @@ const UI_LAYOUT_DEFAULTS={
     "__viewportHeight": 844
   }
 };
+// RESTORED constants — an earlier auto-commit accidentally chopped these
+// two definitions out. Without them every code path that calls
+// getUILayoutDefs / resolveUILayoutArtTargetId / etc. throws
+// ReferenceError at script-eval time, which is why the loader stuck at
+// 0% — `init()` never even got the chance to run. Do not delete again.
+const UI_LAYOUT_TARGET_DEFS=[
+  {id:'minimap',label:'Minimap',scene:'game'},
+  {id:'mode-badge',label:'Mode Badge',scene:'game'},
+  {id:'chaos-box',label:'Chaos Box',scene:'game'},
+  {id:'chaos-box-art',label:'Chaos Art',isSkinArt:true,parentId:'chaos-box',scene:'game'},
+  {id:'rats-box',label:'Rats Box',scene:'game'},
+  {id:'rats-box-art',label:'Rats Art',isSkinArt:true,parentId:'rats-box',scene:'game'},
+  {id:'host-life-box',label:'Host Life Bar',scene:'game'},
+  {id:'rat-city-btn',label:'Rat City Button',scene:'game'},
+  {id:'rat-city-btn-art',label:'Rat City Art',isSkinArt:true,parentId:'rat-city-btn',scene:'game'},
+  {id:'hint',label:'Hint',scene:'game'},
+  {id:'joystick-zone',label:'Joystick',scene:'game'},
+  {id:'jump-btn',label:'Jump Button',scene:'game'},
+  {id:'jump-btn-art',label:'Jump Art',isSkinArt:true,parentId:'jump-btn',scene:'game'},
+  {id:'bite-btn',label:'Bite Button',scene:'game'},
+  {id:'bite-btn-art',label:'Bite Art',isSkinArt:true,parentId:'bite-btn',scene:'game'},
+  {id:'pickup-btn',label:'Pickup Button',scene:'game'},
+  {id:'pickup-btn-art',label:'Pickup Art',isSkinArt:true,parentId:'pickup-btn',scene:'game'},
+  {id:'exit-host-btn',label:'Exit Host Button',scene:'game'},
+  {id:'exit-host-btn-art',label:'Drop Host Art',isSkinArt:true,parentId:'exit-host-btn',scene:'game'},
+  {id:'intro-card',label:'Loading Card',scene:'loading'},
+  {id:'start-btn',label:'Loading Button',isText:true,scene:'loading'},
+  {id:'intro-title',label:'Loading Title',isText:true,scene:'loading'},
+  {id:'intro-tag',label:'Loading Subtitle',isText:true,scene:'loading'},
+  {id:'intro-copy',label:'Loading Description',isText:true,multiline:true,scene:'loading'},
+  {id:'intro-progress-text',label:'Loading Progress Text',isText:true,scene:'loading'},
+  {id:'intro-progress-track',label:'Loading Progress Bar',scene:'loading'},
+  {id:'rats-win',label:'Ending Card',scene:'ending'},
+  {id:'rw-text',label:'Ending Title',isText:true,scene:'ending'},
+  {id:'rw-sub',label:'Ending Subtitle',isText:true,scene:'ending'},
+  {id:'rw-replay',label:'Ending Replay Button',isText:true,scene:'ending'}
+];
+const UI_LAYOUT_ART_TARGETS={
+  'chaos-box':'chaos-box-art',
+  'rats-box':'rats-box-art',
+  'rat-city-btn':'rat-city-btn-art',
+  'jump-btn':'jump-btn-art',
+  'bite-btn':'bite-btn-art',
+  'pickup-btn':'pickup-btn-art',
+  'exit-host-btn':'exit-host-btn-art'
+};
 function ensureUILayoutBuiltins(config){
   for(const mode of ['desktop','mobile']){
     const store=config[mode]||{};
