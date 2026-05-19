@@ -1239,27 +1239,40 @@ function getSFXPolyphony(key){
   return 2;
 }
 function warmSFXAudioElement(audio){
+  // iOS / Android autoplay unlock needs each Audio element to be played
+  // once inside the user gesture. Setting only audio.muted=true is NOT
+  // reliable — on several Android Chrome builds the mute flag is applied
+  // a frame after play() begins, producing a brief audible blip per
+  // element. With ~40 SFX × up-to-4 pool entries warmed simultaneously
+  // on BEGIN, those blips overlap into the "every sound plays once"
+  // burst the user has been reporting. Belt-and-braces fix: drop the
+  // gain to zero AS WELL AS muting, and restore both only after pause.
   if(!audio) return Promise.resolve(false);
+  const restore=()=>{
+    audio.muted=false;
+    audio.volume=1;
+  };
   try{
     audio.muted=true;
+    audio.volume=0;
     const p=audio.play();
     if(p?.then){
       return p.then(()=>{
         audio.pause();
         audio.currentTime=0;
-        audio.muted=false;
+        restore();
         return true;
       }).catch(()=>{
-        audio.muted=false;
+        restore();
         return false;
       });
     }
     audio.pause();
     audio.currentTime=0;
-    audio.muted=false;
+    restore();
     return Promise.resolve(true);
   }catch(_){
-    audio.muted=false;
+    restore();
     return Promise.resolve(false);
   }
 }
@@ -5224,7 +5237,13 @@ function forceHumanActionPose(h,preferred='idle'){
   if(h.root) h.root.updateMatrixWorld(true);
 }
 const DEBUG_HUMAN_ACTION_VARIANTS_LOGGED=new Set();
+// Toggled false by default: the original implementation built a fresh
+// report object for every human every frame, which on mobile turned
+// into a per-frame allocation hot-path proportional to the human count.
+// Flip to true only when diagnosing animation issues again.
+const DEBUG_HUMAN_ACTION_TRACE=false;
 function debugHumanAction(h){
+  if(!DEBUG_HUMAN_ACTION_TRACE) return;
   if(!h?.inst?.actions) return;
   const report={};
   for(const [name,act] of Object.entries(h.inst.actions)){
@@ -12607,202 +12626,84 @@ async function init(){
   const templeAssetsPromise=loadTempleIdolAssets().catch(()=>{});
 
   try{
-    // Only the boy (男高中生) provides the shared idle/walk/run/jump/kick/clean
-    // animation clips reused by every variant. All other variants only need
-    // their own rest-pose FBX (for the unique mesh) + their four PBR textures.
-    // The previous version loaded the full anim set for every variant and
-    // discarded it, which is what made mobile run out of memory and spawn no
-    // humans at all. Each variant keeps its OWN skin textures so the eight
-    // characters still look distinct.
+    // All eight NPC variants now share 男高中生's mesh, skeleton, and the
+    // five boy animation clips (idle / walk / run / jump / kick) plus the
+    // shared death clip. Per-variant differentiation is the BaseColor skin
+    // texture only. This is the user's explicit architecture request and
+    // the only reliable JS-side fix for the T-pose+sliding bug: the prior
+    // per-variant FBX meshes had Tripo-generated skeletons whose bone
+    // names did not match the boy's skeleton, so the runtime retargeter
+    // silently produced empty AnimationActions. Sharing the mesh removes
+    // that entire failure mode AND cuts boot bandwidth/VRAM by ~8×.
     const [
-      idleHumanFBX,
-      baseColourTex,normalTex,roughTex,metalTex,
-      idleWomanFBX,
-      baseColourTexWoman,normalTexWoman,roughTexWoman,metalTexWoman,
       idleBoyFBX,walkBoyFBX,runBoyFBX,jumpBoyFBX,kickBoyFBX,
-      baseColourTexBoy,normalTexBoy,roughTexBoy,metalTexBoy,
-      idleSchoolgirlFBX,
-      baseColourTexSchoolgirl,normalTexSchoolgirl,roughTexSchoolgirl,metalTexSchoolgirl,
-      idleMumFBX,
-      baseColourTexMum,normalTexMum,roughTexMum,metalTexMum,
-      idleUncleFBX,
-      baseColourTexUncle,normalTexUncle,roughTexUncle,metalTexUncle,
-      idleOLFBX,
-      baseColourTexOL,normalTexOL,roughTexOL,metalTexOL,
-      idleSalarymanFBX,
-      baseColourTexSalaryman,normalTexSalaryman,roughTexSalaryman,metalTexSalaryman,
-      deathHumanFBX
+      deathHumanFBX,
+      skinMidMan,
+      skinMidWoman,
+      skinBoy,
+      skinSchoolgirl,
+      skinMum,
+      skinUncle,
+      skinOL,
+      skinSalaryman
     ]=await Promise.all([
-      // Human variants run on MeshBasicMaterial (PS1 look), which ignores
-      // Normal / Roughness / Metallic maps entirely. Loading them was
-      // pure waste — ~24 MB of bandwidth + decode + VRAM thrown away
-      // every boot. They've been replaced with Promise.resolve(null) so
-      // the destructuring positions stay intact but no network request
-      // fires. (Idol still uses MeshStandardMaterial and keeps its PBR
-      // stack — see loadTempleIdolAssets, untouched.)
-      loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_中年婦女/站著發呆.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx'),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx',onRunProgress),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx',onRunProgress),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
+      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
+      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_花花大媽/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_女上班族/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_男上班族/發呆.fbx'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg'),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      Promise.resolve(null),
-      loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
+      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg')
     ].map(p=>p.catch(err=>{
-      console.error('[fbx] human asset failed but continuing variant batch',err);
+      console.error('[fbx] human asset failed but continuing',err);
       return null;
     })));
     humanAnimationSource=idleBoyFBX||humanAnimationSource;
     HUMAN_VARIANTS.length=0;
-    const pushHumanVariant=config=>{
-      if(!config?.source){
-        console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
-        return;
-      }
-      const idle=config.idle||config.source;
-      HUMAN_VARIANTS.push(makeHumanVariant({
-        ...config,
-        source:config.source,
-        animationSource:config.animationSource||humanAnimationSource||config.source,
-        idle,
-        walk:config.walk||idle,
-        run:config.run||config.walk||idle,
-        jump:config.jump||idle,
-        kick:config.kick||idle,
-        pickup:config.pickup||null,
-        clean:config.clean||idle,
-        skin:{
-          base:config.skin?.base||null,
-          normal:config.skin?.normal||null,
-          roughness:config.skin?.roughness||null,
-          metal:config.skin?.metal||null
-        }
-      }));
+    const sharedClips={
+      idle:idleBoyFBX,
+      walk:walkBoyFBX,
+      run:runBoyFBX,
+      jump:jumpBoyFBX,
+      kick:kickBoyFBX,
+      clean:idleBoyFBX
     };
-    pushHumanVariant({
-      name:'中年男子',
-      source:idleHumanFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTex,normal:normalTex,roughness:roughTex,metal:metalTex}
-    });
-    pushHumanVariant({
-      name:'中年婦女',
-      source:idleWomanFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTexWoman,normal:normalTexWoman,roughness:roughTexWoman,metal:metalTexWoman}
-    });
-    pushHumanVariant({
-      name:'男高中生',
-      source:idleBoyFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      skin:{base:baseColourTexBoy,normal:normalTexBoy,roughness:roughTexBoy,metal:metalTexBoy}
-    });
-    pushHumanVariant({
-      name:'女高中生',
-      source:idleSchoolgirlFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTexSchoolgirl,normal:normalTexSchoolgirl,roughness:roughTexSchoolgirl,metal:metalTexSchoolgirl}
-    });
-    pushHumanVariant({
-      name:'花花大媽',
-      source:idleMumFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTexMum,normal:normalTexMum,roughness:roughTexMum,metal:metalTexMum}
-    });
-    pushHumanVariant({
-      name:'吊嘎阿伯',
-      source:idleUncleFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTexUncle,normal:normalTexUncle,roughness:roughTexUncle,metal:metalTexUncle}
-    });
-    pushHumanVariant({
-      name:'女上班族',
-      source:idleOLFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTexOL,normal:normalTexOL,roughness:roughTexOL,metal:metalTexOL}
-    });
-    pushHumanVariant({
-      name:'男上班族',
-      source:idleSalarymanFBX,
-      idle:idleBoyFBX,
-      walk:walkBoyFBX,
-      run:runBoyFBX,
-      jump:jumpBoyFBX,
-      kick:kickBoyFBX,
-      clean:idleBoyFBX,
-      skin:{base:baseColourTexSalaryman,normal:normalTexSalaryman,roughness:roughTexSalaryman,metal:metalTexSalaryman}
-    });
+    const variantTable=[
+      ['中年男子',skinMidMan],
+      ['中年婦女',skinMidWoman],
+      ['男高中生',skinBoy],
+      ['女高中生',skinSchoolgirl],
+      ['花花大媽',skinMum],
+      ['吊嘎阿伯',skinUncle],
+      ['女上班族',skinOL],
+      ['男上班族',skinSalaryman]
+    ];
+    if(!idleBoyFBX){
+      console.error('[fbx] 男高中生 mesh failed to load; cannot build any human variants');
+    }else{
+      for(const [name,baseColour] of variantTable){
+        HUMAN_VARIANTS.push(makeHumanVariant({
+          name,
+          source:idleBoyFBX,
+          animationSource:idleBoyFBX,
+          idle:sharedClips.idle,
+          walk:sharedClips.walk,
+          run:sharedClips.run,
+          jump:sharedClips.jump,
+          kick:sharedClips.kick,
+          pickup:null,
+          clean:sharedClips.clean,
+          skin:{base:baseColour||null,normal:null,roughness:null,metal:null}
+        }));
+      }
+    }
     const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     for(const v of HUMAN_VARIANTS){
       v.clips.death=sharedDeathClip;
