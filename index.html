@@ -662,7 +662,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','no-fade-direct-weight+ground-y-1.5 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','flicker-fixed+ground-y-0.9 2026-05-19 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -5223,9 +5223,10 @@ function buildRat({isPlayer=false}={}){
    ============================================================ */
 // User-tuned: with the new no-fade direct-weight animation path the
 // idle clip's first keyframe positions the rig above its bind pose,
-// so without an offset NPCs hover ~half a model height in the air.
-// Dropping by 1.5 m puts their feet back on the ground.
-const HUMAN_WORLD_Y_OFFSET=-1.5;
+// so without an offset NPCs hover above the ground. -0.9 m puts
+// their feet on the ground without sinking. Adjust if the look isn't
+// quite right (more negative = lower; less negative = higher).
+const HUMAN_WORLD_Y_OFFSET=-0.9;
 let humanBelowGroundFixCount=0;
 let humanPoseRefreshCount=0;
 const DEBUG_HUMAN_VALIDATION=true;
@@ -5510,11 +5511,20 @@ function tickActor(ent,dt){
     }else if(ent.kind==='human' && ent.dead && ent.inst.actions.death){
       next='death';
     }else if(ent.kind==='human'){
+      // FLICKER FIX: use hysteresis-friendly thresholds + sticky state.
+      // The wander code in tickHumans toggles curSpeed between 0 and
+      // 0.76 each frame as it turns. The old `curSpeed>0.08` test
+      // would flip walk↔idle every single frame, which made
+      // act.reset() snap the clip to time=0 every frame, producing
+      // visible per-frame strobing. Now: enter walk only above 0.4,
+      // return to idle only below 0.05, otherwise keep current state.
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.isAir && isUsableAction(ent.inst.actions.jump)) next='jump';
       else if(ent.panicTimer>0 && isUsableAction(ent.inst.actions.run)) next='run';
       else if(ent.controllable && ent.curSpeed>1.25 && isUsableAction(ent.inst.actions.run)) next='run';
-      else if(ent.curSpeed>0.08 && isUsableAction(ent.inst.actions.walk)) next='walk';
+      else if(ent.curSpeed>0.4 && isUsableAction(ent.inst.actions.walk)) next='walk';
+      else if(ent.curSpeed<0.05 && isUsableAction(ent.inst.actions.idle)) next='idle';
+      else if(ent.animState && ent.inst.actions[ent.animState]) next=ent.animState; // sticky
       else if(isUsableAction(ent.inst.actions.idle)) next='idle';
       else if(isUsableAction(ent.inst.actions.walk)) next='walk';
       else if(isUsableAction(ent.inst.actions.run)) next='run';
@@ -5527,11 +5537,17 @@ function tickActor(ent,dt){
     if(ent.animState!==next || shouldRestartAction){
       for(const [name,act] of Object.entries(ent.inst.actions)){
         if(name===next){
-          act.reset();
+          // FLICKER FIX: do NOT call act.reset() on a regular state
+          // transition — reset zeroes the clip's time, so any state
+          // wobble produced a visible frame-0 strobe. Only reset when
+          // shouldRestartAction is set (e.g. a fresh attack action
+          // genuinely wants to play from the start). Otherwise just
+          // re-enable and let the clip continue from wherever it was.
           act.enabled=true;
           act.paused=false;
+          if(shouldRestartAction) act.reset();
           act.setEffectiveWeight(1);
-          act.play();
+          if(!act.isRunning?.()) act.play();
         }else{
           // Stop the action outright instead of fadeOut. fadeOut sets
           // a weight interpolant that lerps from current→0 and, when
@@ -12785,14 +12801,23 @@ function stepFrame(dt){
     for(const r of game.rats){
       if(!r || r===player || r===game.controlled) continue;
       if(r.root?.visible===false) continue;
-      // Derive moveIntent from current velocity so the directional
-      // frame pick matches whichever way the follower is walking.
+      // Derive moveIntent from current velocity, with HYSTERESIS so a
+      // follower whose curSpeed wobbles around the forward/idle frame-
+      // pick threshold doesn't flicker: tickRatBillboard resets the
+      // frame index to 0 every time the state changes, so an
+      // oscillating state shows the first frame each frame → visible
+      // strobing. Two thresholds (0.6 / 0.2) plus "keep previous" in
+      // the middle band stops the oscillation cold.
       if(r.moveIntent){
-        const yaw=r.root?.rotation?.y||0;
-        const sx=Math.sin(yaw), sz=Math.cos(yaw);
-        const speedScale=Math.min(1,(r.curSpeed||0)/2.4);
-        r.moveIntent.x=0;
-        r.moveIntent.y=-speedScale;
+        const speed=r.curSpeed||0;
+        if(speed>0.6){
+          r.moveIntent.x=0;
+          r.moveIntent.y=-1;
+        }else if(speed<0.2){
+          r.moveIntent.x=0;
+          r.moveIntent.y=0;
+        }
+        // Else: keep previous moveIntent (hysteresis band).
       }
       tickRatBillboard(r,dt);
     }

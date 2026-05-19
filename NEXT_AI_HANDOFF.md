@@ -1,5 +1,47 @@
 # Next AI Handoff (updated 2026-05-19)
 
+## RP-2026-05-19-TPOSE-FIXED — human NPCs animate correctly, no flicker
+
+Restore point name: `RP-2026-05-19-TPOSE-FIXED`. Stamp the user can see in the browser console: `[BUILD] flicker-fixed+ground-y-0.9 2026-05-19 build`. User confirmed: 「目前成功沒有TPOSE了」 — T-pose is gone.
+
+### Root cause #1: the T-pose itself
+
+Bone names matched. Clip tracks resolved. Bindings reported `bound=53 unbound=0`. But the runtime `actionWeight=0` on every active human's idle action. Three.js's `AnimationAction._updateWeight()` sets `this.enabled=false` the instant a `fadeOut` interpolant finishes — combined with rapid idle↔walk transitions on wandering humans, the previously-chosen action ended every cycle in a `weight=0, enabled=false` dead state and never came back to `1` even when the next `setEffectiveWeight(1)` was called. Mixer applied tracks with weight 0 → bones reverted to `saveOriginalState` (the bind pose) → T-pose every frame.
+
+**Fix at `index.html:5379` (`forceHumanActionPose`) and `index.html:5513` (`tickActor`):**
+
+- Replaced every `act.fadeIn(0.12).play()` / `act.fadeOut(0.12)` with direct `act.stop()` + `act.setEffectiveWeight(0)` for losers, and `act.enabled=true; act.setEffectiveWeight(1); act.play()` for the winner.
+- Added a steady-state guard in `tickActor`: every frame, if the chosen action's effective weight has somehow drifted below 0.999, re-assert it to 1.
+- Visual cost: idle↔walk transitions are now hard cuts (no 0.12 s crossfade). Acceptable for the PS1 aesthetic.
+
+### Root cause #2: post-fix flicker
+
+After the T-pose fix, all models (rats and humans) flickered.
+
+- **Rats** (`index.html:12781-12805`): the new follower-rat frame-animation loop wrote `r.moveIntent.y = -speedScale` every frame. With Tripo wander code wobbling `curSpeed` around the forward/idle threshold (0.35), the sprite state flipped each frame and `tickRatBillboard` reset the frame index to 0 on every state change — visible per-frame strobing. **Fix**: hysteresis (enter forward at speed>0.6, return to idle below 0.2, keep current state in between).
+- **Humans** (`index.html:5503-5535`): the wander code in `tickHumans` ratchets `curSpeed` between 0 and 0.76 every frame as the NPC turns. With the old `curSpeed > 0.08` threshold this flipped `next` between `'walk'` and `'idle'` per frame, and the transition path called `act.reset()` (zeroing the clip time) every frame, producing visible animation strobing. **Fix**: (a) hysteresis — enter walk only above 0.4, return to idle only below 0.05, otherwise stick at the previous `animState`; (b) only call `act.reset()` when `shouldRestartAction` is set, not on every state transition.
+
+### Root cause #3: floating-above-ground
+
+After fixing the T-pose, humans rendered ~half a model height above the floor because the idle clip's first keyframe doesn't put the Hips at world-Y=0. **Fix at `index.html:5224`**: `HUMAN_WORLD_Y_OFFSET = -0.9`. Adjust if needed (more negative = lower; less negative = higher). Anchored at the `getHumanGroundY` helper so every spawn / LOD reactivate / wander tick uses the same value.
+
+### Diagnostic keypresses kept in place
+
+- **T**: rotates the nearest visible human's head bone 45° (isolation test for skinning vs. binding). Should leave it visible permanently — useful if T-pose ever returns.
+- **B**: dumps the nearest human's idle action state — clipTracks, bindings, bound/unbound, time, effectiveWeight, sample track→bone mappings. Inline-primitive log, no need to expand Objects.
+- `window.game` and `window.player` exposed for console debugging.
+
+### Things NOT to revert
+
+- Do **not** put `fadeIn/fadeOut` back into `tickActor` / `forceHumanActionPose`. The fade system is what produces the silent T-pose state.
+- Do **not** restore `curSpeed > 0.08` as the walk-state threshold — keep the 0.4 / 0.05 hysteresis band.
+- Do **not** call `act.reset()` on every state transition. Only on `shouldRestartAction`.
+- Do **not** re-introduce `act.fadeOut(0.12)` for the loser actions; use `act.stop()`.
+
+---
+
+
+
 ## RP-2026-05-19-MOBILE-PERF — mobile rat-movement lag FIXED
 
 Restore point name: `RP-2026-05-19-MOBILE-PERF`. Current head commit at time of fix: see latest commit after `81ac815` in this branch. User confirmed: 「手機遊戲卡頓情形完全修復了」 — operating the rat on mobile is no longer laggy.
