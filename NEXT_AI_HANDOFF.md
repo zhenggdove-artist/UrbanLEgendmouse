@@ -1,5 +1,52 @@
 # Next AI Handoff (updated 2026-05-19)
 
+## RP-2026-05-19-RAT-FOLLOW — proper follower swarm, no static rats, audio unlocked
+
+Restore point name: `RP-2026-05-19-RAT-FOLLOW`. Build stamp in the browser console: `[BUILD] lod-hysteresis+rat-follow+audio-unlock 2026-05-19 build`.
+
+### Symptoms this restore point addresses
+
+1. Human NPCs still flickered after the no-fade fix (RP-2026-05-19-TPOSE-FIXED).
+2. Visible rats sat on the alley as static sprites instead of following the player. The user wanted: chaos increase → rats spawn, run to the destruction location, gather briefly, then trail behind the player. Past 1000 total rats, they peel off toward the temple (existing logic).
+3. SFX did not fire immediately at game start — there was a delay before sounds began working on first interaction.
+4. Humans floated above the floor.
+
+### Root causes & fixes
+
+**Human flicker (`index.html:5500` + `5670`):** the LOD path called `forceHumanActionPose(...)` every time a human re-activated, which stop()+reset()-ed the action back to time 0. Because the LOD radius was a single 34 m threshold with no hysteresis, NPCs wandering at the boundary toggled inactive↔active **every frame** as the player walked — each toggle replayed the animation from frame 0, producing per-frame strobing across every borderline NPC. Fixes:
+- `activateHumanFromLOD` no longer calls `forceHumanActionPose`. It just sets `_lodInactive=false`, clamps the human to the ground, and turns root.visible back on. The mesh's bones already hold the last animated pose so reactivation is seamless.
+- `shouldSimulateHumanEntity` now uses hysteresis — enter at 32 m, leave at 40 m. NPCs at the edge of LOD range can't strobe.
+
+**Rat follow / static rats (`index.html:11031` + `11502-11514` + `1180-1190` + `12127-12134`):**
+- Visible cap dropped to **60 desktop / 25 mobile** (was 220 / 40). With the cap that low the full-sim cap can equal the visible cap — every visible rat is fully simulated every frame.
+- `tickFollowerRats` now iterates `game.rats` unconditionally on both platforms. The old `activeFollowerRats` short-list on mobile produced rendered-but-unticked rats — those were the "static images on the street" the user reported.
+- `rebuildRatsGrid` similarly iterates `game.rats` instead of the active short-list.
+- `summonSpillRats` sets `followPlayer=true` for **every** spawned rat (was 32%). The other 68% used to settle at the chaos spot and stand still forever. Now every rat heads to the chaos spot (initial targetPos), reaches it, and the next brain tick (~0.18–0.42 s) retargets to "behind player" — the gather-then-follow visual the user wanted.
+- `summonSpillRats` also pre-checks `getActiveVisualMax()`: any spawn over the cap increments `game.virtualRats` only, so chaos / ritual progression still works past 60 visible rats but the player never sees overflow sprites.
+
+**Audio unlock (`index.html:1300`):** the previous attempt removed `play()` from the warm path entirely to stop the startup-burst. That fixed the burst but left iOS-style browsers unable to play any SFX afterwards until the user clicked something else. Restored the correct **play + immediate pause** pattern: set `muted=true` + `volume=0`, fire `play()` synchronously inside the BEGIN-click handler, `pause()` on the very next line before the audio decoder can submit any output, then restore muted/volume so `playSFX()` later picks real values. This unlocks every audio element inside the gesture *without* an audible burst.
+
+**Ground height (`index.html:5224`):** `HUMAN_WORLD_Y_OFFSET = -0.8` (was -0.9). The idle clip's first keyframe lifts the rig slightly off the bind-pose floor; this constant compensates. Tune the literal here if the look ever drifts again.
+
+### Diagnostic keypresses still available
+
+- **T** rotates the nearest human's head 45° (skinning vs. binding isolation).
+- **B** dumps mixer state for the nearest human's idle action.
+- `window.game` / `window.player` exposed.
+
+### Things NOT to revert
+
+- Do **not** make `activateHumanFromLOD` call `forceHumanActionPose` again — it brings back the strobe.
+- Do **not** restore a single LOD radius without hysteresis.
+- Do **not** put `activeFollowerRats` back into `tickFollowerRats` / `rebuildRatsGrid` — that's the static-rat bug source.
+- Do **not** spawn rats with `followPlayer=false` (the 32% gambit), unless you specifically want gather-and-stay behaviour for a one-off scripted moment.
+- Do **not** drop the visible-rat cap enforcement in `summonSpillRats` — without it the cap is only enforced after the fact by `enforceRatVisualBudget`, leaving a frame of overflow rats.
+- Do **not** strip `play()` from `warmSFXAudioElement`. The play+immediate-pause is what satisfies iOS/Android unlock without a burst.
+
+---
+
+
+
 ## RP-2026-05-19-TPOSE-FIXED — human NPCs animate correctly, no flicker
 
 Restore point name: `RP-2026-05-19-TPOSE-FIXED`. Stamp the user can see in the browser console: `[BUILD] flicker-fixed+ground-y-0.9 2026-05-19 build`. User confirmed: 「目前成功沒有TPOSE了」 — T-pose is gone.

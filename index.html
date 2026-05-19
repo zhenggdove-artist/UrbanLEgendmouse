@@ -662,7 +662,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','flicker-fixed+ground-y-0.9 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','lod-hysteresis+rat-follow+audio-unlock 2026-05-19 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1179,7 +1179,11 @@ function propAABB(p){
 }
 function rebuildRatsGrid(){
   ratsGrid.clear();
-  const source=IS_MOBILE_DEVICE ? activeFollowerRats : game.rats;
+  // Visible-rat cap is now low enough (≤60 desktop, ≤25 mobile) to
+  // iterate every rat every frame on both platforms. The old
+  // `activeFollowerRats` short-list was the source of the static-rat
+  // bug — non-active rats got rendered but never ticked.
+  const source=game.rats;
   for(let i=0;i<source.length;i++){
     const rat=source[i];
     if(!rat?.root) continue;
@@ -1298,27 +1302,35 @@ function getSFXPolyphony(key){
   return 2;
 }
 function warmSFXAudioElement(audio){
-  // FINAL audio-blip fix. Previous attempts (muted=true alone, then
-  // muted=true + volume=0) still produced an audible burst on Android
-  // Chrome — the .play() call schedules a brief decode + first-sample
-  // submission before the muted/volume flags take effect, and with
-  // ~40 SFX × up to 4 pool entries warmed simultaneously you hear
-  // "every sound at once" at startup. Belt-and-braces gone too far.
+  // Cross-browser audio unlock. The earlier load()-only path made
+  // start-up silent, but on browsers that gate HTML5 audio behind a
+  // user gesture (iOS Safari, some Android Chrome configurations)
+  // the subsequent playSFX() calls during gameplay produced delayed
+  // / missing sound until the user happened to interact again.
   //
-  // The fix: do NOT play() during warm at all. Just .load() metadata.
-  // On desktop and Android, playSFX() during gameplay handles its own
-  // play() and that works because there has been a user gesture
-  // (BEGIN button) before the first playSFX call. iOS Safari may
-  // still need an explicit gesture-unlock for HTML5 Audio elements;
-  // if iOS users report missing SFX, we add a per-element unlock dance
-  // back in — but the priority right now is killing the startup burst.
+  // The correct play+immediate-pause pattern:
+  // 1. muted=true + volume=0 *before* play() so the audio pipeline
+  //    is silent no matter what the browser does next.
+  // 2. play() is fire-and-forget inside the user-gesture handler.
+  //    This unlocks the audio element for subsequent programmatic
+  //    play() calls.
+  // 3. pause() is called immediately, in the same synchronous block,
+  //    before the audio decoder has actually produced output samples.
+  //    Combined with the silencing in step 1, the user hears nothing.
+  // 4. Restore muted=false / volume=1 so playSFX() can pick a real
+  //    volume later.
   if(!audio) return Promise.resolve(true);
   try{
     audio.muted=true;
     audio.volume=0;
-    audio.load();
+    const p=audio.play();
+    audio.pause();
+    audio.currentTime=0;
+    audio.muted=false;
+    audio.volume=1;
+    if(p && typeof p.catch==='function') p.catch(()=>{});
   }catch(_){
-    /* swallow — warm is best-effort */
+    try{audio.muted=false;audio.volume=1;}catch(__){}
   }
   return Promise.resolve(true);
 }
@@ -5223,10 +5235,10 @@ function buildRat({isPlayer=false}={}){
    ============================================================ */
 // User-tuned: with the new no-fade direct-weight animation path the
 // idle clip's first keyframe positions the rig above its bind pose,
-// so without an offset NPCs hover above the ground. -0.9 m puts
-// their feet on the ground without sinking. Adjust if the look isn't
-// quite right (more negative = lower; less negative = higher).
-const HUMAN_WORLD_Y_OFFSET=-0.9;
+// so without an offset NPCs hover above the ground. -0.8 m puts
+// their feet on the ground. Adjust if needed (more negative =
+// lower; less negative = higher).
+const HUMAN_WORLD_Y_OFFSET=-0.8;
 let humanBelowGroundFixCount=0;
 let humanPoseRefreshCount=0;
 const DEBUG_HUMAN_VALIDATION=true;
@@ -5463,17 +5475,17 @@ function deactivateHumanForLOD(h){
 }
 function activateHumanFromLOD(h){
   if(!h || !h.root) return;
-  const wasInactive=!!h._lodInactive;
+  // FLICKER FIX: do NOT call forceHumanActionPose on LOD reactivate.
+  // forceHumanActionPose stop()s + reset()s the action to time=0, so
+  // any human crossing the LOD radius every frame (which happens at
+  // the boundary as the player walks) had its animation snapped back
+  // to frame 0 over and over — visible per-frame strobing across all
+  // borderline NPCs.
+  // The mesh's bones already hold whatever pose the mixer last drove
+  // to, which is the correct pose. Just unhide the root.
   h._lodInactive=false;
   hardClampHumanToGround(h);
-  if(wasInactive){
-    h.root.visible=false;
-    forceHumanActionPose(h,h.curSpeed>0.08?'walk':'idle');
-    hardClampHumanToGround(h);
-    h.root.visible=true;
-  }else{
-    h.root.visible=true;
-  }
+  h.root.visible=true;
 }
 function debugValidateHuman(h){
   if(!DEBUG_HUMAN_VALIDATION || !h || !h.root) return;
@@ -11025,8 +11037,18 @@ function updatePlayer(dt){
 
 // ===== Chaos / prop tipping =====
 function summonSpillRats(x,z,count=2){
+  // Visible-rat cap enforcement BEFORE spawning, so chaos value can
+  // keep climbing past the cap (game.virtualRats is the counter the
+  // ritual reads) but the player never sees more than ~60/25 sprites
+  // alive on screen at once. Anything beyond becomes a virtual rat.
+  const maxVisuals=getActiveVisualMax();
   playSFX('playerMove',{volume:0.36,cooldown:0.12,source:{x,z}});
   for(let i=0;i<count;i++){
+    if(game.rats.length>=maxVisuals){
+      // Out of visible budget — count toward virtualRats only.
+      game.virtualRats=(game.virtualRats||0)+1;
+      continue;
+    }
     const rat=buildRat();
     const fromSide=Math.random()<0.5?-1:1;
     const spawnX=x+fromSide*rand(8,16);
@@ -11034,7 +11056,15 @@ function summonSpillRats(x,z,count=2){
     rat.root.position.set(spawnX,(rat.baseY??0)+GROUND_Y_OFFSET,spawnZ);
     rat.targetPos.set(x,0,z);
     rat.moveIntent.y=-1;
-    rat.followPlayer=(i===0)||Math.random()<0.32;
+    // EVERY spawned rat is a follower. The old `Math.random()<0.32`
+    // probability left ~68% of rats with no destination after they
+    // gathered at the chaos spot — they'd stand on the alley as
+    // static idle sprites. Forcing followPlayer=true means the brain
+    // tick (every 0.18–0.42 s) recomputes their target as a position
+    // behind the player, so once they reach the initial chaos spot
+    // they immediately start following the player — exactly the
+    // "gather then trail behind" visual the user asked for.
+    rat.followPlayer=true;
     if(game.templeEvent.gathering && !game.templeEvent.started && !game.templeEvent.awakened){
       rat.templeBound=true;
       rat.followPlayer=false;
@@ -11497,12 +11527,25 @@ const HUMAN_RAT_ATTACK_CAP=14;           // max rats per human at once
 const HUMAN_RAT_TRANSFORM_RATS=8;        // minimum climbers to start transforming
 const HUMAN_RAT_TRANSFORM_TIME=2.4;      // seconds at full coverage → transform
 const RAT_BLOOD_SPRAY_INTERVAL=0.18;     // throttle per-human blood spawns
+// Hysteresis: enter active state inside 32 m, leave active state only
+// past 40 m. Without the gap, a human standing right around the
+// threshold flipped active/inactive every frame as the player walked,
+// strobing the whole NPC visible/invisible.
 const HUMAN_ACTIVE_SIM_RADIUS=34;
 const HUMAN_ACTIVE_SIM_RADIUS_SQ=HUMAN_ACTIVE_SIM_RADIUS*HUMAN_ACTIVE_SIM_RADIUS;
-const MAX_ACTIVE_RAT_VISUALS_DESKTOP=220;
-const MAX_ACTIVE_RAT_VISUALS_MOBILE=40;
-const MAX_FULLSIM_FOLLOWER_RATS_MOBILE=20;
-const MAX_FULLSIM_FOLLOWER_RATS_DESKTOP=56;
+const HUMAN_ACTIVE_SIM_ENTER_SQ=32*32;
+const HUMAN_ACTIVE_SIM_EXIT_SQ=40*40;
+// Visible-rat cap. Every visible rat now also runs full follow logic
+// every frame (see tickFollowerRats — iterates game.rats directly,
+// no `activeFollowerRats` gate). Caps deliberately low so no rat ever
+// ends up rendered-but-not-simulated, which is what produced the
+// "static rat sprites on the street" the user reported. virtualRats
+// keeps the chaos counter going past the cap; temple ritual still
+// triggers at 1000 total.
+const MAX_ACTIVE_RAT_VISUALS_DESKTOP=60;
+const MAX_ACTIVE_RAT_VISUALS_MOBILE=25;
+const MAX_FULLSIM_FOLLOWER_RATS_MOBILE=MAX_ACTIVE_RAT_VISUALS_MOBILE;
+const MAX_FULLSIM_FOLLOWER_RATS_DESKTOP=MAX_ACTIVE_RAT_VISUALS_DESKTOP;
 const RAT_FULL_BRAIN_RADIUS=16;
 const RAT_FULL_BRAIN_RADIUS_SQ=RAT_FULL_BRAIN_RADIUS*RAT_FULL_BRAIN_RADIUS;
 const RAT_MID_BRAIN_RADIUS=30;
@@ -11687,7 +11730,15 @@ function shouldSimulateHumanEntity(human,focusPos){
   }
   const dx=human.root.position.x-focusPos.x;
   const dz=human.root.position.z-focusPos.z;
-  return dx*dx+dz*dz<=HUMAN_ACTIVE_SIM_RADIUS_SQ;
+  const d2=dx*dx+dz*dz;
+  // Hysteresis: an active human stays active until it drifts past
+  // HUMAN_ACTIVE_SIM_EXIT_SQ; an inactive human only becomes active
+  // when it enters HUMAN_ACTIVE_SIM_ENTER_SQ. The 8-m gap kills the
+  // single-frame visible/invisible strobe at the LOD boundary.
+  if(human._lodInactive){
+    return d2<=HUMAN_ACTIVE_SIM_ENTER_SQ;
+  }
+  return d2<=HUMAN_ACTIVE_SIM_EXIT_SQ;
 }
 function isRatCriticalForFullSim(rat){
   return !!(
@@ -12124,7 +12175,11 @@ function tickHumanRatAttackState(dt){
 }
 function tickFollowerRats(dt){
   const focusPos=getGameplayFocusPosition()||player?.root?.position||null;
-  const list=IS_MOBILE_DEVICE ? activeFollowerRats : game.rats;
+  // Iterate ALL visible rats every frame. With the lowered visible
+  // cap (≤60 desktop, ≤25 mobile) this is cheap, and it guarantees
+  // every rat the player can see is actually being simulated — no
+  // more rendered-but-frozen rats sitting on the street.
+  const list=game.rats;
   for(const r of list){
     if(r===player||r===game.controlled)continue;
     if(!r?.root) continue;
