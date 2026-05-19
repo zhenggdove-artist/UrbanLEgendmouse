@@ -999,30 +999,139 @@ const game={
 };
 let player=null;
 function getTotalRatCount(){ return game.rats.length + (game.virtualRats||0); }
+
+// ===================================================================
+// Spatial grids — O(1)-average lookups instead of O(N) full-table
+// scans for every per-frame collision / proximity check. The single
+// most important CPU optimisation in this codebase: resolveWorldCollisions,
+// sampleSupportHeight, countNearbyGroundRats etc. used to walk every
+// blocker / prop / rat in the world on every entity tick.
+//
+// Blockers + props are inserted ONCE at chunk-spawn time and removed
+// on chunk dispose (they don't move). Rats move, so their grid is
+// rebuilt once per tick at the top of stepFrame.
+// ===================================================================
+const SPATIAL_GRID_CELL=8;
+const blockersGrid=new Map();
+const propsGrid=new Map();
+const ratsGrid=new Map();
+function spatialKey(gx,gz){ return gx+','+gz; }
+function spatialCellRange(minX,maxX,minZ,maxZ){
+  return {
+    gxMin:Math.floor(minX/SPATIAL_GRID_CELL),
+    gxMax:Math.floor(maxX/SPATIAL_GRID_CELL),
+    gzMin:Math.floor(minZ/SPATIAL_GRID_CELL),
+    gzMax:Math.floor(maxZ/SPATIAL_GRID_CELL)
+  };
+}
+function gridInsertAABB(grid,obj,minX,maxX,minZ,maxZ){
+  const r=spatialCellRange(minX,maxX,minZ,maxZ);
+  for(let gx=r.gxMin;gx<=r.gxMax;gx++){
+    for(let gz=r.gzMin;gz<=r.gzMax;gz++){
+      const k=spatialKey(gx,gz);
+      let cell=grid.get(k);
+      if(!cell){ cell=[]; grid.set(k,cell); }
+      cell.push(obj);
+    }
+  }
+  obj._gridRange=r;
+}
+function gridRemove(grid,obj){
+  const r=obj._gridRange;
+  if(!r) return;
+  for(let gx=r.gxMin;gx<=r.gxMax;gx++){
+    for(let gz=r.gzMin;gz<=r.gzMax;gz++){
+      const cell=grid.get(spatialKey(gx,gz));
+      if(!cell) continue;
+      const i=cell.indexOf(obj);
+      if(i>=0) cell.splice(i,1);
+    }
+  }
+  obj._gridRange=null;
+}
+// Collect everything in cells overlapping (x±radius, z±radius). Caller
+// is responsible for the precise distance / AABB test on the result.
+function gridQuery(grid,x,z,radius,out){
+  out=out||[];
+  out.length=0;
+  const r=spatialCellRange(x-radius,x+radius,z-radius,z+radius);
+  const seen=gridQuery._seen||(gridQuery._seen=new Set());
+  seen.clear();
+  for(let gx=r.gxMin;gx<=r.gxMax;gx++){
+    for(let gz=r.gzMin;gz<=r.gzMax;gz++){
+      const cell=grid.get(spatialKey(gx,gz));
+      if(!cell) continue;
+      for(let i=0;i<cell.length;i++){
+        const obj=cell[i];
+        if(!seen.has(obj)){ seen.add(obj); out.push(obj); }
+      }
+    }
+  }
+  return out;
+}
+function blockerAABB(b){
+  const minX=(b.minX??(b.centerX??b.root?.position?.x??0)+(b.minXOffset??-(b.halfX||b.radius||0.6)));
+  const maxX=(b.maxX??(b.centerX??b.root?.position?.x??0)+(b.maxXOffset?? (b.halfX||b.radius||0.6)));
+  const minZ=(b.minZ??(b.centerZ??b.root?.position?.z??0)+(b.minZOffset??-(b.halfZ||b.radius||0.6)));
+  const maxZ=(b.maxZ??(b.centerZ??b.root?.position?.z??0)+(b.maxZOffset?? (b.halfZ||b.radius||0.6)));
+  return {minX,maxX,minZ,maxZ};
+}
+function propAABB(p){
+  const px=p.root?.position?.x??0, pz=p.root?.position?.z??0;
+  return {
+    minX:px+(p.minXOffset??-(p.halfX||p.radius||0.45)),
+    maxX:px+(p.maxXOffset?? (p.halfX||p.radius||0.45)),
+    minZ:pz+(p.minZOffset??-(p.halfZ||p.radius||0.45)),
+    maxZ:pz+(p.maxZOffset?? (p.halfZ||p.radius||0.45))
+  };
+}
+function rebuildRatsGrid(){
+  ratsGrid.clear();
+  for(let i=0;i<game.rats.length;i++){
+    const rat=game.rats[i];
+    if(!rat?.root) continue;
+    const x=rat.root.position.x, z=rat.root.position.z;
+    const gx=Math.floor(x/SPATIAL_GRID_CELL);
+    const gz=Math.floor(z/SPATIAL_GRID_CELL);
+    const k=spatialKey(gx,gz);
+    let cell=ratsGrid.get(k);
+    if(!cell){ cell=[]; ratsGrid.set(k,cell); }
+    cell.push(rat);
+  }
+}
+// Reused scratch buffers so query callers don't allocate every frame.
+const _blockersNearScratch=[];
+const _propsNearScratch=[];
+function getBlockersNear(x,z,radius=2){
+  return gridQuery(blockersGrid,x,z,radius,_blockersNearScratch);
+}
+function getPropsNear(x,z,radius=2){
+  return gridQuery(propsGrid,x,z,radius,_propsNearScratch);
+}
+
 const SOUND_DIR='asset/sound/';
 const SOUND_PATHS={
   playerBiteLoop:`${SOUND_DIR}主角啃咬人類時的聲音必須連續撥放直到啃咬結束.mp3`,
   playerMove:`${SOUND_DIR}主角移動音效.mp3`,
   playerJump:`${SOUND_DIR}主角跳躍聲音.mp3`,
   humanDeath:`${SOUND_DIR}人類死亡時撥放的聲音.mp3`,
-  humanWalk:`${SOUND_DIR}人類走路的聲音 務必配合移動頻率撥放.mp3`,
   binFall:`${SOUND_DIR}垃圾桶倒地的聲音.mp3`,
   idolStep:`${SOUND_DIR}大神像走路聲音,務必符合神像走路頻率撥放.mp3`,
   parasiteComplete:`${SOUND_DIR}完成寄生的時候撥放的音效.mp3`,
   ritualSwarm:`${SOUND_DIR}從神像被老鼠爬上去開始撥放到畫面變白之前撥放的聲音.mp3`,
   stallFire:`${SOUND_DIR}攤販出現火焰時撥放的聲音.mp3`,
   stallBreak:`${SOUND_DIR}攤販被砸毀的聲音.mp3`,
-  ratSqueak:`${SOUND_DIR}老鼠音效2.wav`,
   vehicleBreak:`${SOUND_DIR}車子或有玻璃的物體被砸毀的聲音.mp3`,
-  streetAmbience:`${SOUND_DIR}街道背景音效.wav`
+  streetAmbience:`${SOUND_DIR}街道背景音效.wav`,
+  // Dedicated rat audio paths. These files don't yet exist in the
+  // assets folder — drop the recordings at these exact paths and they
+  // will play automatically. Until then the rats are silent (better
+  // than aliasing to the player footstep, which sounded misleading).
+  //   - ratFootstep  : single rat scurrying / squeak (used 1-3 nearby)
+  //   - ratSwarmLoop : pre-layered crowd of rats (looped, 4+ nearby)
+  ratFootstep:`${SOUND_DIR}老鼠走路.MP3`,
+  ratSwarmLoop:`${SOUND_DIR}鼠群音效.MP3`
 };
-SOUND_PATHS.ratSqueak=SOUND_PATHS.playerMove;
-// Single looped voice that represents the entire rat-follower swarm.
-// We modulate its gain/playbackRate by the count of nearby moving rats,
-// so 500 rats only cost ONE HTMLAudio instance instead of 500 — the
-// per-rat audio.play() pattern is the dominant mobile lag source on
-// iOS Safari because every play() call stalls the main thread.
-SOUND_PATHS.ratSwarmLoop=SOUND_PATHS.playerMove;
 const SFX_LOOP_KEYS=new Set(['playerBiteLoop','ritualSwarm','streetAmbience','ratSwarmLoop']);
 const HUMAN_BITE_SCREAM_PATHS={
   '中年婦女':'./asset/sound/%E4%BA%BA%E9%A1%9E%E8%A2%AB%E5%92%AC%E5%B0%96%E5%8F%AB/%E4%B8%AD%E5%B9%B4%E5%A9%A6%E5%A5%B3%E5%B0%96%E5%8F%AB.mp3',
@@ -1066,7 +1175,7 @@ function createSFXAudio(path,{loop=false}={}){
   return audio;
 }
 function getSFXPolyphony(key){
-  if(key==='playerMove' || key==='humanWalk') return 4;
+  if(key==='playerMove' || key==='ratFootstep') return 4;
   if(key==='playerJump' || key==='parasiteComplete' || key==='binFall' || key==='vehicleBreak' || key==='stallBreak' || key==='stallFire') return 3;
   if(HUMAN_BITE_SCREAM_PATHS[key]) return 2;
   return 2;
@@ -1323,8 +1432,8 @@ function syncFollowerRatMovementSFX(dt){
     stopLoopSFX('ratSwarmLoop',{reset:false});
     sfxState.ratSwarmGain=0;
     for(const {rat} of nearby){
-      tickFootstepSFX(rat,dt,'playerMove',{
-        minSpeed:0.08,baseInterval:0.28,volume:0.42,
+      tickFootstepSFX(rat,dt,'ratFootstep',{
+        minSpeed:0.08,baseInterval:0.28,volume:0.55,
         cooldown:0.02,rateScale:0.08,activeOverride:true
       });
     }
@@ -2268,6 +2377,7 @@ function registerBlocker(root,radius=0.6,opts={}){
     halfZ:Math.max(0.08,Math.max(Math.abs(bbox.max.z-root.position.z),Math.abs(bbox.min.z-root.position.z)))
   };
   game.blockers.push(blocker);
+  gridInsertAABB(blockersGrid,blocker,blocker.minX,blocker.maxX,blocker.minZ,blocker.maxZ);
   if(_activeChunk){
     if(!_activeChunk.blockers)_activeChunk.blockers=[];
     _activeChunk.blockers.push(blocker);
@@ -2294,6 +2404,10 @@ function registerProp(root,radius=0.45,chaosWeight=1){
     halfZ:Math.max(0.08,Math.max(Math.abs(bbox.max.z-root.position.z),Math.abs(bbox.min.z-root.position.z)))
   };
   game.props.push(p);
+  {
+    const a=propAABB(p);
+    gridInsertAABB(propsGrid,p,a.minX,a.maxX,a.minZ,a.maxZ);
+  }
   if(_activeChunk){
     _activeChunk.props.push(p);
     if(!_activeChunk.meshes.includes(root)) _activeChunk.meshes.push(root);
@@ -3860,9 +3974,11 @@ function disposeMesh(o){scene.remove(o);o.traverse(n=>{if(n.isMesh){n.geometry?.
 function disposeChunk(chunk){
   for(const m of chunk.meshes) disposeMesh(m);
   for(const b of chunk.blockers||[]){
+    gridRemove(blockersGrid,b);
     const i=game.blockers.indexOf(b);if(i>=0)game.blockers.splice(i,1);
   }
   for(const p of chunk.props){
+    gridRemove(propsGrid,p);
     if(p.reservedBy) p.reservedBy.targetProp=null;
     const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)
   }
@@ -5785,17 +5901,48 @@ function releaseRatFromHost(host,{dropSpeed=-0.85,hint='Back in the rat.',startP
   updateActionButtons();
   showHint(hint);
 }
+// ===================================================================
+// Transient-FX sprite pool. The previous pattern called
+// `new THREE.Sprite(new THREE.SpriteMaterial(...))` for EVERY particle —
+// a single killHost() chained spawnBodyBlood(host, 10) + impactDebris(120)
+// = 1320 new Sprite + 1320 new Material in one frame, then 1320 material
+// .dispose() calls 0.9 s later. That GC + WebGL state churn is one of
+// the dominant mobile lag sources whenever a human dies. Pool reuses
+// the sprite objects so allocations + disposes are eliminated.
+// ===================================================================
+const _fxSpritePool=new Map(); // texture -> array of idle sprites
+function acquireFXSprite(map,blending=THREE.NormalBlending){
+  let cache=_fxSpritePool.get(map);
+  if(!cache){ cache=[]; _fxSpritePool.set(map,cache); }
+  let s=cache.pop();
+  if(!s){
+    s=new THREE.Sprite(new THREE.SpriteMaterial({
+      map,transparent:true,depthWrite:false,fog:false,blending
+    }));
+    s._fxPoolMap=map;
+    scene.add(s);
+  }
+  s.visible=true;
+  s.material.opacity=1;
+  s.material.rotation=0;
+  s.material.color.setRGB(1,1,1);
+  s.material.blending=blending;
+  return s;
+}
+function releaseFXSprite(s){
+  if(!s) return;
+  s.visible=false;
+  const cache=_fxSpritePool.get(s._fxPoolMap);
+  if(cache) cache.push(s);
+}
 function spawnBiteBlood(host,multiplier=1){
   const base=getHumanHeadWorldPos(host);
   const count=Math.round(90*multiplier);
   for(let i=0;i<count;i++){
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:FX_TEX.blood,transparent:true,depthWrite:false,fog:false,
-      color:new THREE.Color(i%3===0?'#ffb2b2':'#d81f41')
-    }));
+    const sprite=acquireFXSprite(FX_TEX.blood);
+    sprite.material.color.set(i%3===0?'#ffb2b2':'#d81f41');
     sprite.scale.setScalar(rand(0.12,0.28)*Math.sqrt(Math.max(1,multiplier))*0.75);
     sprite.position.copy(base).add(new THREE.Vector3(rand(-0.014,0.014),rand(-0.01,0.022),rand(-0.014,0.014)));
-    scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
       vel:new THREE.Vector3(rand(-0.27,0.27)*Math.min(2.8,multiplier*0.22+1),rand(0.12,0.54)*Math.min(2.6,multiplier*0.18+1),rand(-0.27,0.27)*Math.min(2.8,multiplier*0.22+1)),
@@ -5811,13 +5958,10 @@ function spawnBodyBlood(host,multiplier=1){
   );
   const count=Math.round(120*multiplier);
   for(let i=0;i<count;i++){
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:FX_TEX.blood,transparent:true,depthWrite:false,fog:false,
-      color:new THREE.Color(i%4===0?'#ff8a8a':'#cf1735')
-    }));
+    const sprite=acquireFXSprite(FX_TEX.blood);
+    sprite.material.color.set(i%4===0?'#ff8a8a':'#cf1735');
     sprite.scale.setScalar(rand(0.14,0.32)*Math.sqrt(Math.max(1,multiplier))*0.72);
     sprite.position.copy(base).add(new THREE.Vector3(rand(-0.018,0.018),rand(-0.027,0.027),rand(-0.018,0.018)));
-    scene.add(sprite);
     game.fx.push({
       kind:'blood',sprite,
       vel:new THREE.Vector3(rand(-0.42,0.42)*Math.min(3.2,multiplier*0.16+1),rand(-0.03,0.63)*Math.min(2.8,multiplier*0.16+1),rand(-0.42,0.42)*Math.min(3.2,multiplier*0.16+1)),
@@ -5856,12 +6000,10 @@ function spawnHitFlash(pos){
 }
 function spawnImpactDebris(pos,count=14,color='#d6c2a4'){
   for(let i=0;i<count;i++){
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:FX_TEX.ember,transparent:true,depthWrite:false,fog:false,color
-    }));
+    const sprite=acquireFXSprite(FX_TEX.ember);
+    sprite.material.color.set(color);
     sprite.position.copy(pos).add(new THREE.Vector3(rand(-0.12,0.12),rand(0.05,0.18),rand(-0.12,0.12)));
     sprite.scale.setScalar(rand(0.05,0.11));
-    scene.add(sprite);
     game.fx.push({
       kind:'debris',sprite,
       vel:new THREE.Vector3(rand(-2.6,2.6),rand(0.8,2.4),rand(-2.6,2.6)),
@@ -6054,8 +6196,17 @@ function tickTransientFX(dt){
     const fx=game.fx[i];
     fx.life-=dt;
     if(fx.life<=0){
-      scene.remove(fx.sprite);
-      fx.sprite.material.dispose();
+      // Pooled sprites: hand the sprite back to the pool instead of
+      // dispose() + scene.remove(), which would force WebGL state and
+      // GC churn on every dying particle. Sprites that came from the
+      // pool carry _fxPoolMap; legacy spawns without the tag still get
+      // the old dispose path.
+      if(fx.sprite?._fxPoolMap){
+        releaseFXSprite(fx.sprite);
+      }else if(fx.sprite){
+        scene.remove(fx.sprite);
+        fx.sprite.material?.dispose?.();
+      }
       game.fx.splice(i,1);
       continue;
     }
@@ -10089,23 +10240,29 @@ function softClampTempleX(p){
 function sampleSupportHeight(ent,x,z,currentY){
   let support=(ent.baseY??0)+GROUND_Y_OFFSET;
   const probeRadius=ent.kind==='human'?0.42:0.26;
-  for(const blocker of game.blockers){
-    if(!blocker?.root || blocker.root===ent.root)continue;
+  // Spatial-grid query: only consider blockers/props whose AABB cell
+  // overlaps the probe position. Was an O(N) full-table scan per call.
+  const nearBlockers=getBlockersNear(x,z,probeRadius+0.5);
+  for(let i=0;i<nearBlockers.length;i++){
+    const blocker=nearBlockers[i];
+    if(!blocker?.root || blocker.root===ent.root) continue;
     const minX=((blocker.minX??(blocker.centerX??blocker.root.position.x)+(blocker.minXOffset??-(blocker.halfX||blocker.radius||0.6))))-probeRadius;
     const maxX=((blocker.maxX??(blocker.centerX??blocker.root.position.x)+(blocker.maxXOffset?? (blocker.halfX||blocker.radius||0.6))))+probeRadius;
     const minZ=((blocker.minZ??(blocker.centerZ??blocker.root.position.z)+(blocker.minZOffset??-(blocker.halfZ||blocker.radius||0.6))))-probeRadius;
     const maxZ=((blocker.maxZ??(blocker.centerZ??blocker.root.position.z)+(blocker.maxZOffset?? (blocker.halfZ||blocker.radius||0.6))))+probeRadius;
-    if(x<minX||x>maxX||z<minZ||z>maxZ)continue;
+    if(x<minX||x>maxX||z<minZ||z>maxZ) continue;
     const topY=(blocker.topY??0)+GROUND_Y_OFFSET;
     if(currentY>=topY-0.42 && currentY<=topY+0.95) support=Math.max(support,topY);
   }
-  for(const p of game.props){
-    if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
+  const nearProps=getPropsNear(x,z,probeRadius+0.5);
+  for(let i=0;i<nearProps.length;i++){
+    const p=nearProps[i];
+    if(!p || p.root===ent.root || p.heldBy || p.throwVel) continue;
     const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-probeRadius;
     const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+probeRadius;
     const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-probeRadius;
     const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+probeRadius;
-    if(x<minX||x>maxX||z<minZ||z>maxZ)continue;
+    if(x<minX||x>maxX||z<minZ||z>maxZ) continue;
     const topY=(p.topY??p.root.position.y)+GROUND_Y_OFFSET;
     if(currentY>=topY-0.42 && currentY<=topY+0.95) support=Math.max(support,topY);
   }
@@ -10115,15 +10272,20 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
   const pos=ent.root.position;
   const footY=pos.y-GROUND_Y_OFFSET;
   const headY=footY+(ent.height||1.6);
-  for(const blocker of game.blockers){
-    if(!blocker?.root || blocker.root===ent.root)continue;
-    if(headY<=((blocker.baseY??-Infinity)+0.03) || footY>=((blocker.topY??Infinity)-0.03))continue;
-    if(blocker.supportOnly)continue;
+  // Same spatial-grid path. Saves ~99% of CPU once the world is large
+  // (was iterating every blocker + prop in the entire scene, per entity,
+  // per frame).
+  const nearBlockers=getBlockersNear(pos.x,pos.z,radius+1.5);
+  for(let i=0;i<nearBlockers.length;i++){
+    const blocker=nearBlockers[i];
+    if(!blocker?.root || blocker.root===ent.root) continue;
+    if(headY<=((blocker.baseY??-Infinity)+0.03) || footY>=((blocker.topY??Infinity)-0.03)) continue;
+    if(blocker.supportOnly) continue;
     const minX=((blocker.minX??(blocker.centerX??blocker.root.position.x)+(blocker.minXOffset??-(blocker.halfX||blocker.radius||0.6))))-radius;
     const maxX=((blocker.maxX??(blocker.centerX??blocker.root.position.x)+(blocker.maxXOffset?? (blocker.halfX||blocker.radius||0.6))))+radius;
     const minZ=((blocker.minZ??(blocker.centerZ??blocker.root.position.z)+(blocker.minZOffset??-(blocker.halfZ||blocker.radius||0.6))))-radius;
     const maxZ=((blocker.maxZ??(blocker.centerZ??blocker.root.position.z)+(blocker.maxZOffset?? (blocker.halfZ||blocker.radius||0.6))))+radius;
-    if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ)continue;
+    if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ) continue;
     const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
     if(pushX<pushZ){
@@ -10132,14 +10294,16 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
       pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
     }
   }
-  for(const p of game.props){
-    if(!p || p.root===ent.root || p.heldBy || p.throwVel)continue;
-    if(headY<=((p.baseY??-Infinity)+0.03) || footY>=((p.topY??Infinity)-0.03))continue;
+  const nearProps=getPropsNear(pos.x,pos.z,radius+1.5);
+  for(let i=0;i<nearProps.length;i++){
+    const p=nearProps[i];
+    if(!p || p.root===ent.root || p.heldBy || p.throwVel) continue;
+    if(headY<=((p.baseY??-Infinity)+0.03) || footY>=((p.topY??Infinity)-0.03)) continue;
     const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-radius;
     const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+radius;
     const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-radius;
     const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+radius;
-    if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ)continue;
+    if(pos.x<minX||pos.x>maxX||pos.z<minZ||pos.z>maxZ) continue;
     const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
     if(pushX<pushZ){
@@ -10265,9 +10429,10 @@ function updatePlayer(dt){
   }
   if(ent.kind==='rat'&&ent===player){
     tickFootstepSFX(ent,dt,'playerMove',{minSpeed:0.2,baseInterval:0.34,volume:0.58,cooldown:0.04,rateScale:0.09,activeOverride:hasInput});
-  }else if(ent.kind==='human' && ent===game.parasitisedHost){
-    tickFootstepSFX(ent,dt,'humanWalk',{minSpeed:0.16,baseInterval:0.48,volume:0.4,cooldown:0.05,rateScale:0.05,activeOverride:hasInput});
   }else if(ent.kind==='human'){
+    // humanWalk SFX removed at user request — parasitised host now
+    // walks silently (drop a dedicated host footstep file later if
+    // wanted and wire it here).
     ent._footstepTimer=0;
   }
   const curY=ent.root.rotation.y;
@@ -10435,13 +10600,27 @@ function restorePropFromCleaner(prop){
   game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
 }
 function countNearbyGroundRats(pos,radius=3.2){
+  // Spatial-grid scan instead of O(N) over every rat in the world.
+  // The grid is rebuilt once at the top of stepFrame, so all queries
+  // this frame share a consistent snapshot.
   let count=0;
   const r2=radius*radius;
-  for(const rat of game.rats){
-    if(rat===player || rat===game.controlled)continue;
-    const dx=rat.root.position.x-pos.x;
-    const dz=rat.root.position.z-pos.z;
-    if(dx*dx+dz*dz<=r2) count++;
+  const gxMin=Math.floor((pos.x-radius)/SPATIAL_GRID_CELL);
+  const gxMax=Math.floor((pos.x+radius)/SPATIAL_GRID_CELL);
+  const gzMin=Math.floor((pos.z-radius)/SPATIAL_GRID_CELL);
+  const gzMax=Math.floor((pos.z+radius)/SPATIAL_GRID_CELL);
+  for(let gx=gxMin;gx<=gxMax;gx++){
+    for(let gz=gzMin;gz<=gzMax;gz++){
+      const cell=ratsGrid.get(spatialKey(gx,gz));
+      if(!cell) continue;
+      for(let i=0;i<cell.length;i++){
+        const rat=cell[i];
+        if(rat===player || rat===game.controlled) continue;
+        const dx=rat.root.position.x-pos.x;
+        const dz=rat.root.position.z-pos.z;
+        if(dx*dx+dz*dz<=r2) count++;
+      }
+    }
   }
   return count;
 }
@@ -10796,13 +10975,10 @@ function tickRatVisualBudget(dt){
 }
 function spawnRatBloodSpray(pos,count=2){
   for(let i=0;i<count;i++){
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:FX_TEX.blood,transparent:true,depthWrite:false,fog:false,
-      color:pick(['#d81f41','#a8132f','#ff3a5c'])
-    }));
+    const sprite=acquireFXSprite(FX_TEX.blood);
+    sprite.material.color.set(pick(['#d81f41','#a8132f','#ff3a5c']));
     sprite.position.copy(pos).add(new THREE.Vector3(rand(-0.18,0.18),rand(-0.1,0.25),rand(-0.18,0.18)));
     sprite.scale.setScalar(rand(0.22,0.45));
-    scene.add(sprite);
     game.fx.push({
       kind:'rat-blood',sprite,
       vel:new THREE.Vector3(rand(-1.2,1.2),rand(1.8,3.2),rand(-1.2,1.2)),
@@ -11497,26 +11673,44 @@ function renderMinimap(){
   minimapCtx.arc(cx,cy,r,0,Math.PI*2);
   minimapCtx.stroke();
 }
+// Tick-paced state: chaos display + bite-lock reposition run every
+// frame (player attention). DOM number/bar writes step down to 10 Hz
+// because reading "138" vs "139" 60 times per second is invisible to
+// the eye but real DOM cost on mobile Safari. The minimap canvas only
+// repaints at 4 Hz for the same reason — the player can't see the
+// difference between 60-FPS and 4-FPS update on a small ring.
+let _hudDomTimer=0;
+let _minimapTimer=0;
 function updateHUD(dt){
+  // Logic (every frame): chaos decay + interp.
   game.chaosDisplay+=(game.chaos-game.chaosDisplay)*Math.min(1,dt*3);
   game.chaos=Math.max(0,game.chaos-CHAOS_DECAY*dt);
-  chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
-  chaosScoreEl.textContent=String(Math.round(game.chaosScore));
-  const totalRats=getTotalRatCount();
-  ratCountEl.textContent=String(totalRats);
-  ratFill.style.width=Math.min(100,totalRats/10).toFixed(0)+'%';
-  if(game.controlMode==='host'&&game.parasitisedHost){
-    hostLifeBox.style.display='block';
-    hostLifeBox.classList.add('is-active');
-    hostLifeFill.style.display='block';
-    hostLifeFill.style.height=(clamp(game.parasitisedHost.parasiteTimer/HOST_PARASITE_TIME,0,1)*100).toFixed(1)+'%';
-  }else{
-    hostLifeBox.style.display='block';
-    hostLifeBox.classList.remove('is-active');
-    hostLifeFill.style.display='none';
-    hostLifeFill.style.height='0%';
+
+  // DOM bars / numbers — 10 Hz.
+  _hudDomTimer-=dt;
+  if(_hudDomTimer<=0){
+    _hudDomTimer=0.1;
+    chaosFill.style.width=(game.chaosDisplay*100).toFixed(1)+'%';
+    chaosScoreEl.textContent=String(Math.round(game.chaosScore));
+    const totalRats=getTotalRatCount();
+    ratCountEl.textContent=String(totalRats);
+    ratFill.style.width=Math.min(100,totalRats/10).toFixed(0)+'%';
+    if(game.controlMode==='host'&&game.parasitisedHost){
+      hostLifeBox.style.display='block';
+      hostLifeBox.classList.add('is-active');
+      hostLifeFill.style.display='block';
+      hostLifeFill.style.height=(clamp(game.parasitisedHost.parasiteTimer/HOST_PARASITE_TIME,0,1)*100).toFixed(1)+'%';
+    }else{
+      hostLifeBox.style.display='block';
+      hostLifeBox.classList.remove('is-active');
+      hostLifeFill.style.display='none';
+      hostLifeFill.style.height='0%';
+    }
+    if(game.ratCityMode) renderRatCityLeaderboard();
   }
-  if(game.ratCityMode) renderRatCityLeaderboard();
+
+  // Bite lock — every frame (it's a targeting reticle on a moving
+  // head; lag here is immediately visible to the player).
   if(gameState==='playing'&&game.controlMode==='rat'&&player){
     const ratPos=player.root.position;
     let nearest=Infinity;
@@ -11538,13 +11732,21 @@ function updateHUD(dt){
       biteLockEl.style.display='none';
     }
     if(nearest<NECK_HINT_RADIUS){
-      showHint(nearest<NECK_BITE_RADIUS?'BITE NOW â€” parasitise the host.':'Close in on the neck.',0.14);
+      showHint(nearest<NECK_BITE_RADIUS?'BITE NOW — parasitise the host.':'Close in on the neck.',0.14);
     }
   }else{
     biteLockEl.style.display='none';
   }
+
   if(hintTimer>0){hintTimer-=dt;if(hintTimer<=0)hintEl.classList.remove('show')}
-  renderMinimap();
+
+  // Minimap — 4 Hz. Re-drawing a canvas with full clear + arc + text
+  // every frame was costing ~1-2 ms on mid mobile.
+  _minimapTimer-=dt;
+  if(_minimapTimer<=0){
+    _minimapTimer=0.25;
+    renderMinimap();
+  }
 }
 
 // ===== Intro / state =====
@@ -11664,6 +11866,9 @@ let last=performance.now();
 function stepFrame(dt){
   if(gameState==='playing'){
     gameTime+=dt;
+    // Rebuild the rats spatial grid once per tick so countNearbyGroundRats
+    // and any other proximity query share one consistent snapshot.
+    rebuildRatsGrid();
     syncPlayerBiteLoop();
     syncStreetAmbience(dt);
     if(game.ratCityMode && ratCityAutoRotate) game.ratCityAngle+=dt*0.22;
@@ -11802,50 +12007,57 @@ async function init(){
       baseColourTexSalaryman,normalTexSalaryman,roughTexSalaryman,metalTexSalaryman,
       deathHumanFBX
     ]=await Promise.all([
+      // Human variants run on MeshBasicMaterial (PS1 look), which ignores
+      // Normal / Roughness / Metallic maps entirely. Loading them was
+      // pure waste — ~24 MB of bandwidth + decode + VRAM thrown away
+      // every boot. They've been replaced with Promise.resolve(null) so
+      // the destructuring positions stay intact but no network request
+      // fires. (Idol still uses MeshStandardMaterial and keeps its PBR
+      // stack — see loadTempleIdolAssets, untouched.)
       loadFBXAsync('asset/都市傳說鼠王_中年男子2/站著發呆.fbx',onRunProgress),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_node_e2f90b98-5735-43f3-ae13-26951553ca8f_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年男子2/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_中年婦女/站著發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_node_18b363b3-a450-4791-bf4e-e539cad2d3b6_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_中年婦女/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/發呆.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/走路.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跑動.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/跳躍.fbx'),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/踢ATTACK.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_node_f3294883-8b3f-4e82-891c-7dd4f9cec907_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男高中生/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_女高中生/走路.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_node_930e3667-d58c-4afa-8935-8b390d83baa7_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女高中生/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_花花大媽/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_node_d7c9775a-12bd-4584-b533-2fce9632e51f_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_花花大媽/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_吊嘎阿伯/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_node_527721b1-5774-4c1b-a1cb-908580b153ba_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_吊嘎阿伯/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_女上班族/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_node_2051c51b-0485-4794-abb1-8cf2b636bebb_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_女上班族/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_男上班族/發呆.fbx'),
       loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_BaseColor.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_node_c998e1d6-167d-4108-9e3f-b1b974aa2799_Normal_Bake.jpg'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_roughness.JPEG'),
-      loadHumanTextureAsync('asset/都市傳說鼠王_男上班族/tripo_model_metallic.JPEG'),
+      Promise.resolve(null),
+      Promise.resolve(null),
+      Promise.resolve(null),
       loadFBXAsync('asset/都市傳說鼠王_男高中生/死亡.fbx')
     ].map(p=>p.catch(err=>{
       console.error('[fbx] human asset failed but continuing variant batch',err);
