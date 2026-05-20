@@ -666,7 +666,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','fixed-ring-map+npc-brain+ritual-rats+procedural-human-pose 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','true-resident-ring-map+human-driver-retarget+ritual-scream 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1007,13 +1007,14 @@ const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
-// Continuous one-axis ring. The seam is deliberately pushed several
-// chunks BEHIND the temple complexes, not at the temple rear doors.
-// The temples must read as ordinary fixed scenery; wrapping should only
-// happen at the far end of the extended street buffer.
+// True resident ring mode. The full playable loop is generated once and
+// remains resident; temple doors never trigger chunk rebuilds or portal swaps.
+const RESIDENT_RING_BUFFER_CHUNKS=6;
 const WORLD_LOOP_WRAP_MARGIN=1.35;
-const WORLD_LOOP_MIN_X=(TEMPLE_A_CHUNK_IDX-2)*CHUNK_SIZE+WORLD_LOOP_WRAP_MARGIN;
-const WORLD_LOOP_MAX_X=(TEMPLE_CHUNK_IDX+5)*CHUNK_SIZE-WORLD_LOOP_WRAP_MARGIN;
+const FULL_WORLD_PRELOAD_MIN=TEMPLE_A_CHUNK_IDX-RESIDENT_RING_BUFFER_CHUNKS;
+const FULL_WORLD_PRELOAD_MAX=TEMPLE_CHUNK_IDX+RESIDENT_RING_BUFFER_CHUNKS;
+const WORLD_LOOP_MIN_X=FULL_WORLD_PRELOAD_MIN*CHUNK_SIZE+WORLD_LOOP_WRAP_MARGIN;
+const WORLD_LOOP_MAX_X=(FULL_WORLD_PRELOAD_MAX+1)*CHUNK_SIZE-WORLD_LOOP_WRAP_MARGIN;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
@@ -1101,7 +1102,10 @@ function realignActorFeet(inst){
 }
 // The walkable corridor — wide enough that the player can wander between
 // the two rows of stalls without being clamped. Buildings sit beyond.
-const ALLEY_Z_MIN=-18.5, ALLEY_Z_MAX=18.5;
+// Expanded playable corridor: the temple rear now connects to a real back street.
+const ALLEY_Z_MIN=-38.0, ALLEY_Z_MAX=22.5;
+const MAIN_STREET_Z_MIN=-18.5, MAIN_STREET_Z_MAX=18.5;
+const REAR_RING_STREET_Z=-30.0;
 // World-space AABBs reserving each temple's footprint so the chunk
 // generator never places facades / cars / billboards inside them and
 // wandering humans get pushed back out.
@@ -1109,8 +1113,6 @@ const TEMPLE_KEEP_OUT_ZONES=[
   {minX:TEMPLE_CHUNK_IDX*CHUNK_SIZE+18-19,maxX:TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+28,minZ:-19.5,maxZ:19.5},
   {minX:(TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6)-19,maxX:(TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6)+28,minZ:-19.5,maxZ:19.5}
 ];
-const FULL_WORLD_PRELOAD_MIN=TEMPLE_A_CHUNK_IDX-2;
-const FULL_WORLD_PRELOAD_MAX=TEMPLE_CHUNK_IDX+4;
 // Hot chunks are NEVER disposed by ensureChunksAroundX. The only chunks
 // that genuinely have to stay resident for the whole session are the two
 // temple chunks themselves — their doorway/altar positions feed the
@@ -1163,13 +1165,31 @@ function steerHumanAwayFromTemple(h,dt=1/60,lookAhead=1.4){
   const speed=Math.max(0.9,h.curSpeed||0.9);
   const nx=pos.x+Math.sin(h.yaw||0)*speed*lookAhead;
   const nz=pos.z+Math.cos(h.yaw||0)*speed*lookAhead;
-  zone=pointInsideTempleZone(nx,nz,1.8);
+  zone=pointInsideTempleZone(nx,nz,4.2);
   if(zone){
     const center=(zone.minX+zone.maxX)*0.5;
     const goRight=pos.x>center;
     h.yaw=goRight?Math.PI/2:-Math.PI/2;
     h.root.rotation.y=h.yaw;
     h.wanderTimer=Math.max(h.wanderTimer||0,1.0);
+    return true;
+  }
+  return false;
+}
+
+function redirectHumanIfBlocked(h,prevX,prevZ,intendedSpeed=0){
+  if(!h?.root||h.controllable||h.parasitised||h.dead) return false;
+  const dx=h.root.position.x-prevX;
+  const dz=h.root.position.z-prevZ;
+  const moved=Math.hypot(dx,dz);
+  const hitTemple=!!pointInsideTempleZone(h.root.position.x,h.root.position.z,2.8);
+  if(hitTemple || (Math.max(intendedSpeed,h.curSpeed||0)>0.35 && moved<0.018)){
+    h.root.position.x=prevX;
+    h.root.position.z=prevZ;
+    h.yaw=(h.yaw||0)+(Math.random()<0.5?1:-1)*(Math.PI*0.62+Math.random()*Math.PI*0.46);
+    h.root.rotation.y=h.yaw;
+    h.wanderTimer=0.25+Math.random()*0.65;
+    h.curSpeed=0;
     return true;
   }
   return false;
@@ -1767,9 +1787,10 @@ const gltfLoader=new GLTFLoader();
 const imageLoader=new THREE.TextureLoader();
 let crawlFBX=null,runFBX=null;
 let characterSource=null;
-const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null};
+const HUMAN_CLIPS={idle:null,walk:null,run:null,jump:null,kick:null,pickup:null,punch:null,punchcombo:null,clean:null,death:null};
 const HUMAN_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic'};
 const HUMAN_VARIANTS=[];
+let humanAnimationDriverSource=null;
 const TEMPLE_IDOL_SKIN={base:null,normal:null,roughness:null,metal:null,flipY:true,materialKind:'basic',preBase:null,awakeBase:null};
 let templeIdolSource=null,templeIdolIdleSource=null,templeIdolWalkSource=null,templeIdolIdleClip=null,templeIdolWalkClip=null;
 let templeIdolLoadPromise=null;
@@ -2168,7 +2189,7 @@ function formatAnimatedBoneProbeValue(probe,value){
   if(probe.property==='quaternion') return `${f(value.x)},${f(value.y)},${f(value.z)},${f(value.w)}`;
   return `${f(value.x)},${f(value.y)},${f(value.z)}`;
 }
-function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
+function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,death,skin}){
   const clipFor=srcClip=>getSourceCompatibleClip(source,srcClip);
   return {
     name,
@@ -2183,7 +2204,8 @@ function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,s
       pickup:clipFor(pickup),
       punch:null,
       punchcombo:null,
-      clean:clipFor(clean)
+      clean:clipFor(clean),
+      death:clipFor(death)
     }
   };
 }
@@ -4848,6 +4870,13 @@ function generateChunk(idx){
   floor.rotation.x=-Math.PI/2;
   floor.position.set(xBase+CHUNK_SIZE/2,0,0);
   scene.add(floor);chunk.meshes.push(floor);
+  const rearFloor=new THREE.Mesh(
+    new THREE.PlaneGeometry(CHUNK_SIZE,18),
+    new THREE.MeshBasicMaterial({map:floorTex.clone(),color:'#c8c8c2',side:THREE.DoubleSide})
+  );
+  rearFloor.rotation.x=-Math.PI/2;
+  rearFloor.position.set(xBase+CHUNK_SIZE/2,GROUND_Y_OFFSET+0.003,REAR_RING_STREET_Z);
+  scene.add(rearFloor);chunk.meshes.push(rearFloor);
   if(!nearTempleApproach && chunkVariant===1) buildSkyTunnel(xBase);
   if(!nearTempleApproach && chunkVariant===2) buildMiniPlaza(xBase);
 
@@ -4928,6 +4957,15 @@ function generateChunk(idx){
   }
 
   buildBackBuildingRows(xBase);
+  for(const side of [-1,1]){
+    const texIdx=((idx+side)%TEX.facade.length+TEX.facade.length)%TEX.facade.length;
+    const rearWall=new THREE.Mesh(
+      new THREE.BoxGeometry(CHUNK_SIZE*0.92,rand(3.8,8.2),0.8),
+      new THREE.MeshBasicMaterial({map:TEX.facade[texIdx],color:pick(['#6d655f','#7d766f','#595b61','#8b7d70'])})
+    );
+    rearWall.position.set(xBase+CHUNK_SIZE*0.5,rearWall.geometry.parameters.height*0.5,REAR_RING_STREET_Z+side*8.2);
+    addChunkObject(rearWall);
+  }
 
   // --- Graffiti panels — random photos from asset/photos layered over
   // tiled façades, including true mural-scale pieces.
@@ -5207,11 +5245,10 @@ async function warmChunksDuringIntro(chunkIds,{progressStart=90,progressEnd=99,l
    final height matches. Mixamo bones use centimetres internally, so
    targeting metres here means small rats (0.30 m) end up at scale
    ~0.0017 and full humans (1.72 m) end up around scale 0.010. */
-function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,skin=HUMAN_SKIN}){
-  // 12-hr-ago shape restored: bind the AnimationMixer directly to the
-  // cloned variant root. No second skeleton, no per-frame bone copy.
-  // The clip's tracks are already filtered (see getSourceCompatibleClip)
-  // so only bone names that exist on this variant's skeleton remain.
+function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=characterSource,skin=HUMAN_SKIN,driverSource=null}){
+  // Visible mesh uses its own variant source/texture. When driverSource is set,
+  // a hidden boy skeleton plays the exact requested action FBXs and its bone
+  // rotations are copied into the visible variant each frame.
   const root=SkeletonUtils.clone(source);
   // DEFENSIVE RE-BIND for the T-pose bug.
   // SkeletonUtils.clone has a long-standing edge case: if the FBX's
@@ -5279,12 +5316,15 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   if(headBone && !headBone.userData.originalScale){
     headBone.userData.originalScale=headBone.scale.clone();
   }
-  const mixer=new THREE.AnimationMixer(root);
+  const useDriver=!!(driverSource && clips && driverSource!==source);
+  const actionRoot=useDriver?SkeletonUtils.clone(driverSource):root;
+  const mixer=new THREE.AnimationMixer(actionRoot);
+  const retargetPairs=useDriver?buildRetargetBonePairs(root,actionRoot):null;
   const actions={};
   if(clips){
     for(const [name,srcClip] of Object.entries(clips)){
       if(!srcClip) continue;
-      const safeClip=getCloneRootCompatibleClip(root,srcClip,`actor:${name}`);
+      const safeClip=getCloneRootCompatibleClip(actionRoot,srcClip,`actor:${name}`);
       if(!isUsableClip(safeClip)) continue;
       const act=mixer.clipAction(safeClip);
       act.enabled=true;
@@ -5302,7 +5342,7 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   }
   const action=clip?mixer.clipAction(clip):null;
   if(action){action.setEffectiveTimeScale(1);action.play()}
-  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY:0,animRoot:root,retargetPairs:null};
+  return {outer,root,mixer,action,actions,headBone,height:finalH,baseY:0,animRoot:root,driverRoot:useDriver?actionRoot:null,retargetPairs};
 }
 
 /* ============================================================
@@ -5456,7 +5496,8 @@ function buildHuman({position,role='wanderer'}={}){
     tint,
     clips:variant.clips,
     source:variant.source,
-    skin:variant.skin
+    skin:variant.skin,
+    driverSource:humanAnimationDriverSource
   });
   const root=inst.outer;
   root.position.set(position.x,HUMAN_WORLD_Y_OFFSET+GROUND_Y_OFFSET,position.z);
@@ -5788,7 +5829,7 @@ function tickActor(ent,dt){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.isAir && isUsableAction(ent.inst.actions.jump)) next='jump';
       else if(ent.panicTimer>0 && isUsableAction(ent.inst.actions.run)) next='run';
-      else if(ent.controllable && ent.curSpeed>1.25 && isUsableAction(ent.inst.actions.run)) next='run';
+      else if(ent.controllable && ent.curSpeed>0.18 && isUsableAction(ent.inst.actions.run)) next='run';
       else if(ent.curSpeed>0.4 && isUsableAction(ent.inst.actions.walk)) next='walk';
       else if(ent.curSpeed<0.05 && isUsableAction(ent.inst.actions.idle)) next='idle';
       else if(ent.animState && ent.inst.actions[ent.animState]) next=ent.animState; // sticky
@@ -5869,7 +5910,7 @@ function tickActor(ent,dt){
   ent.inst.mixer.update(dt);
   if(ent.kind==='human'){
     syncRetargetPose(ent.inst);
-    applyProceduralHumanPose(ent,dt);
+    if(ent.useProceduralPoseFallback) applyProceduralHumanPose(ent,dt);
   }
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
@@ -6069,8 +6110,7 @@ function setAllTempleIdolPhaseMaterials(mode){
   }
 }
 function isPlayerInsideAnyTempleZone(){
-  // Either temple counts — the loop portal makes them functionally one.
-  // Use the position of whatever the player is currently controlling
+  // Either temple counts. Use the position of whatever the player is currently controlling
   // (parasitised host while in host mode, otherwise the rat) so the
   // ritual still triggers when a human body is the visible avatar.
   const pos=getGameplayFocusPosition()||player?.root?.position;
@@ -6115,19 +6155,10 @@ function promoteIdolToPrimary(idolActor){
   }
 }
 function ensurePrimaryIdolMatchesPlayer(){
-  // If the player is standing inside the twin (decorative) temple's zone,
-  // promote that idol to primary BEFORE the awakening fires so the swarm
-  // bursts in through the door the player is standing next to.
-  const zone=isPlayerInsideAnyTempleZone();
-  if(!zone) return;
-  const primaryAltarX=game.templeEvent.altarPos.x;
-  const primaryInZone=primaryAltarX>=zone.minX && primaryAltarX<=zone.maxX;
-  if(primaryInZone) return;
-  const match=game.templeEvent.secondaryIdols.find(id=>{
-    const ax=id?.plazaSnapshot?.altarPos?.x;
-    return ax!==undefined && ax>=zone.minX && ax<=zone.maxX;
-  });
-  if(match) promoteIdolToPrimary(match);
+  // Fixed resident ring: do not hot-swap temples while the player walks.
+  // Awakening chooses its current target once via getCurrentTempleSwarmTarget();
+  // ordinary temple proximity must not behave like a portal or scene refresh.
+  return;
 }
 function startTempleGathering(){
   if(game.templeEvent.gathering||game.templeEvent.awakened)return;
@@ -11393,6 +11424,11 @@ function forceControlledJump(){
   if(ent.isAir && ent.root.position.y>groundY+0.22) return false;
   ent.vy=(isHost?JUMP_VEL*0.98:JUMP_VEL)*(game.testMode?2:1);
   ent.isAir=true;
+  if(isHost && ent.inst?.actions?.jump){
+    ent.actionName='jump';
+    ent.actionStamp=(ent.actionStamp||0)+1;
+    ent.actionTimer=Math.max(0.38,Math.min(0.9,ent.inst.actions.jump.getClip?.().duration||0.55));
+  }
   inputFlags.jump=false;
   if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent});
   return true;
@@ -12115,7 +12151,7 @@ function tickBreeding(dt){
 // === Idol-follower swarm — rats hunt humans within the awakened idol's
 // range, climb their bodies, and trigger a transformation into a new
 // idol-skinned wanderer once enough rats have piled on.
-const RAT_HUNT_HUMAN_RANGE=28;           // idol-centric attack radius
+const RAT_HUNT_HUMAN_RANGE=84;           // idol-centric attack radius; requested ×3
 const RAT_HUNT_HUMAN_RANGE_SQ=RAT_HUNT_HUMAN_RANGE*RAT_HUNT_HUMAN_RANGE;
 const RAT_CLIMB_GRAB_DIST=0.85;          // when rat sticks to the human
 const RAT_CLIMB_GRAB_DIST_SQ=RAT_CLIMB_GRAB_DIST*RAT_CLIMB_GRAB_DIST;
@@ -12717,6 +12753,11 @@ function tickRatClimbingHuman(rat,dt){
     return false;
   }
   const phase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(rat.swarmPhase=Math.random()*Math.PI*2);
+  h._ratScreamTimer=(h._ratScreamTimer||0)-dt;
+  if(h._ratScreamTimer<=0){
+    playHumanBiteScream(h,true);
+    h._ratScreamTimer=0.85+Math.random()*0.55;
+  }
   const t=(rat.climbHumanTimer=(rat.climbHumanTimer||0)+dt);
   // Spiral up the body from waist height to head height.
   const bodyT=(Math.sin(phase*1.3+t*2.6)+1)*0.5;
@@ -12964,6 +13005,7 @@ function tickFollowerRats(dt){
           r.targetHuman=null;
           r.climbHumanTimer=0;
           victim.ratCoverage=(victim.ratCoverage||0)+1;
+          playHumanBiteScream(victim,true);
           if(tickRatClimbingHuman(r,dt)) continue;
         }else{
           target={x:victim.root.position.x,z:victim.root.position.z};
@@ -13667,6 +13709,7 @@ async function init(){
       return null;
     })));
     const cleanBoyFBX=null;
+    humanAnimationDriverSource=idleBoyFBX||walkBoyFBX||runBoyFBX;
     HUMAN_VARIANTS.length=0;
     const sharedHumanClips={
       idle:idleBoyFBX,
@@ -13675,27 +13718,19 @@ async function init(){
       jump:jumpBoyFBX,
       kick:kickBoyFBX,
       pickup:null,
-      clean:cleanBoyFBX||idleBoyFBX
+      clean:cleanBoyFBX||idleBoyFBX,
+      death:deathHumanFBX
     };
     const pushHumanVariant=config=>{
       if(!config?.source){
         console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
         return;
       }
-      const ownClip=resolveAnimationClip(config.source);
-      const locomotionIdle=config.walk||config.run||config.idle||ownClip;
-      const locomotionWalk=config.walk||config.run||locomotionIdle;
-      const locomotionRun=config.run||config.walk||locomotionIdle;
       HUMAN_VARIANTS.push(makeHumanVariant({
         ...config,
-        // Do not use the individual Tripo "idle" FBX as the active idle clip.
-        // Several of those files are effectively a static bind/rest pose, which
-        // produced visible T-pose sliding even though PropertyBinding succeeded.
-        // Every variant now uses the boy locomotion set for idle/walk/run; idle
-        // is simply the walk cycle played at the lower idle mixer speed.
-        idle:locomotionIdle,
-        walk:locomotionWalk,
-        run:locomotionRun,
+        idle:config.idle,
+        walk:config.walk,
+        run:config.run,
         skin:{
           base:config.skin?.base||null,
           normal:null,
@@ -13712,10 +13747,9 @@ async function init(){
     pushHumanVariant({name:'吊嘎阿伯',source:idleUncleFBX,...sharedHumanClips,skin:{base:baseColourTexUncle}});
     pushHumanVariant({name:'女上班族',source:idleOLFBX,...sharedHumanClips,skin:{base:baseColourTexOL}});
     pushHumanVariant({name:'男上班族',source:idleSalarymanFBX,...sharedHumanClips,skin:{base:baseColourTexSalaryman}});
-    const sharedDeathClip=resolveAnimationClip(deathHumanFBX);
     for(const v of HUMAN_VARIANTS){
-      v.clips.death=sharedDeathClip;
-      if(!v.clips.idle) v.clips.idle=resolveAnimationClip(v.source);
+      if(!v.clips.death && deathHumanFBX) v.clips.death=getSourceCompatibleClip(v.source,deathHumanFBX);
+      if(!v.clips.idle) v.clips.idle=getSourceCompatibleClip(v.source,idleBoyFBX)||resolveAnimationClip(v.source);
     }
     for(const v of HUMAN_VARIANTS){
       console.log('[HUMAN VARIANT ANIM]',v.name,{
