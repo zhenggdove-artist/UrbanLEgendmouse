@@ -289,7 +289,7 @@
     background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
     letter-spacing:0.16em;cursor:pointer}
   #temple-flash{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:45;transition:opacity .08s linear}
-  #ring-seam-veil{position:fixed;inset:0;pointer-events:none;opacity:0;z-index:44;transition:none;
+  #ring-seam-veil{display:none !important;position:fixed;inset:0;pointer-events:none;opacity:0;z-index:44;transition:none;
     background:
       radial-gradient(circle at 50% 52%,rgba(255,218,238,0.58) 0%,rgba(255,218,238,0.22) 28%,rgba(255,218,238,0.00) 52%),
       linear-gradient(90deg,rgba(255,196,226,0.90) 0%,rgba(255,238,205,0.35) 18%,rgba(255,255,255,0.06) 50%,rgba(255,238,205,0.35) 82%,rgba(255,196,226,0.90) 100%);
@@ -676,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','resident-ring-preview-clone-seam-map-only 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','resident-ring-preview-seam-no-veil+temple-prop-filter 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -11113,20 +11113,11 @@ function ringSeamIntensityForX(x){
   return 1-smoothstep(0,RING_SEAM_FADE_ZONE,d);
 }
 function updateRingSeamVeil(dt){
+  // Preview seam now uses destination street clones, so the full-screen
+  // fog veil is intentionally disabled. If the street ahead already
+  // matches the landing street, an overlay makes the loop feel artificial.
   const el=document.getElementById('ring-seam-veil');
-  if(!el) return;
-  const ent=game.controlled||player;
-  const x=ent?.root?.position?.x;
-  const proximity=ringSeamIntensityForX(x);
-  const wrapFlash=Math.max(0,1-(gameTime-ringSeamLastWrapTime)/0.46);
-  const target=clamp(Math.max(proximity*0.86,wrapFlash),0,0.96);
-  const cur=parseFloat(el.style.opacity||'0')||0;
-  const speed=target>cur?9.5:4.2;
-  const next=lerp(cur,target,clamp(dt*speed,0,1));
-  el.style.opacity=String(next);
-  // Slightly desaturate during the hidden coordinate shift. This masks
-  // NPC/prop parallax discontinuity without a hard full-screen cut.
-  el.style.backdropFilter=next>0.15?`saturate(${Math.max(0.72,1-next*0.22)}) contrast(${Math.max(0.88,1-next*0.10)})`:'';
+  if(el){el.style.opacity='0';el.style.backdropFilter='';}
 }
 function makeRingSeamFogTexture(){
   const c=document.createElement('canvas');c.width=128;c.height=512;
@@ -11151,26 +11142,31 @@ function makeRingSeamFogTexture(){
   return tex;
 }
 function buildRingSeamOccluders(){
-  if(ringSeamOccludersBuilt) return;
+  // Disabled for preview-seam mode. The visual continuity is handled by
+  // shifted destination-street copies; extra fog planes are no longer needed.
   ringSeamOccludersBuilt=true;
-  const tex=makeRingSeamFogTexture();
-  const mat=new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:0.34,depthWrite:false,side:THREE.DoubleSide});
-  const make=(x,label)=>{
-    const group=new THREE.Group();group.name=label;
-    for(let i=0;i<4;i++){
-      const plane=new THREE.Mesh(new THREE.PlaneGeometry(42+i*10,8.5+i*2.2),mat.clone());
-      plane.position.set(x+(i-1.5)*1.8,3.9+i*0.15,0);
-      plane.rotation.y=Math.PI/2;
-      plane.material.opacity=0.18+i*0.045;
-      plane.renderOrder=2;
-      group.add(plane);
-    }
-    scene.add(group);
-  };
-  make(RING_SEAM_MIN_X,'ring_seam_fog_min');
-  make(RING_SEAM_MAX_X,'ring_seam_fog_max');
+}
+function shiftedObjectIntersectsTempleKeepOut(obj,shiftX,margin=2.4){
+  // Preview copies are shifted pieces of the opposite street end. Without
+  // this filter, vending machines, poles, cars, stalls and other street
+  // clutter from the preview copy can land inside the real temple footprint.
+  if(!obj) return false;
+  const clone=obj.clone(true);
+  clone.position.x+=shiftX;
+  clone.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(clone);
+  if(!Number.isFinite(box.min.x)||!Number.isFinite(box.max.x)) return false;
+  for(const z0 of TEMPLE_KEEP_OUT_ZONES){
+    if(box.max.x < z0.minX-margin) continue;
+    if(box.min.x > z0.maxX+margin) continue;
+    if(box.max.z < z0.minZ-margin) continue;
+    if(box.min.z > z0.maxZ+margin) continue;
+    return true;
+  }
+  return false;
 }
 function cloneRingSeamPreviewObject(obj,shiftX,label){
+  if(shiftedObjectIntersectsTempleKeepOut(obj,shiftX,2.4)) return null;
   const clone=obj.clone(true);
   clone.name=`${obj.name||'chunkObject'}_ringPreview_${label}`;
   clone.position.x+=shiftX;
@@ -11204,7 +11200,9 @@ function buildRingSeamPreviewClones(){
     const chunk=chunks.get(idx); if(!chunk) continue;
     for(const obj of chunk.meshes||[]){
       if(!obj || obj.userData?.ringSeamPreview) continue;
-      minGroup.add(cloneRingSeamPreviewObject(obj,RING_SEAM_LENGTH,'minToMax'));
+      const preview=cloneRingSeamPreviewObject(obj,RING_SEAM_LENGTH,'minToMax');
+      if(!preview) continue;
+      minGroup.add(preview);
       minClones++;
     }
   }
@@ -11212,13 +11210,15 @@ function buildRingSeamPreviewClones(){
     const chunk=chunks.get(idx); if(!chunk) continue;
     for(const obj of chunk.meshes||[]){
       if(!obj || obj.userData?.ringSeamPreview) continue;
-      maxGroup.add(cloneRingSeamPreviewObject(obj,-RING_SEAM_LENGTH,'maxToMin'));
+      const preview=cloneRingSeamPreviewObject(obj,-RING_SEAM_LENGTH,'maxToMin');
+      if(!preview) continue;
+      maxGroup.add(preview);
       maxClones++;
     }
   }
   scene.add(minGroup);
   scene.add(maxGroup);
-  console.log('[ring-map] seam preview clones',{
+  console.log('[ring-map] seam preview clones temple-filtered',{
     minSource:`${minStart}→${minEnd}`,
     maxSource:`${maxStart}→${maxEnd}`,
     minClones,
