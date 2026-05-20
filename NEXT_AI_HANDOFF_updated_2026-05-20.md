@@ -1,5 +1,289 @@
 # Next AI Handoff (updated 2026-05-19)
 
+
+---
+
+## RP-2026-05-20-TRANSITION-JITTER-NO-HUMAN-TPOSE — current handoff after map seam completion
+
+Restore point / current working direction: `RP-2026-05-20-TRANSITION-JITTER-NO-HUMAN-TPOSE`.
+
+Current browser build stamp reported by the user:
+
+```txt
+[BUILD] transition-jitter-rootlock+ritual-rats+idol-exit-fix 2026-05-20 build
+```
+
+User-confirmed improvement:
+
+- Human NPC **T-pose is currently gone**. User explicitly wrote: `已經沒有TPOSE 請保持`.
+- The latest console diagnostics show human animation bindings are alive:
+  - `probeBone=mixamorigSpine`
+  - `MOVED=true`
+  - active variants loaded: `男高中生`, `女高中生`, `花花大媽`, `男上班族`
+- Map seam / street connection is now accepted as complete by the user after the `preview seam` + `temple prop filter` passes.
+- Street props can now be destroyed by the idol. User explicitly said this is improved and must not be broken again.
+
+### Current severe regressions / open issues reported by the user
+
+#### 1. Human NPC motion is now unnaturally slow and idle is not obvious
+
+Current symptoms:
+
+- NPC walking is extremely slow-motion / unnatural.
+- NPCs do not visibly play a clear `idle / 發呆` animation.
+- NPCs still do not properly turn away when colliding with street props, stalls, cars, vending machines, poles, etc.
+- NPCs may remain pushing forward instead of choosing a new direction.
+
+Important constraint:
+
+- Do **not** revert the no-human-T-pose fix.
+- Do **not** reintroduce the old fadeIn/fadeOut / weight=0 action bug.
+- Do **not** allow human `.position` tracks to pull the rig downward again during walk↔idle transitions.
+
+Likely place to inspect next:
+
+- human action switch / crossfade code added in the transition-jitter pass
+- `tickActor(...)`
+- `forceHumanActionPose(...)`
+- any helper that root-locks or stabilises human action clips
+- timeScale / effectiveWeight / action reset logic for `idle`, `walk`, `run`, `jump`, `kick`
+- `tickHumans(dt)` wander / obstacle branch
+- return value of `resolveWorldCollisions(...)` and whether NPC code actually reacts to it
+
+The latest human state is better than the older T-pose state. Tune playback speed, thresholds, and collision steering; do not remove the working binding/rootlock baseline wholesale.
+
+#### 2. Human NPC population still does not match requested design
+
+User request:
+
+- human NPCs should appear in the player-visible street area
+- some humans should move or idle in **3–5 person groups**
+- some humans should be alone
+- for performance, humans should not be generated across the entire resident map
+
+Current observed problem:
+
+- At game start, the player still sees almost no nearby human NPCs.
+- Console shows only:
+
+```txt
+[boot] PS1 scene ready — humans=26 rats=1
+```
+
+This is too sparse for the requested street scene.
+
+Do not solve this by returning to full-map skinned-human spawning. Earlier full resident spawning reached `humans=171` / `humans=225` and caused major performance and logic problems. Use a local visible-population / pooled generation strategy.
+
+Suggested next implementation direction:
+
+- Maintain a small visible pool around the current controlled actor / camera sector.
+- Immediately populate near the start location after `startGame()`.
+- Spawn group anchors first, then 3–5 members around each anchor.
+- Give groups shared direction / waypoint plus small offsets.
+- Let some NPCs stay idle in groups instead of all constantly walking.
+- Keep a cap and recycle far NPCs only when they are well outside camera/seam visibility.
+
+#### 3. Performance is currently bad even on high-end phone
+
+User reports:
+
+- Game is clearly stuttering even on the best iPhone 17 Pro.
+- This suggests a gameplay loop / update bug, not merely weak device performance.
+
+Current relevant context:
+
+- The accepted map version uses resident chunks and preview seam clones:
+  - `resident chunks -14 → 12`
+  - `chunksLoaded 27`
+  - `previewSeam -274 → 250`
+- Human T-pose is fixed, but new slow animation / ritual code may be adding too much per-frame work.
+- Do not reintroduce full-screen CSS `mix-blend-mode` overlays. That was the earlier known mobile perf killer.
+
+Next AI should profile before changing visuals:
+
+- per-frame `tickHumans`
+- per-frame `tickFollowerRats`
+- `ensureRitualEscortRats`
+- seam mirror / dynamic mirror updates
+- prop collision scans for idol
+- any full-array scans over all props / rats / humans
+- any repeated clone generation or material traversal accidentally running during tick
+
+Do not fix performance by delaying asset loads into gameplay. User explicitly rejected that strategy earlier.
+
+#### 4. Idol procession is badly broken
+
+Current symptoms:
+
+- When procession starts, the idol no longer plays the previous correct walking animation.
+- It appears like a T-pose idol floating forward.
+- It still gets stuck in front of the temple / just outside the door.
+- It no longer progresses normally along the street.
+
+Important regression note:
+
+- At an earlier point, idol walk animation was working and the idol could destroy street objects.
+- The latest transition-jitter / rootlock changes likely affected idol animation or idol rig/action switching.
+- Human animation fixes must not be applied blindly to the idol. The idol uses its own rig/action path and should be treated separately.
+
+Keep:
+
+- idol can destroy street props and spawn rats
+- destruction by idol must **not** increase chaos score
+
+Inspect next:
+
+- `startTempleAwakeningLegacy(...)`
+- idol idle→walk rig swap / root replacement
+- idol action selection and whether a human-rootlock helper accidentally touched idol clips
+- `tickTempleEvent(dt)`
+- procession waypoint generation
+- temple exit collision bypass
+- building/blocker collision around the temple doorway
+- stuck detector / fallback step logic
+
+Likely correct strategy:
+
+- Restore the last known working idol walking animation path, not human action rootlock.
+- Keep only the prop-destruction collision code from the successful pass.
+- During temple exit, ignore only temple doorway / temple building blockers, not street props and not all buildings.
+- Once outside the doorway, use normal building collision again.
+
+#### 5. Ritual escort rats are still missing
+
+Current symptoms:
+
+- No small rats visibly follow the idol during procession.
+- No escort rats attack humans.
+- The intended behaviour is still not present:
+  - rats that climbed onto / gathered at the idol should leave with the idol
+  - they should escort it
+  - they should split into batches
+  - they should run to nearby humans
+  - they should climb over the human model
+  - when enough rats cover the human, that human should transform into a small idol
+  - human-specific scream SFX should play when attacked / climbed
+
+Important previous knowledge:
+
+From `RP-2026-05-19-RAT-FOLLOW`, do not revert the working principles:
+
+- Do not put `activeFollowerRats` back into `tickFollowerRats` / `rebuildRatsGrid`; that caused rendered-but-unticked static rats.
+- Do not spawn visible rats with `followPlayer=false` unless it is a specific scripted case.
+- Ritual `templeSwarmVisual` rats should be protected from visual budget removal.
+- Critical rats include:
+  - `templeBound`
+  - `templeSwarmVisual`
+  - `followPlayer`
+  - `followStatue`
+  - `climbingHuman`
+  - rats with `targetHuman`
+
+Suggested next debug method:
+
+- At ritual start, log exact counts:
+  - `game.rats.length`
+  - visible rats
+  - `templeSwarmVisual`
+  - `followStatue`
+  - `fullFollowerSim`
+  - `targetHuman`
+  - `climbingHuman`
+- Confirm whether escort rats exist but are invisible, exist but are culled by visual budget, or never get created.
+- Confirm `tickFollowerRats` iterates them every frame.
+- Confirm their `root.visible` and `sprite/root.position.y` are not overwritten by a later temple/rat update.
+
+#### 6. Ritual rats inside temple are still too low
+
+Current symptom:
+
+- The 300 rats entering the temple are still sunk into the temple floor.
+- User repeatedly requested raising them by `+0.2`.
+
+Previous attempts failed because only one spawn point or target point was probably changed. The likely issue is that later per-frame rat update rewrites the visible root/sprite height.
+
+Next AI should inspect all y-writes for ritual rats:
+
+- spawn y
+- target y
+- `tickRatBillboard`
+- `tickActor`
+- `tickFollowerRats`
+- temple swarm movement
+- climb altar movement
+- climb idol movement
+- drop/escort transition
+- seam mirror copy y
+
+Correct fix is not just target y; apply the +0.2 offset at the final visual transform write for `templeSwarmVisual` / ritual rats, or ensure every movement phase adds the same visible offset after ground sampling.
+
+### Current console snapshot from the latest user report
+
+```txt
+[BUILD] transition-jitter-rootlock+ritual-rats+idol-exit-fix 2026-05-20 build
+[human] filtered incompatible active variants Array(4)
+[fbx] human variants loaded: 男高中生 skin=true idle=true walk=true | 女高中生 skin=true idle=true walk=true | 花花大媽 skin=true idle=true walk=true | 男上班族 skin=true idle=true walk=true
+[fbx] human clips loaded: Array(7)
+[HUMAN DIAG] ... probeBone=mixamorigSpine ... MOVED=true
+[ring-map] seam preview clones temple-filtered Object
+[boot] PS1 scene ready — humans=26 rats=1
+[ring-map] resident chunks -14 → 12 x -312 → 288 len 600 previewSeam -274 → 250 chunksLoaded 27
+[boot] startGame
+```
+
+Interpretation:
+
+- Human animation binding is currently functional.
+- T-pose is no longer the main human issue.
+- Current human issue is action quality / speed / steering / population.
+- Current ritual issue is idol action/pathing and escort rat lifecycle.
+
+### Things the next AI must keep
+
+- Keep the current no-human-T-pose baseline.
+- Keep map preview seam and temple prop filtering.
+- Keep idol street-prop destruction.
+- Keep mobile low-res WebGL VHS path; never restore full-screen CSS `mix-blend-mode`.
+- Keep play+immediate-pause SFX unlock pattern.
+- Keep rat visual-budget protections for critical ritual/following rats.
+- Keep `activateHumanFromLOD` from resetting pose on every reactivation.
+- Keep LOD hysteresis; do not return to single-threshold flicker.
+
+### Things the next AI should not do
+
+- Do not broadly rewrite the whole game again.
+- Do not change the map system; user says the map is done.
+- Do not solve current NPC count by spawning the entire map full of humans.
+- Do not apply human animation root-lock helpers to the idol rig.
+- Do not remove the successful idol prop-destruction code.
+- Do not reintroduce fadeIn/fadeOut on human actions if it risks the old weight=0 T-pose state.
+- Do not touch UI layout/editor unless explicitly requested.
+
+### Suggested next debugging order
+
+1. Freeze the current human no-T-pose baseline and verify with the existing `HUMAN DIAG MOVED=true`.
+2. Fix NPC playback speed and idle visibility:
+   - inspect timeScale and crossfade duration
+   - inspect whether idle is being selected long enough to be visible
+   - inspect whether `curSpeed` never falls below idle threshold
+3. Fix NPC obstacle response:
+   - make collision return a hit normal / blocker tag if possible
+   - on collision, immediately choose a new heading/waypoint
+   - for group NPCs, steer the group anchor away rather than each member fighting the obstacle independently
+4. Implement visible-area human population:
+   - immediate spawn near player on start
+   - groups of 3–5 plus singles
+   - pool/recycle far NPCs outside visibility only
+5. Fix idol separately:
+   - restore idol walking action
+   - debug temple exit blocker
+   - preserve prop destruction
+6. Fix escort rats:
+   - first prove whether they exist but are hidden/culled or never created
+   - then restore followStatue + human attack/climb/transform behaviour
+7. Fix ritual rat height at the final visual position write, not only at spawn.
+
+
 ## RP-2026-05-19-RAT-FOLLOW — proper follower swarm, no static rats, audio unlocked
 
 Restore point name: `RP-2026-05-19-RAT-FOLLOW`. Build stamp in the browser console: `[BUILD] lod-hysteresis+rat-follow+audio-unlock 2026-05-19 build`.

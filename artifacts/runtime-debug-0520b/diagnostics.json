@@ -1,0 +1,146 @@
+{
+  "logs": [
+    {
+      "type": "log",
+      "text": "%c[BUILD] color:#ff4fa8;font-weight:bold npc-crowds+idol-escort-rats-debug 2026-05-20 build"
+    },
+    {
+      "type": "warning",
+      "text": "[human] filtered incompatible active variants [中年男子, 中年婦女, 吊嘎阿伯, 女上班族]"
+    },
+    {
+      "type": "log",
+      "text": "[fbx] human variants loaded: 男高中生 skin=true idle=true walk=true | 女高中生 skin=true idle=true walk=true | 花花大媽 skin=true idle=true walk=true | 男上班族 skin=true idle=true walk=true"
+    },
+    {
+      "type": "log",
+      "text": "[fbx] human clips loaded: [idle, walk, run, jump, kick, clean, death]"
+    },
+    {
+      "type": "log",
+      "text": "[boot] PS1 scene ready — humans=49 rats=1"
+    },
+    {
+      "type": "log",
+      "text": "[boot] startGame"
+    }
+  ],
+  "errors": [],
+  "startDiag": {
+    "state": {
+      "mode": "playing",
+      "controlMode": "rat",
+      "camera": {
+        "yaw": 3.14,
+        "pitch": 0.12,
+        "dist": 2.2
+      },
+      "player": {
+        "x": 12,
+        "y": 0.01,
+        "z": 0,
+        "isAir": false
+      },
+      "controlled": {
+        "kind": "rat",
+        "role": null,
+        "x": 12,
+        "y": 0.01,
+        "z": 0,
+        "heldProp": false,
+        "throwCharge": 0
+      },
+      "nearestBiteable": true,
+      "chaos": 0,
+      "rats": 1,
+      "visualRats": 1,
+      "temple": {
+        "inside": false,
+        "gathering": false,
+        "started": false,
+        "awakened": false,
+        "phase": "idle",
+        "swarmVisuals": 0
+      },
+      "tippedProps": 0,
+      "cleaners": {
+        "total": 0,
+        "seeking": 0,
+        "tidying": 0
+      },
+      "note": "coords: x alley length, y up, z across alley"
+    },
+    "humanTotal": 49,
+    "near": 26,
+    "groups": [
+      4,
+      4,
+      3,
+      3,
+      3,
+      3
+    ],
+    "idle": 16
+  },
+  "ritualDiag": {
+    "state": {
+      "mode": "playing",
+      "controlMode": "rat",
+      "camera": {
+        "yaw": 3.14,
+        "pitch": 0.12,
+        "dist": 2.2
+      },
+      "player": {
+        "x": 153.1,
+        "y": 0.27,
+        "z": 0,
+        "isAir": false
+      },
+      "controlled": {
+        "kind": "rat",
+        "role": null,
+        "x": 153.1,
+        "y": 0.27,
+        "z": 0,
+        "heldProp": false,
+        "throwCharge": 0
+      },
+      "nearestBiteable": false,
+      "chaos": 0.028,
+      "rats": 1004,
+      "visualRats": 97,
+      "temple": {
+        "inside": true,
+        "gathering": true,
+        "started": true,
+        "awakened": true,
+        "phase": "procession",
+        "swarmVisuals": 0
+      },
+      "tippedProps": 5,
+      "cleaners": {
+        "total": 0,
+        "seeking": 0,
+        "tidying": 0
+      },
+      "note": "coords: x alley length, y up, z across alley"
+    },
+    "followStatue": 96,
+    "targetHuman": 96,
+    "climbingHuman": 0,
+    "transformedHumans": 1,
+    "attackedHumans": [],
+    "lowRitual": 0,
+    "visualRats": 97,
+    "virtualRats": 907,
+    "idol": {
+      "x": 130.48,
+      "y": 0.01,
+      "z": 0,
+      "anim": "walk",
+      "action": "walk",
+      "processIndex": 5
+    }
+  }
+}

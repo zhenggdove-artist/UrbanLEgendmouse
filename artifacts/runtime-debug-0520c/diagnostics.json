@@ -1,0 +1,79 @@
+{
+  "errors": [],
+  "startDiag": {
+    "humanTotal": 52,
+    "near": 26,
+    "groups": [
+      4,
+      3,
+      3,
+      3,
+      3,
+      2
+    ],
+    "idle": 14
+  },
+  "ritualDiag": {
+    "state": {
+      "mode": "playing",
+      "controlMode": "rat",
+      "camera": {
+        "yaw": 3.14,
+        "pitch": 0.12,
+        "dist": 2.2
+      },
+      "player": {
+        "x": 153.1,
+        "y": 0.27,
+        "z": 0,
+        "isAir": false
+      },
+      "controlled": {
+        "kind": "rat",
+        "role": null,
+        "x": 153.1,
+        "y": 0.27,
+        "z": 0,
+        "heldProp": false,
+        "throwCharge": 0
+      },
+      "nearestBiteable": false,
+      "chaos": 0,
+      "rats": 1000,
+      "visualRats": 97,
+      "temple": {
+        "inside": true,
+        "gathering": true,
+        "started": true,
+        "awakened": true,
+        "phase": "procession",
+        "swarmVisuals": 0
+      },
+      "tippedProps": 6,
+      "cleaners": {
+        "total": 0,
+        "seeking": 0,
+        "tidying": 0
+      },
+      "note": "coords: x alley length, y up, z across alley"
+    },
+    "followStatue": 96,
+    "targetHuman": 96,
+    "climbingHuman": 0,
+    "transformedHumans": 0,
+    "attackedHumans": [],
+    "lowRitual": 0,
+    "visualRats": 97,
+    "virtualRats": 903,
+    "chaos": 0,
+    "tippedProps": 6,
+    "idol": {
+      "x": 130.51,
+      "y": 0.01,
+      "z": 0,
+      "anim": "walk",
+      "action": "walk",
+      "processIndex": 5
+    }
+  }
+}

@@ -676,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','transition-jitter-rootlock+ritual-rats+idol-exit-fix 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','npc-crowds+idol-escort-rats-debug 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1018,7 +1018,7 @@ const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
-const RITUAL_RAT_VISIBLE_Y_OFFSET=0.20;
+const RITUAL_RAT_VISIBLE_Y_OFFSET=0.40;
 function getRitualRatGroundY(rat=null){return ((rat?.baseY??0)+GROUND_Y_OFFSET+RITUAL_RAT_VISIBLE_Y_OFFSET);}
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
@@ -2888,6 +2888,7 @@ function addChunkObject(root){
   return root;
 }
 function addDynamicChunkObject(root){
+  root.userData.dynamicChunkObject=true;
   scene.add(root);
   if(_activeChunk)_activeChunk.meshes.push(root);
   return root;
@@ -2917,6 +2918,7 @@ function registerBlocker(root,radius=0.6,opts={}){
 }
 function registerProp(root,radius=0.45,chaosWeight=1){
   root.userData.baseY=root.position.y;
+  root.userData.isPropRoot=true;
   if(root.parent!==scene) scene.add(root);
   const bbox=new THREE.Box3().setFromObject(root);
   const p={
@@ -4453,6 +4455,8 @@ const RING_SEAM_LENGTH=RING_SEAM_MAX_X-RING_SEAM_MIN_X;
 let ringSeamLastWrapTime=-999;
 let ringSeamOccludersBuilt=false;
 let ringSeamPreviewBuilt=false;
+let ringSeamPreviewMinGroup=null;
+let ringSeamPreviewMaxGroup=null;
 let residentRingBuilt=false;
 let lastChunkIdx=null;
 function yawToForwardVector(yaw){
@@ -4793,12 +4797,28 @@ function removeRingSeamPreviewGroups(){
   scene?.traverse?.(o=>{ if(names.has(o.name)) doomed.push(o); });
   for(const o of doomed){ o.parent?.remove(o); }
   ringSeamPreviewBuilt=false;
+  ringSeamPreviewMinGroup=null;
+  ringSeamPreviewMaxGroup=null;
 }
 function ensureRitualEscortRats(){
   const idol=game.templeEvent.idol;
   if(!idol?.root) return;
-  const escorts=game.rats.filter(r=>r && r!==player && (r.followStatue || r.templeSwarmVisual || r.templeBound));
-  const targetCount=Math.min(IS_MOBILE_DEVICE?90:180,Math.max(IS_MOBILE_DEVICE?48:96,game.templeEvent.swarmSprites?.length||0));
+  const targetCount=IS_MOBILE_DEVICE?54:96;
+  let escorts=game.rats.filter(r=>r && r!==player && (r.followStatue || r.templeSwarmVisual || r.templeBound));
+  escorts.sort((a,b)=>{
+    const adx=(a.root?.position?.x||0)-idol.root.position.x;
+    const adz=(a.root?.position?.z||0)-idol.root.position.z;
+    const bdx=(b.root?.position?.x||0)-idol.root.position.x;
+    const bdz=(b.root?.position?.z||0)-idol.root.position.z;
+    return (adx*adx+adz*adz)-(bdx*bdx+bdz*bdz);
+  });
+  if(escorts.length>targetCount){
+    const excess=escorts.slice(targetCount);
+    for(const rat of excess){
+      removeRatEntity(rat,{countAsVirtual:true});
+    }
+    escorts=escorts.slice(0,targetCount);
+  }
   while(escorts.length<targetCount){
     const rat=buildRat({isPlayer:false});
     const a=Math.random()*Math.PI*2;
@@ -4815,7 +4835,7 @@ function ensureRitualEscortRats(){
     rat.templeSwarmVisual=false;
     rat.followPlayer=false;
     rat.followStatue=true;
-    rat.fullFollowerSim=true;
+    rat.fullFollowerSim=false;
     rat.visualBudgetLockUntil=gameTime+99999;
     rat.root.visible=true;
     if(!Number.isFinite(rat.root.position.y) || rat.root.position.y<getRitualRatGroundY(rat)-0.35){
@@ -5214,7 +5234,7 @@ function generateChunk(idx){
   }
   const groupCount=RESIDENT_RING_MODE?((Math.random()<0.10 && idx%3===0)?1:0):(1+((Math.random()<0.28 && idx%2===0)?1:0));
   for(let g=0;g<groupCount;g++){
-    const size=3+Math.floor(Math.random()*5);
+    const size=3+Math.floor(Math.random()*3);
     const {x:leadX,z:leadZ}=pickHumanSpawn();
     const groupId=`chunk-${idx}-group-${g}`;
     const leader=spawnChunkHuman(chunk,leadX,leadZ,'wanderer',{id:groupId});
@@ -5251,11 +5271,35 @@ function ensureChunksAroundX(x){
 let lastEnsuredChunkIndex=null;
 let lastEnsureChunkX=Infinity;
 let chunkEnsureTimer=0;
+let chunkVisibilityTimer=0;
 function maybeEnsureChunksAroundPlayer(dt){
   // Runtime streaming is disabled in resident-ring mode. Generating or
   // disposing chunks near the temple was the cause of visible refreshes,
   // NPC batch changes, and possessed-host loss.
   return;
+}
+function updateResidentChunkVisibility(dt){
+  if(!RESIDENT_RING_MODE || !chunks.size || !player?.root) return;
+  chunkVisibilityTimer-=dt;
+  if(chunkVisibilityTimer>0) return;
+  chunkVisibilityTimer=0.35;
+  const focus=game.controlled?.root?.position||player.root.position;
+  const visibleRadius=CHUNK_SIZE*(IS_MOBILE_DEVICE?2.8:4.0);
+  for(const [idx,chunk] of chunks){
+    const centerX=idx*CHUNK_SIZE+CHUNK_SIZE*0.5;
+    const visible=Math.abs(nearestRingDelta(centerX,focus.x))<=visibleRadius;
+    if(chunk._renderVisible===visible) continue;
+    chunk._renderVisible=visible;
+    for(const obj of chunk.meshes||[]){
+      if(!obj || obj.userData?.dynamicChunkObject || obj.userData?.isPropRoot) continue;
+      obj.visible=visible;
+    }
+    for(const p of chunk.props||[]){
+      if(!p?.root) continue;
+      const active=!!(p.heldBy || p.throwVel || p.tipAnim || p.tipped || p.fireFX?.active || p.brothFX?.active || p.spillMesh?.visible);
+      p.root.visible=visible || active;
+    }
+  }
 }
 function waitForMainThreadBreath(){
   return new Promise(resolve=>window.setTimeout(resolve,0));
@@ -5531,6 +5575,7 @@ function buildHuman({position,role='wanderer'}={}){
       vy:0,isAir:false,controllable:false,parasitised:false,
       variantName:'',
       wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:1.72,
+      idleTimer:0,obstacleCooldown:0,localPopulation:false,
       behaviour:'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
       actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false,
@@ -5573,6 +5618,7 @@ function buildHuman({position,role='wanderer'}={}){
     variantName:variant.name||'',
     skinVariant:variant.skin||null,skinTint:tint.clone?.()||tint,skinCheckTimer:0,
     wanderTimer:rand(0.4,2.2),baseY:HUMAN_WORLD_Y_OFFSET,height:inst.height,
+    idleTimer:0,obstacleCooldown:0,localPopulation:false,
     behaviour:'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
     actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false,
@@ -5803,6 +5849,7 @@ function debugValidateHuman(h){
    so the run cycle doesn't look out of place on an idle wanderer. */
 function tickActor(ent,dt){
   if(!ent.inst||!ent.inst.mixer)return;
+  let selectedActionName=ent.animState||ent.actionName||'idle';
   if(ent.inst.actions && Object.keys(ent.inst.actions).length){
     let next='idle';
     if(ent.idolWanderer){
@@ -5870,6 +5917,7 @@ function tickActor(ent,dt){
       ent.animState=next;
       if(shouldRestartAction) ent.lastActionStamp=ent.actionStamp;
     }
+    selectedActionName=next;
     // Manual crossfade. We avoid three.js fadeOut() because earlier builds
     // left actions disabled at weight 0, but instant hard switching creates
     // the current walk<->idle shaking. Keep actions running, blend weights
@@ -5904,11 +5952,42 @@ function tickActor(ent,dt){
         if(name!==toName && name!==fromName) act.setEffectiveWeight(0);
       }
     }
+    if(ent===game.templeEvent?.idol || ent.behaviour==='procession'){
+      const idolWalkName=actionsMap.walk?'walk':(actionsMap.run?'run':'idle');
+      const idolWalkAct=actionsMap[idolWalkName];
+      ent.animState=idolWalkName;
+      ent.actionName=idolWalkName;
+      ent._animBlendFrom=null;
+      ent._animBlendTo=idolWalkName;
+      ent._animBlendT=0;
+      const seenIdolActions=new Set();
+      for(const [name,act] of Object.entries(actionsMap)){
+        if(seenIdolActions.has(act)) continue;
+        seenIdolActions.add(act);
+        act.stopFading?.();
+        act.stopWarping?.();
+        act.enabled=true;
+        act.paused=false;
+        if(!act.isRunning?.()) act.play();
+        act.setEffectiveWeight(act===idolWalkAct || name===idolWalkName?1:0);
+      }
+      selectedActionName=idolWalkName;
+    }
   }
   let scale;
   if(ent.kind==='rat'){
     // Crawl cycle ramps from 0.4× at idle to 1.6× at full pelt.
     scale=lerp(0.4,1.6,clamp(ent.curSpeed/PLAYER_MAX_SPEED,0,1));
+  }else if(ent.kind==='human' && !ent.controllable && ent!==game.parasitisedHost){
+    if(ent===game.templeEvent?.idol || ent.behaviour==='procession'){
+      scale=1.12;
+    }else if(selectedActionName==='idle'){
+      scale=1.08;
+    }else if(selectedActionName==='run'){
+      scale=1.34;
+    }else{
+      scale=lerp(1.08,1.32,clamp(ent.curSpeed/1.35,0,1));
+    }
   }else{
     // Run cycle goes from a slow march at idle to 1.4× at full speed.
     scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
@@ -6422,7 +6501,7 @@ function awakenTempleIdol(idol){
   idol.behaviour='procession';
   idol.actionName='walk';
   idol.actionTimer=999999;
-  idol.curSpeed=HOST_MAX_SPEED*0.58;
+  idol.curSpeed=HOST_MAX_SPEED*0.74;
   idol.roamTarget=null;
   idol.roamTimer=0;
   idol.awakenHoldY=typeof idol.root?.position?.y==='number'?idol.root.position.y:resolveIdolGroundY(idol);
@@ -6430,16 +6509,27 @@ function awakenTempleIdol(idol){
   idol.awakenDropStartDistance=1.4;
   replaceTempleIdolWithWalkRig(idol);
   setTempleIdolPhaseMaterials(idol,'awake');
-  for(const act of Object.values(idol.inst?.actions||{})){
-    act.stop();
+  idol.animState='walk';
+  idol._animBlendFrom=null;
+  idol._animBlendTo='walk';
+  for(const [name,act] of Object.entries(idol.inst?.actions||{})){
+    act.enabled=true;
     act.paused=false;
+    if(!act.isRunning?.()) act.play();
+    act.setEffectiveWeight?.(name==='walk'?1:0);
   }
   const walk=idol.inst?.actions?.walk||idol.inst?.actions?.run||idol.inst?.actions?.idle;
   if(walk){
+    walk.reset();
+    walk.time=0.12;
     walk.enabled=true;
+    walk.paused=false;
     walk.setEffectiveWeight?.(1);
+    walk.setEffectiveTimeScale?.(1.12);
     walk.play();
   }
+  idol.inst?.mixer?.update?.(0.08);
+  realignActorFeet(idol.inst);
   ensureRitualEscortRats();
   setTempleFlash(0);
   spawnTempleGlow(game.templeEvent.altarPos,180);
@@ -6504,6 +6594,8 @@ function tickTempleIdolProcession(idol,dt){
   if(dist>0.8 && step>0.01 && afterMoveDist<step*0.18){
     idol._processionStuckTimer=(idol._processionStuckTimer||0)+dt;
     if(idol._processionStuckTimer>0.65 && idol.processIndex<path.length-1){
+      idol.root.position.x+=Math.sin(idol.root.rotation.y)*0.9;
+      idol.root.position.z+=Math.cos(idol.root.rotation.y)*0.9;
       idol.processIndex++;
       idol._processionStuckTimer=0;
     }
@@ -6778,7 +6870,11 @@ function tickTempleEvent(dt){
     return;
   }
   if(game.templeEvent.awakened){
-    ensureRitualEscortRats();
+    game.templeEvent.escortEnsureTimer=(game.templeEvent.escortEnsureTimer||0)-dt;
+    if(game.templeEvent.escortEnsureTimer<=0){
+      ensureRitualEscortRats();
+      game.templeEvent.escortEnsureTimer=0.35;
+    }
     if(game.templeEvent.phase==='procession') tickTempleIdolProcession(idol,dt);
     else tickTempleIdolRoam(idol,dt);
     if(Math.random()<0.22) spawnTempleGlow(idol.root.position,4);
@@ -6796,6 +6892,94 @@ function spawnChunkHuman(chunk,x,z,role='wanderer',groupMeta=null){
   chunk.humans.push(h);
   game.humans.push(h);
   return h;
+}
+function isHumanSpawnClear(x,z,radius=0.58){
+  if(z<ALLEY_Z_MIN+1.0 || z>ALLEY_Z_MAX-1.0) return false;
+  if(pointInsideTempleZone(x,z,1.2)) return false;
+  for(const blocker of getBlockersNear(x,z,radius+0.8)){
+    if(!blocker || blocker.supportOnly) continue;
+    const minX=(blocker.minX??(blocker.centerX-(blocker.halfX||blocker.radius||0.6)))-radius;
+    const maxX=(blocker.maxX??(blocker.centerX+(blocker.halfX||blocker.radius||0.6)))+radius;
+    const minZ=(blocker.minZ??(blocker.centerZ-(blocker.halfZ||blocker.radius||0.6)))-radius;
+    const maxZ=(blocker.maxZ??(blocker.centerZ+(blocker.halfZ||blocker.radius||0.6)))+radius;
+    if(x>=minX && x<=maxX && z>=minZ && z<=maxZ) return false;
+  }
+  for(const p of getPropsNear(x,z,radius+0.8)){
+    if(!p?.root || p.heldBy || p.throwVel) continue;
+    const minX=p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45))-radius;
+    const maxX=p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45))+radius;
+    const minZ=p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45))-radius;
+    const maxZ=p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45))+radius;
+    if(x>=minX && x<=maxX && z>=minZ && z<=maxZ) return false;
+  }
+  for(const h of game.humans){
+    if(!h?.root || h.dead) continue;
+    const dx=h.root.position.x-x, dz=h.root.position.z-z;
+    if(dx*dx+dz*dz<0.72*0.72) return false;
+  }
+  return true;
+}
+function spawnVisibleHumanAt(x,z,groupMeta=null){
+  const idx=Math.floor(x/CHUNK_SIZE);
+  const chunk=chunks.get(idx)||chunks.get(Math.floor((player?.root?.position?.x||0)/CHUNK_SIZE))||null;
+  if(!chunk) return null;
+  const h=spawnChunkHuman(chunk,x,z,'wanderer',groupMeta);
+  if(h){
+    h.localPopulation=true;
+    h.wanderTimer=rand(0.6,1.7);
+    h.idleTimer=Math.random()<0.38?rand(0.8,2.4):0;
+  }
+  return h;
+}
+function seedVisibleHumansAroundFocus(force=false){
+  if(!player?.root || !HUMAN_VARIANTS.length) return;
+  const focus=player.root.position;
+  const nearRadius=28;
+  const nearRadiusSq=nearRadius*nearRadius;
+  let nearCount=0;
+  for(const h of game.humans){
+    if(!h?.root || h.dead) continue;
+    const dx=h.root.position.x-focus.x, dz=h.root.position.z-focus.z;
+    if(dx*dx+dz*dz<nearRadiusSq) nearCount++;
+  }
+  const target=IS_MOBILE_DEVICE?20:26;
+  if(!force && nearCount>=target) return;
+  let needed=Math.max(0,target-nearCount);
+  let attempts=0;
+  while(needed>0 && attempts<90){
+    attempts++;
+    const makeGroup=needed>=3 && Math.random()<0.72;
+    const groupSize=makeGroup?Math.min(needed,3+Math.floor(Math.random()*3)):1;
+    const anchorX=focus.x+rand(-22,24);
+    const anchorZ=clamp((Math.random()<0.5?-1:1)*rand(5.2,13.8),ALLEY_Z_MIN+1.2,ALLEY_Z_MAX-1.2);
+    if(Math.hypot(anchorX-focus.x,anchorZ-focus.z)<5.4) continue;
+    if(!isHumanSpawnClear(anchorX,anchorZ)) continue;
+    if(groupSize<=1){
+      if(spawnVisibleHumanAt(anchorX,anchorZ,null)) needed--;
+      continue;
+    }
+    const groupId=`visible-${Math.round(focus.x)}-${Math.floor(gameTime*10)}-${attempts}`;
+    const leader=spawnVisibleHumanAt(anchorX,anchorZ,{id:groupId});
+    if(!leader) continue;
+    leader.idleTimer=Math.random()<0.55?rand(1.2,3.4):0;
+    needed--;
+    for(let i=1;i<groupSize && needed>0;i++){
+      const angle=(i/groupSize)*Math.PI*2+rand(-0.28,0.28);
+      const radius=0.82+Math.floor(i/2)*0.46+rand(-0.08,0.16);
+      const mx=anchorX+Math.cos(angle)*radius;
+      const mz=clamp(anchorZ+Math.sin(angle)*radius,ALLEY_Z_MIN+1.0,ALLEY_Z_MAX-1.0);
+      if(!isHumanSpawnClear(mx,mz,0.42)) continue;
+      const member=spawnVisibleHumanAt(mx,mz,{
+        id:groupId,
+        leader,
+        offset:new THREE.Vector3(Math.cos(angle)*radius,0,Math.sin(angle)*radius)
+      });
+      if(member){
+        member.idleTimer=leader.idleTimer;
+        needed--;
+      }
+    }
+  }
 }
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
@@ -11317,6 +11501,16 @@ function updateRingSeamVeil(dt){
   // matches the landing street, an overlay makes the loop feel artificial.
   const el=document.getElementById('ring-seam-veil');
   if(el){el.style.opacity='0';el.style.backdropFilter='';}
+  if(ringSeamPreviewMinGroup || ringSeamPreviewMaxGroup){
+    const focus=game.controlled?.root?.position||player?.root?.position||null;
+    const x=focus?.x;
+    const reveal=RING_SEAM_FADE_ZONE*1.35;
+    const nearMin=Number.isFinite(x) && Math.abs(x-RING_SEAM_MIN_X)<reveal;
+    const nearMax=Number.isFinite(x) && Math.abs(x-RING_SEAM_MAX_X)<reveal;
+    // min source shifted to max is only useful at the max seam, and vice versa.
+    if(ringSeamPreviewMinGroup) ringSeamPreviewMinGroup.visible=nearMax;
+    if(ringSeamPreviewMaxGroup) ringSeamPreviewMaxGroup.visible=nearMin;
+  }
 }
 function makeRingSeamFogTexture(){
   const c=document.createElement('canvas');c.width=128;c.height=512;
@@ -11373,7 +11567,11 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
     n.userData={...(n.userData||{}),ringSeamPreview:true};
     n.raycast=()=>{};
     if(n.isMesh){
-      n.frustumCulled=false;
+      // Preview copies number in the thousands. Forcing them all to draw
+      // off-camera was the main "game starts and immediately stutters"
+      // cost on mobile GPUs; normal frustum culling keeps the seam effect
+      // without rendering both distant street ends every frame.
+      n.frustumCulled=true;
       n.renderOrder=Math.max(n.renderOrder||0,1);
     }
   });
@@ -11390,6 +11588,8 @@ function buildRingSeamPreviewClones(){
   const previewChunks=5;
   const minGroup=new THREE.Group();minGroup.name='ring_seam_preview_min_shifted_to_max';
   const maxGroup=new THREE.Group();maxGroup.name='ring_seam_preview_max_shifted_to_min';
+  minGroup.visible=false;
+  maxGroup.visible=false;
   const minStart=RESIDENT_RING_MIN_CHUNK;
   const minEnd=Math.min(RESIDENT_RING_MAX_CHUNK,minStart+previewChunks-1);
   const maxEnd=RESIDENT_RING_MAX_CHUNK;
@@ -11417,6 +11617,8 @@ function buildRingSeamPreviewClones(){
   }
   scene.add(minGroup);
   scene.add(maxGroup);
+  ringSeamPreviewMinGroup=minGroup;
+  ringSeamPreviewMaxGroup=maxGroup;
   console.log('[ring-map] seam preview clones temple-filtered',{
     minSource:`${minStart}→${minEnd}`,
     maxSource:`${maxStart}→${maxEnd}`,
@@ -11466,9 +11668,12 @@ function syncRingSeamDynamicMirrors(){
   if(!focus) return;
   const candidates=[];
   if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
+  let mirroredRatCandidates=0;
   for(const r of game.rats){
     if(!r?.root || r===player || r===game.controlled) continue;
-    if(r.followStatue || r.templeSwarmVisual || r.templeBound || r.climbingHuman || r.targetHuman) candidates.push(r);
+    if(r.followStatue || r.templeSwarmVisual || r.templeBound || r.climbingHuman || r.targetHuman){
+      if(mirroredRatCandidates++<36) candidates.push(r);
+    }
   }
   const keep=new Set();
   for(const ent of candidates){
@@ -11532,6 +11737,16 @@ function sampleSupportHeight(ent,x,z,currentY){
 }
 function resolveWorldCollisions(ent,prevX,prevZ,radius){
   const pos=ent.root.position;
+  let hit=false;
+  let hitNx=0,hitNz=0;
+  const recordHit=(nx,nz)=>{
+    hit=true;
+    hitNx+=nx;
+    hitNz+=nz;
+  };
+  ent._lastCollisionHit=false;
+  ent._lastCollisionNormalX=0;
+  ent._lastCollisionNormalZ=0;
   const footY=pos.y-GROUND_Y_OFFSET;
   const headY=footY+(ent.height||1.6);
   // Same spatial-grid path. Saves ~99% of CPU once the world is large
@@ -11551,9 +11766,13 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
     if(pushX<pushZ){
-      pos.x=(Math.abs(maxX-pos.x)<Math.abs(pos.x-minX))?maxX:minX;
+      const pushPositive=Math.abs(maxX-pos.x)<Math.abs(pos.x-minX);
+      pos.x=pushPositive?maxX:minX;
+      recordHit(pushPositive?1:-1,0);
     }else{
-      pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
+      const pushPositive=Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ);
+      pos.z=pushPositive?maxZ:minZ;
+      recordHit(0,pushPositive?1:-1);
     }
   }
   const nearProps=getPropsNear(pos.x,pos.z,radius+1.5);
@@ -11569,15 +11788,28 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     const pushX=Math.min(Math.abs(maxX-pos.x),Math.abs(pos.x-minX));
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
     if(pushX<pushZ){
-      pos.x=(Math.abs(maxX-pos.x)<Math.abs(pos.x-minX))?maxX:minX;
+      const pushPositive=Math.abs(maxX-pos.x)<Math.abs(pos.x-minX);
+      pos.x=pushPositive?maxX:minX;
+      recordHit(pushPositive?1:-1,0);
     }else{
-      pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
+      const pushPositive=Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ);
+      pos.z=pushPositive?maxZ:minZ;
+      recordHit(0,pushPositive?1:-1);
     }
   }
+  const beforeClampZ=pos.z;
   softClampZ(pos);
+  if(pos.z!==beforeClampZ) recordHit(0,pos.z>beforeClampZ?1:-1);
   softClampTempleX(pos);
   wrapResidentRingEntity(ent);
   tryLoopTempleEntity(ent,prevX,prevZ);
+  if(hit){
+    const len=Math.hypot(hitNx,hitNz)||1;
+    ent._lastCollisionHit=true;
+    ent._lastCollisionNormalX=hitNx/len;
+    ent._lastCollisionNormalZ=hitNz/len;
+  }
+  return hit;
 }
 function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   const curY=ent.root.rotation.y;
@@ -11587,6 +11819,32 @@ function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   ent.root.rotation.y=curY+diff*Math.min(1,dt*turnRate);
   ent.yaw=targetYaw;
   return diff;
+}
+function steerHumanAwayFromCollision(h,prevX,prevZ,hit){
+  if(!h || !hit) return false;
+  if((h.obstacleCooldown||0)>0) return true;
+  h.obstacleCooldown=0.32+Math.random()*0.22;
+  let nx=h._lastCollisionNormalX||0;
+  let nz=h._lastCollisionNormalZ||0;
+  if(Math.hypot(nx,nz)<0.01){
+    nx=prevX-h.root.position.x;
+    nz=prevZ-h.root.position.z;
+  }
+  if(Math.hypot(nx,nz)<0.01){
+    nx=-Math.sin(h.root.rotation.y||h.yaw||0);
+    nz=-Math.cos(h.root.rotation.y||h.yaw||0);
+  }
+  const awayYaw=Math.atan2(nx,nz)+rand(-0.72,0.72);
+  h.yaw=awayYaw;
+  h.wanderTimer=rand(0.45,1.15);
+  h.curSpeed=0;
+  if(Math.random()<0.28) h.idleTimer=Math.max(h.idleTimer||0,rand(0.18,0.48));
+  if(h.groupLeader && h.groupLeader!==h && !h.groupLeader.dead && !h.groupLeader.parasitised){
+    h.groupLeader.yaw=awayYaw;
+    h.groupLeader.wanderTimer=rand(0.45,1.15);
+    h.groupLeader.idleTimer=Math.max(h.groupLeader.idleTimer||0,0.12);
+  }
+  return true;
 }
 function updatePlayer(dt){
   if(game.ratCityMode)return;
@@ -11847,6 +12105,7 @@ function addRatSwarm(count,origin=player?.root?.position||new THREE.Vector3()){
 }
 function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   if(!p||p.tipTriggered)return;
+  const awardsChaos=source!=='idol';
   activeProps.add(p);
   p.tipTriggered=true;
   p.tipped=true;
@@ -11902,9 +12161,9 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
       targetX:p.root.position.x,
       targetZ:p.root.position.z
     });
-    awardChaosScore(p.root.position,CHAOS_PER_TIP*0.8*spillRatCount,4.8);
+    if(awardsChaos) awardChaosScore(p.root.position,CHAOS_PER_TIP*0.8*spillRatCount,4.8);
   }
-  awardChaosScore(p.root.position,CHAOS_PER_TIP*p.chaosWeight*chaosGain,4.8);
+  if(awardsChaos && chaosGain>0) awardChaosScore(p.root.position,CHAOS_PER_TIP*p.chaosWeight*chaosGain,4.8);
 }
 function tickProps(dt){
   const ent=game.controlled;if(!ent)return;
@@ -12102,8 +12361,10 @@ function tickCleaner(cleaner,dt){
 function tickHumans(dt){
   const focusPos=getGameplayFocusPosition();
   for(const h of game.humans){
-    h.skinCheckTimer=(h.skinCheckTimer||0)-dt;
-    if(h.skinCheckTimer<=0){
+    if(!h._lodInactive){
+      h.skinCheckTimer=(h.skinCheckTimer||0)-dt;
+    }
+    if(!h._lodInactive && h.skinCheckTimer<=0){
       ensureCharacterSkinPresent(h.inst,h.skinTint,h.skinVariant);
       h.skinCheckTimer=1.6+Math.random()*0.9;
     }
@@ -12128,6 +12389,7 @@ function tickHumans(dt){
       continue;
     }
     activateHumanFromLOD(h);
+    h.obstacleCooldown=Math.max(0,(h.obstacleCooldown||0)-dt);
     if(h.idolWanderer){
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       h.wanderTimer=(h.wanderTimer||0)-dt;
@@ -12141,7 +12403,8 @@ function tickHumans(dt){
       const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      resolveWorldCollisions(h,prevX,prevZ,0.38);
+      const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
+      steerHumanAwayFromCollision(h,prevX,prevZ,hit);
       softClampZ(h.root.position);
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       tickActor(h,dt);
@@ -12226,7 +12489,8 @@ function tickHumans(dt){
       const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      resolveWorldCollisions(h,prevX,prevZ,0.38);
+      const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
+      steerHumanAwayFromCollision(h,prevX,prevZ,hit);
       if(h.root.position.z<ALLEY_Z_MIN+0.4||h.root.position.z>ALLEY_Z_MAX-0.4){
         h.yaw+=Math.PI*(Math.random()<0.5?0.8:1.2);
         softClampZ(h.root.position);
@@ -12252,14 +12516,25 @@ function tickHumans(dt){
           const dx=tx-h.root.position.x;
           const dz=tz-h.root.position.z;
           const dist=Math.hypot(dx,dz);
+          if((h.groupLeader.idleTimer||0)>0 && dist<0.72){
+            h.curSpeed=0;
+            h.idleTimer=Math.max(h.idleTimer||0,Math.min(0.35,h.groupLeader.idleTimer));
+            tickActor(h,dt);
+            h._footstepTimer=0;
+            hardClampHumanToGround(h);
+            debugValidateHuman(h);
+            debugHumanAction(h);
+            continue;
+          }
           const desiredYaw=Math.atan2(dx,dz);
           const turnDiff=rotateTowardYaw(h,desiredYaw,dt,6.8);
           const moveScale=Math.abs(turnDiff)>0.82?0:(Math.abs(turnDiff)>0.34?0.42:1);
-          h.curSpeed=dist>0.42?0.96*moveScale:0;
+          h.curSpeed=dist>0.42?1.18*moveScale:0;
           const prevX=h.root.position.x, prevZ=h.root.position.z;
           h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
           h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-          resolveWorldCollisions(h,prevX,prevZ,0.38);
+          const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
+          steerHumanAwayFromCollision(h,prevX,prevZ,hit);
           softClampZ(h.root.position);
           tickActor(h,dt);
           h._footstepTimer=0;
@@ -12269,18 +12544,36 @@ function tickHumans(dt){
           continue;
         }
       }
-      h.wanderTimer-=dt;
-      if(h.wanderTimer<=0){h.wanderTimer=1.6+Math.random()*2.6;h.yaw+=(Math.random()-0.5)*Math.PI*0.8}
-      const turnDiff=rotateTowardYaw(h,h.yaw,dt,5.2);
-      const moveScale=Math.abs(turnDiff)>0.72?0:(Math.abs(turnDiff)>0.28?0.3:1);
-      const spd=0.76;
-      h.curSpeed=spd*moveScale;
-      const prevX=h.root.position.x, prevZ=h.root.position.z;
-      h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
-      h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      resolveWorldCollisions(h,prevX,prevZ,0.38);
-      if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
-        h.yaw+=Math.PI;softClampZ(h.root.position);
+      h.idleTimer=Math.max(0,(h.idleTimer||0)-dt);
+      if(h.idleTimer>0){
+        h.curSpeed=0;
+        if(Math.random()<dt*0.35) h.yaw+=rand(-0.22,0.22);
+      }else{
+        h.wanderTimer-=dt;
+        if(h.wanderTimer<=0){
+          const groupIdle=!!h.socialGroupId;
+          if(Math.random()<(groupIdle?0.46:0.30)){
+            h.idleTimer=rand(groupIdle?1.3:0.85,groupIdle?3.2:2.2);
+            h.wanderTimer=h.idleTimer+rand(0.4,1.0);
+          }else{
+            h.wanderTimer=1.25+Math.random()*2.1;
+            h.yaw+=(Math.random()-0.5)*Math.PI*0.9;
+          }
+        }
+        if((h.idleTimer||0)<=0){
+          const turnDiff=rotateTowardYaw(h,h.yaw,dt,6.0);
+          const moveScale=Math.abs(turnDiff)>0.78?0.18:(Math.abs(turnDiff)>0.32?0.58:1);
+          const spd=1.08;
+          h.curSpeed=spd*moveScale;
+          const prevX=h.root.position.x, prevZ=h.root.position.z;
+          h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
+          h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
+          const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
+          steerHumanAwayFromCollision(h,prevX,prevZ,hit);
+          if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
+            h.yaw+=Math.PI;softClampZ(h.root.position);
+          }
+        }
       }
     }
     tickActor(h,dt);
@@ -12323,9 +12616,10 @@ function tickBreeding(dt){
 // === Idol-follower swarm — rats hunt humans within the awakened idol's
 // range, climb their bodies, and trigger a transformation into a new
 // idol-skinned wanderer once enough rats have piled on.
-const RAT_HUNT_HUMAN_RANGE=16;           // idol-centric attack radius
+const RAT_HUNT_HUMAN_RANGE=24;           // idol-centric attack radius
 const RAT_HUNT_HUMAN_RANGE_SQ=RAT_HUNT_HUMAN_RANGE*RAT_HUNT_HUMAN_RANGE;
-const RAT_CLIMB_GRAB_DIST=0.85;          // when rat sticks to the human
+const RAT_ESCORT_ACTIVE_HUNTERS=IS_MOBILE_DEVICE?14:28;
+const RAT_CLIMB_GRAB_DIST=1.18;          // when rat sticks to the human
 const RAT_CLIMB_GRAB_DIST_SQ=RAT_CLIMB_GRAB_DIST*RAT_CLIMB_GRAB_DIST;
 const HUMAN_RAT_ATTACK_CAP=14;           // max rats per human at once
 const HUMAN_RAT_TRANSFORM_RATS=8;        // minimum climbers to start transforming
@@ -12392,11 +12686,15 @@ function refreshActiveFollowerRats(dt){
       r.climbingHuman ||
       r.targetHuman ||
       r.templeBound ||
-      r.templeSwarmVisual ||
-      r.followStatue;
+      r.templeSwarmVisual;
     if(critical){
       r.fullFollowerSim=true;
       activeFollowerRats.push(r);
+      continue;
+    }
+    if(r.followStatue){
+      r.fullFollowerSim=false;
+      if(r.root) r.root.visible=true;
       continue;
     }
     if(!r.followPlayer) continue;
@@ -12533,6 +12831,15 @@ function shouldSimulateHumanEntity(human,focusPos){
   if(game.templeEvent.gathering && pointInsideTempleZone(human.root.position.x,human.root.position.z,10)){
     return true;
   }
+  if(game.templeEvent.awakened && game.templeEvent.idol?.root){
+    const ix=game.templeEvent.idol.root.position.x;
+    const iz=game.templeEvent.idol.root.position.z;
+    const idx=human.root.position.x-ix;
+    const idz=human.root.position.z-iz;
+    if(idx*idx+idz*idz<(RAT_HUNT_HUMAN_RANGE+4)*(RAT_HUNT_HUMAN_RANGE+4)){
+      return true;
+    }
+  }
   const dx=human.root.position.x-focusPos.x;
   const dz=human.root.position.z-focusPos.z;
   const d2=dx*dx+dz*dz;
@@ -12549,8 +12856,7 @@ function isRatCriticalForFullSim(rat){
   return !!(
     rat?.templeBound ||
     rat?.templeSwarmVisual ||
-    rat?.followStatue ||
-    ((rat?.visualBudgetLockUntil||0)>gameTime) ||
+    (!rat?.followStatue && (rat?.visualBudgetLockUntil||0)>gameTime) ||
     rat?.climbingHuman ||
     rat?.targetHuman
   );
@@ -12569,8 +12875,17 @@ function enforceFollowerRatFullSimBudget(dt){
       if(r && r!==player) r.fullFollowerSim=false;
       continue;
     }
-    if(r.climbingHuman || r.targetHuman || r.templeBound || r.followStatue){
+    if(r.climbingHuman || r.targetHuman || r.templeBound){
       r.fullFollowerSim=true;
+      continue;
+    }
+    if(r.followStatue){
+      const idol=game.templeEvent.idol;
+      const ref=idol?.root?.position||{x:px,z:pz};
+      const dx=r.root.position.x-ref.x;
+      const dz=r.root.position.z-ref.z;
+      r.fullFollowerSim=(dx*dx+dz*dz)<20*20 && used<max;
+      if(r.fullFollowerSim) used++;
       continue;
     }
     const dx=r.root.position.x-px;
@@ -12585,7 +12900,16 @@ function enforceFollowerRatFullSimBudget(dt){
   }
 }
 function getRatLODConfig(rat,focusPos){
-  if(!rat?.root || !focusPos || isRatCriticalForFullSim(rat)){
+  if(!rat?.root || !focusPos){
+    return {brainInterval:0,worldInterval:0};
+  }
+  if(rat.followStatue && !rat.climbingHuman && !rat.targetHuman){
+    return {
+      brainInterval:IS_MOBILE_DEVICE?0.10:0.06,
+      worldInterval:IS_MOBILE_DEVICE?0.18:0.12
+    };
+  }
+  if(isRatCriticalForFullSim(rat)){
     return {brainInterval:0,worldInterval:0};
   }
   const dx=rat.root.position.x-focusPos.x;
@@ -12895,7 +13219,8 @@ function transformHumanToIdolModel(human){
 function findHumanToAttackFor(rat,idol){
   let best=null,bestD=Infinity;
   const ix=idol.root.position.x, iz=idol.root.position.z;
-  for(const h of game.humans){
+  const candidates=getHumansNear(ix,iz,RAT_HUNT_HUMAN_RANGE+2);
+  for(const h of candidates){
     if(h.dead||h.parasitised||h.transformedToIdol||h.nonRatTarget||h.nonBiteable) continue;
     if(h===game.parasitisedHost) continue;
     const dx=h.root.position.x-ix, dz=h.root.position.z-iz;
@@ -12990,6 +13315,35 @@ function tickFollowerRats(dt){
   // every rat the player can see is actually being simulated — no
   // more rendered-but-frozen rats sitting on the street.
   const list=game.rats;
+  let escortHunterCount=0;
+  if(game.templeEvent.awakened && game.templeEvent.idol){
+    const pendingHunters=[];
+    for(const r of list){
+      if(!r || r===player || r===game.controlled || !r.followStatue) continue;
+      if(r.climbingHuman){
+        escortHunterCount++;
+      }else if(r.targetHuman){
+        pendingHunters.push(r);
+      }
+    }
+    if(escortHunterCount+pendingHunters.length>RAT_ESCORT_ACTIVE_HUNTERS){
+      pendingHunters.sort((a,b)=>{
+        const ah=a.targetHuman, bh=b.targetHuman;
+        const ad=ah?Math.hypot(ah.root.position.x-a.root.position.x,ah.root.position.z-a.root.position.z):9999;
+        const bd=bh?Math.hypot(bh.root.position.x-b.root.position.x,bh.root.position.z-b.root.position.z):9999;
+        return ad-bd;
+      });
+      const keep=Math.max(0,RAT_ESCORT_ACTIVE_HUNTERS-escortHunterCount);
+      for(let i=keep;i<pendingHunters.length;i++){
+        pendingHunters[i].targetHuman=null;
+        pendingHunters[i].huntChaseTimer=0;
+        pendingHunters[i].huntRetry=0.45+Math.random()*0.5;
+      }
+      escortHunterCount+=Math.min(keep,pendingHunters.length);
+    }else{
+      escortHunterCount+=pendingHunters.length;
+    }
+  }
   for(const r of list){
     if(r===player||r===game.controlled)continue;
     if(!r?.root) continue;
@@ -13143,6 +13497,9 @@ function tickFollowerRats(dt){
     if(r.followStatue && game.templeEvent.awakened && game.templeEvent.idol){
       const idol=game.templeEvent.idol;
       const phase=(r.swarmPhase!==undefined)?r.swarmPhase:(r.swarmPhase=Math.random()*Math.PI*2);
+      const huntBatch=Math.floor(((phase/(Math.PI*2))*4))&3;
+      const activeBatch=Math.floor(gameTime*0.85)&3;
+      const canStartHunt=huntBatch===activeBatch || huntBatch===((activeBatch+1)&3);
       // Try to keep a hunt target. If the rat already has a victim
       // that is still valid, head straight for it; if it gets close
       // enough, latch onto the body and start climbing.
@@ -13150,34 +13507,43 @@ function tickFollowerRats(dt){
       if(victim && (victim.dead||victim.transformedToIdol||victim.parasitised)){
         victim=null;
         r.targetHuman=null;
+        r.huntChaseTimer=0;
       }
-      if(!victim){
+      if(!victim && canStartHunt && escortHunterCount<RAT_ESCORT_ACTIVE_HUNTERS){
         // Re-acquire a victim every ~0.45s of idle following.
         r.huntRetry=(r.huntRetry||0)-dt;
         if(r.huntRetry<=0){
           victim=findHumanToAttackFor(r,idol);
           if(victim){
             r.targetHuman=victim;
+            escortHunterCount++;
             victim.ratCoverage=(victim.ratCoverage||0); // ensure field
           }
           r.huntRetry=0.35+Math.random()*0.4;
         }
+      }else if(!victim && !canStartHunt){
+        r.targetHuman=null;
       }
       if(victim){
         const vdx=victim.root.position.x-r.root.position.x;
         const vdz=victim.root.position.z-r.root.position.z;
         const vd2=vdx*vdx+vdz*vdz;
-        if(vd2<=RAT_CLIMB_GRAB_DIST_SQ){
+        r.huntChaseTimer=(r.huntChaseTimer||0)+dt;
+        if(vd2<=RAT_CLIMB_GRAB_DIST_SQ || (r.huntChaseTimer>1.25 && vd2<2.8*2.8)){
           // Latch onto the human and switch to climbing this frame.
+          const firstClimber=(victim.ratCoverage||0)<=0;
           r.climbingHuman=victim;
           r.targetHuman=null;
           r.climbHumanTimer=0;
+          r.huntChaseTimer=0;
           victim.ratCoverage=(victim.ratCoverage||0)+1;
+          playHumanBiteScream(victim,firstClimber);
           if(tickRatClimbingHuman(r,dt)) continue;
         }else{
           target={x:victim.root.position.x,z:victim.root.position.z};
         }
       }else{
+        r.huntChaseTimer=0;
         const ring=phase+gameTime*0.7;
         const trail=1.3+((r.swarmPhase||0)%1.8);
         target={
@@ -13236,7 +13602,7 @@ function tickFollowerRats(dt){
     if(target && target.x!==undefined && runBrain){
       r.roamTimer=(r.roamTimer||0)-dt;
       if(r.roamTimer<=0 || !r.targetPos){
-        const jitterAmount=(r.followPlayer && !r.streetBurstOrigin)?0.55:1.8;
+        const jitterAmount=r.targetHuman ? 0.08 : (r.followStatue ? 0.32 : ((r.followPlayer && !r.streetBurstOrigin)?0.55:1.8));
         const jitterX=target.x+rand(-jitterAmount,jitterAmount);
         const jitterZ=clamp(target.z+rand(-jitterAmount,jitterAmount),ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4);
         r.targetPos?.set(jitterX,0,jitterZ);
@@ -13250,7 +13616,7 @@ function tickFollowerRats(dt){
     const a=Math.atan2(dx,dz);
     const dist=Math.hypot(dx,dz);
     const baseSpd=(dist>0.35)?(1.2+game.chaos*1.5):0;
-    const spd=r.followStatue?baseSpd*4:baseSpd;
+    const spd=r.followStatue?baseSpd*5.2:baseSpd;
     const prevX=r.root.position.x, prevZ=r.root.position.z;
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
@@ -13260,11 +13626,11 @@ function tickFollowerRats(dt){
     // idle rat is pure waste — especially once 500 rats are alive.
     const moved=spd>0.05;
     const allowWorldCollision=
-      !r.followPlayer ||
-      r.fullFollowerSim ||
+      ((r.fullFollowerSim || r.targetHuman) && !r.followStatue) ||
       r.climbingHuman ||
-      r.targetHuman ||
-      r.templeBound;
+      r.templeBound ||
+      r.templeSwarmVisual ||
+      (!r.followPlayer && !r.followStatue);
     if(moved && runWorldProbe && allowWorldCollision) resolveWorldCollisions(r,prevX,prevZ,0.22);
     if(moved && runWorldProbe && allowWorldCollision){
       const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
@@ -13276,6 +13642,13 @@ function tickFollowerRats(dt){
     }else if(moved){
       r.root.position.y=r._cachedSupportY ?? ((r.baseY??0)+GROUND_Y_OFFSET);
       softClampZ(r.root.position);
+    }
+    if((r.followStatue || r.templeSwarmVisual || r.templeBound) && !r.climbingHuman){
+      const ritualGroundY=getRitualRatGroundY(r);
+      if(!Number.isFinite(r.root.position.y) || r.root.position.y<ritualGroundY){
+        r.root.position.y=ritualGroundY;
+      }
+      r._cachedSupportY=Math.max(r._cachedSupportY ?? ritualGroundY,ritualGroundY);
     }
     r.root.rotation.y=a;
     r.curSpeed=spd;
@@ -13600,6 +13973,7 @@ function startGame(){
   sfxState.streetAmbienceGain=0.5;
   if(sfxState.unlocked) startLoopSFX('streetAmbience',{volume:0.5,playbackRate:1,source:player});
   setRatCityMode(false);
+  seedVisibleHumansAroundFocus(true);
   updateActionButtons();
   setIntroProgress(100);
   console.log('[boot] startGame');
@@ -13704,6 +14078,7 @@ function stepFrame(dt){
     for(const r of game.rats){
       if(!r || r===player || r===game.controlled) continue;
       if(r.root?.visible===false) continue;
+      if(r.followStatue || r.templeSwarmVisual || r.templeBound || r.climbingHuman || r.targetHuman) continue;
       // Derive moveIntent from current velocity, with HYSTERESIS so a
       // follower whose curSpeed wobbles around the forward/idle frame-
       // pick threshold doesn't flicker: tickRatBillboard resets the
@@ -13726,6 +14101,7 @@ function stepFrame(dt){
     }
     updateHUD(dt);
     updateRingSeamVeil(dt);
+    updateResidentChunkVisibility(dt);
     syncRingSeamDynamicMirrors();
     maybeEnsureChunksAroundPlayer(dt);
   }else if(gameState==='intro'){
@@ -13734,6 +14110,7 @@ function stepFrame(dt){
     for(const h of game.humans){h.curSpeed=0.4;tickActor(h,dt)}
     if(player){player.curSpeed=0.4;tickActor(player,dt)}
     updateRingSeamVeil(dt);
+    updateResidentChunkVisibility(dt);
     syncRingSeamDynamicMirrors();
   }
   updateCam();
@@ -13977,6 +14354,7 @@ async function init(){
   buildRingSeamOccluders();
   ensureChunksAroundX(player.root.position.x);
   clearStartZone(player.root.position,3.6);
+  seedVisibleHumansAroundFocus(true);
   setIntroProgress(100);
 
   startBtn.disabled=false;
