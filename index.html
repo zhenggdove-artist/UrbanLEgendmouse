@@ -1600,6 +1600,14 @@ function tickFootstepSFX(ent,dt,key,{minSpeed=0.18,baseInterval=0.44,volume=1,co
   if(ent._footstepTimer>0) return;
   const interval=Math.max(0.16,baseInterval-Math.min(0.22,speed*0.06));
   const playbackRate=clamp(0.92+speed*rateScale,0.8,1.45);
+  if(key==='idolStep'){
+    const now=Date.now();
+    if(now-(ent._lastIdolWalkSound||0)<1000){
+      ent._footstepTimer=Math.max(ent._footstepTimer||0,0.08);
+      return;
+    }
+    ent._lastIdolWalkSound=now;
+  }
   playSFX(key,{volume,playbackRate,cooldown,source:ent});
   ent._footstepTimer=interval;
 }
@@ -4460,6 +4468,7 @@ let ringSeamPreviewMinGroup=null;
 let ringSeamPreviewMaxGroup=null;
 let residentRingBuilt=false;
 let lastChunkIdx=null;
+let nextIdolInstanceId=1;
 function yawToForwardVector(yaw){
   return new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
 }
@@ -4702,6 +4711,7 @@ function spawnTempleIdol(plazaInfo,{decorative=false}={}){
   realignActorFeet(inst);
   const idolActor={
     kind:'human',
+    idolInstanceId:`idol-${nextIdolInstanceId++}`,
     root,inst,curSpeed:0,animState:'idle',actionTimer:0,actionName:null,
     behaviour:'idle',controllable:false,isAir:false,panicTimer:0,moveInputX:0,moveInputY:0,
     originalMaterials,awakened:false,decorative,
@@ -4714,6 +4724,7 @@ function spawnTempleIdol(plazaInfo,{decorative=false}={}){
     // temple end of the loop.
     plazaSnapshot:clonePlazaInfoForIdol(plazaInfo)
   };
+  root.userData.idolInstanceId=idolActor.idolInstanceId;
   ensureTempleIdolLights();
   setTempleIdolPhaseMaterials(idolActor,'gold');
   const idleAct=inst.actions?.idle||inst.actions?.walk||inst.actions?.run;
@@ -4789,15 +4800,27 @@ function removeObjectFromChunkMeshes(root){
 }
 function clearRingMirrorForEntity(ent){
   const mr=ent?._ringMirrorRoot;
-  let status='none';
+  let status='not-found';
+  const ownerId=ent?.idolInstanceId || ent?.root?.userData?.idolInstanceId || null;
+  const removeMirror=(mirror)=>{
+    if(!mirror) return false;
+    mirror.visible=false;
+    if(mirror.parent) mirror.parent.remove(mirror);
+    return true;
+  };
   if(mr){
-    mr.visible=false;
-    if(mr.parent){
-      mr.parent.remove(mr);
-      status='removed';
-    }else{
-      status='detached';
+    status=removeMirror(mr)?'removed-direct':'detached-direct';
+  }
+  if(ownerId && scene){
+    const stale=[];
+    scene.traverse(o=>{
+      if(o?.userData?.ringMirrorOwnerId===ownerId) stale.push(o);
+    });
+    let removed=0;
+    for(const mirror of stale){
+      if(mirror!==mr && removeMirror(mirror)) removed++;
     }
+    if(removed>0) status=status.startsWith('removed')?`${status}+registry-${removed}`:`registry-${removed}`;
   }
   if(ent) ent._ringMirrorRoot=null;
   return status;
@@ -4846,6 +4869,7 @@ function ensureRitualEscortRats(){
     rat.templeSwarmVisual=false;
     rat.followPlayer=false;
     rat.followStatue=true;
+    rat.targetIdol=idol;
     rat.fullFollowerSim=false;
     rat.visualBudgetLockUntil=gameTime+99999;
     rat.root.visible=true;
@@ -4888,6 +4912,7 @@ function replaceTempleIdolWithWalkRig(idol){
   });
   const root=inst.outer;
   root.userData.noRingSeamPreview=true;
+  root.userData.idolInstanceId=idol.idolInstanceId;
   root.name='temple_idol_walk_root';
   root.position.copy(idlePos);
   root.rotation.copy(idleRot);
@@ -6459,6 +6484,7 @@ function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null,entrance=n
   rat.templeSwarmVisual=true;
   rat.templeSwarmSnapshot=clonePlazaInfoForIdol(plazaSnapshot);
   rat.templeSwarmIdol=idolActor||null;
+  rat.targetIdol=idolActor||game.templeEvent.idol||null;
   rat.followPlayer=false;
   rat.followStatue=false;
   rat.visualBudgetLockUntil=gameTime+99999;
@@ -11695,6 +11721,46 @@ function resyncActorMixerAfterWarp(ent){
   mixer.update?.(0.001);
   return `replayed:${preferred}`;
 }
+function calculateNewPathIndex(idol,pos=idol?.root?.position){
+  const path=idol?.processionPath?.length?idol.processionPath:game.templeEvent.processionPath;
+  if(!path?.length || !pos) return idol?.processIndex||0;
+  let bestIdx=0;
+  let bestD=Infinity;
+  for(let i=0;i<path.length;i++){
+    const q=path[i];
+    if(!q || !Number.isFinite(q.x) || !Number.isFinite(q.z)) continue;
+    const dx=q.x-pos.x;
+    const dz=q.z-pos.z;
+    const d=dx*dx+dz*dz;
+    if(d<bestD){
+      bestD=d;
+      bestIdx=i;
+    }
+  }
+  if(bestD<0.55*0.55 && bestIdx<path.length-1) bestIdx++;
+  return clamp(bestIdx,0,path.length-1);
+}
+function handleIdolRefreshed(idol){
+  if(!idol?.root) return;
+  for(const rat of game.rats){
+    if(!rat || rat===player || rat===game.controlled) continue;
+    if(rat.followStatue || rat.templeBound || rat.templeSwarmVisual || rat.targetHuman || rat.climbingHuman){
+      rat.targetIdol=idol;
+      if(rat.templeSwarmIdol && !rat.templeSwarmIdol.root?.parent) rat.templeSwarmIdol=idol;
+      if(rat.followStatue){
+        rat.followPlayer=false;
+        rat._brainPrimed=false;
+        rat._worldProbePrimed=false;
+        rat.targetPos?.set(idol.root.position.x,0,idol.root.position.z);
+      }
+    }
+  }
+}
+function dispatchIdolRefreshed(idol,detail={}){
+  handleIdolRefreshed(idol);
+  window.dispatchEvent(new CustomEvent('idol-refreshed',{detail:{idol,...detail}}));
+}
+window.addEventListener('idol-refreshed',e=>handleIdolRefreshed(e.detail?.idol));
 function buildRingMirrorBonePairs(sourceRoot,mirrorRoot){
   const dstByName=new Map();
   mirrorRoot.traverse(o=>{ if(o.isBone && o.name) dstByName.set(o.name,o); });
@@ -11710,6 +11776,8 @@ function buildRingMirrorBonePairs(sourceRoot,mirrorRoot){
 function ensureRingMirrorForEntity(ent){
   if(!ent?._ringMirrorRoot){
     ent._ringMirrorRoot=SkeletonUtils.clone(ent.root);
+    ent._ringMirrorRoot.userData.ringMirrorOwnerId=ent.idolInstanceId || ent.root?.userData?.idolInstanceId || null;
+    ent._ringMirrorRoot.userData.ringMirrorProxy=true;
     ent._ringMirrorRoot.traverse(o=>{
       if(o.isMesh||o.isSkinnedMesh){
         o.frustumCulled=false;
@@ -11811,7 +11879,10 @@ function wrapResidentRingEntity(ent){
   const proxyStatus=clearRingMirrorForEntity(ent);
   if(isTempleIdolEntity(ent)){
     const mixerStatus=resyncActorMixerAfterWarp(ent);
-    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}`);
+    const oldIndex=ent.processIndex||0;
+    ent.processIndex=calculateNewPathIndex(ent,p);
+    dispatchIdolRefreshed(ent,{fromX,toX:p.x,shifted,oldIndex,newIndex:ent.processIndex,proxyStatus});
+    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; PathIndex: ${oldIndex}->${ent.processIndex}; Rat handover: dispatched`);
   }
   return true;
 }
@@ -13058,7 +13129,8 @@ function enforceFollowerRatFullSimBudget(dt){
       continue;
     }
     if(r.followStatue){
-      const idol=game.templeEvent.idol;
+      const idol=(r.targetIdol?.root?.parent?r.targetIdol:game.templeEvent.idol);
+      r.targetIdol=idol||null;
       const ref=idol?.root?.position||{x:px,z:pz};
       const dx=r.root.position.x-ref.x;
       const dz=r.root.position.z-ref.z;
@@ -13744,7 +13816,8 @@ function tickFollowerRats(dt){
       target={x:game.templeEvent.altarPos.x,z:game.templeEvent.altarPos.z};
     }
     if(r.followStatue && game.templeEvent.awakened && game.templeEvent.idol){
-      const idol=game.templeEvent.idol;
+      const idol=(r.targetIdol?.root?.parent?r.targetIdol:game.templeEvent.idol);
+      r.targetIdol=idol;
       const phase=(r.swarmPhase!==undefined)?r.swarmPhase:(r.swarmPhase=Math.random()*Math.PI*2);
       const huntBatch=Math.floor(((phase/(Math.PI*2))*4))&3;
       const activeBatch=Math.floor(gameTime*0.85)&3;
