@@ -666,7 +666,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','true-resident-ring-map+human-driver-retarget+ritual-scream 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','root-cause-human-y0+visible-mixamo-actions+nonportal-resident-loop 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1009,7 +1009,7 @@ const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 // True resident ring mode. The full playable loop is generated once and
 // remains resident; temple doors never trigger chunk rebuilds or portal swaps.
-const RESIDENT_RING_BUFFER_CHUNKS=6;
+const RESIDENT_RING_BUFFER_CHUNKS=1;
 const WORLD_LOOP_WRAP_MARGIN=1.35;
 const FULL_WORLD_PRELOAD_MIN=TEMPLE_A_CHUNK_IDX-RESIDENT_RING_BUFFER_CHUNKS;
 const FULL_WORLD_PRELOAD_MAX=TEMPLE_CHUNK_IDX+RESIDENT_RING_BUFFER_CHUNKS;
@@ -1748,7 +1748,7 @@ function getHumanBiteScreamKey(human){
 function playHumanBiteScream(human,force=false){
   if(!human) return null;
   const key=getHumanBiteScreamKey(human);
-  return playSFX(key,{volume:0.58,cooldown:force?0:0.18,source:human});
+  return playSFX(key,{volume:0.88,cooldown:force?0:0.16,source:human});
 }
 function syncPlayerBiteLoop(){
   const active=!!(player?.ratAnim?.biteTimer>0);
@@ -4967,6 +4967,25 @@ function generateChunk(idx){
     addChunkObject(rearWall);
   }
 
+  // Rear-ring street must not read as an empty service corridor. Populate it
+  // with the same density cues as the front street so walking out of the temple
+  // rear door still feels like a continuous urban loop rather than a blank map
+  // edge waiting for a teleport.
+  if(!nearTempleApproach){
+    for(let i=0;i<3;i++){
+      const rx=xBase+rand(2.0,CHUNK_SIZE-2.0);
+      const rz=REAR_RING_STREET_Z+rand(-3.6,3.6);
+      if(Math.random()<0.5) buildBin(rx,rz,pick(['#3a4540','#5c2c2c','#2a3a44']));
+      else buildStool(rx,rz,pick(stoolColours));
+    }
+    if(Math.random()<0.55){
+      buildDetailedScooter(xBase+rand(2.4,CHUNK_SIZE-2.4),REAR_RING_STREET_Z+rand(-4.4,4.4),Math.random()*Math.PI*2);
+    }
+    if(Math.random()<0.35){
+      buildSedan(xBase+rand(4.0,CHUNK_SIZE-4.0),REAR_RING_STREET_Z+rand(-4.8,4.8),Math.random()<0.5?0:Math.PI,pick(['#e5e5e1','#bfc5cc','#272c34','#6a7280']));
+    }
+  }
+
   // --- Graffiti panels — random photos from asset/photos layered over
   // tiled façades, including true mural-scale pieces.
   if(GRAFFITI_TEX.length){
@@ -5316,10 +5335,16 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   if(headBone && !headBone.userData.originalScale){
     headBone.userData.originalScale=headBone.scale.clone();
   }
-  const useDriver=!!(driverSource && clips && driverSource!==source);
-  const actionRoot=useDriver?SkeletonUtils.clone(driverSource):root;
+  // Use the visible clone itself as the AnimationMixer root. The previous
+  // hidden-driver retarget path copied bone rotations from the boy rig onto
+  // other Tripo/Mixamo rest poses; that preserved T-pose-like rest offsets
+  // and made the mesh sink. We still filter the shared boy clips to the
+  // visible clone's actual bones, but we bind actions directly to the mesh
+  // the player sees.
+  const useDriver=false;
+  const actionRoot=root;
   const mixer=new THREE.AnimationMixer(actionRoot);
-  const retargetPairs=useDriver?buildRetargetBonePairs(root,actionRoot):null;
+  const retargetPairs=null;
   const actions={};
   if(clips){
     for(const [name,srcClip] of Object.entries(clips)){
@@ -5457,7 +5482,11 @@ function buildRat({isPlayer=false}={}){
 // so without an offset NPCs hover above the ground. -0.8 m puts
 // their feet on the ground. Adjust if needed (more negative =
 // lower; less negative = higher).
-const HUMAN_WORLD_Y_OFFSET=-0.8;
+// Root cause fix: humans were spawned and hard-clamped at -0.8m, so every
+// actor was literally placed below the street. Keep the OUTER actor root on
+// the same ground plane as the map and let buildSkinnedActor align the INNER
+// mesh once by bbox.
+const HUMAN_WORLD_Y_OFFSET=0;
 let humanBelowGroundFixCount=0;
 let humanPoseRefreshCount=0;
 const DEBUG_HUMAN_VALIDATION=true;
@@ -5485,7 +5514,8 @@ function buildHuman({position,role='wanderer'}={}){
       behaviour:'wander',targetProp:null,tidyTimer:0,
       heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
       actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false,
-      socialGroupId:null,groupLeader:null,groupOffset:null};
+      socialGroupId:null,groupLeader:null,groupOffset:null,
+    useProceduralPoseFallback:false};
   }
   const tint=role==='cleaner'
     ? new THREE.Color('#a8c8e8')
@@ -5496,8 +5526,7 @@ function buildHuman({position,role='wanderer'}={}){
     tint,
     clips:variant.clips,
     source:variant.source,
-    skin:variant.skin,
-    driverSource:humanAnimationDriverSource
+    skin:variant.skin
   });
   const root=inst.outer;
   root.position.set(position.x,HUMAN_WORLD_Y_OFFSET+GROUND_Y_OFFSET,position.z);
@@ -5527,6 +5556,7 @@ function buildHuman({position,role='wanderer'}={}){
     behaviour:'wander',targetProp:null,tidyTimer:0,
     heldProp:null,throwCharge:0,throwCharging:false,attackCooldown:0,
     actionName:null,actionTimer:0,actionStamp:0,lastActionStamp:-1,attackQueued:false,downTimer:0,panicTimer:0,panicTurnTimer:0,animState:'idle',parasiteTimer:HOST_PARASITE_TIME,dead:false,
+    useProceduralPoseFallback:false,
     socialGroupId:null,groupLeader:null,groupOffset:null};
   forceHumanActionPose(human,'idle');
   hardClampHumanToGround(human);
@@ -5553,7 +5583,8 @@ function buildHuman({position,role='wanderer'}={}){
     if(skinBone0){
       inst.root.traverse(o=>{ if(o===skinBone0) skinBone0InClone=true; });
     }
-    const idleClip=inst.actions?.idle?.getClip?.();
+    const probeAction=inst.actions?.walk||inst.actions?.run||inst.actions?.idle;
+    const idleClip=probeAction?.getClip?.();
     const idleTracks=idleClip?.tracks||[];
     let qTracks=0,pTracks=0,sTracks=0,oTracks=0;
     for(const t of idleTracks){
@@ -5571,6 +5602,7 @@ function buildHuman({position,role='wanderer'}={}){
     // really changes that target.
     const probe=findAnimatedBoneProbe(inst.root,idleClip);
     const beforeValue=snapshotAnimatedBoneProbe(probe);
+    probeAction?.play?.();
     inst.mixer?.update?.(0.1);
     syncRetargetPose(inst);
     const afterValue=snapshotAnimatedBoneProbe(probe);
@@ -5690,6 +5722,7 @@ function forceHumanActionPose(h,preferred='idle'){
   const actions=h.inst.actions;
   let next=preferred;
   if(h.dead && actions.death) next='death';
+  else if(h.actionName==='kick' && actions.kick) next='kick';
   else if(h.isAir && actions.jump) next='jump';
   else if(h.panicTimer>0 && actions.run) next='run';
   else if(h.controllable && h.curSpeed>0.08 && actions.run) next='run';
@@ -5699,6 +5732,7 @@ function forceHumanActionPose(h,preferred='idle'){
   else if(actions.run) next='run';
   const act=actions[next];
   if(!act) return;
+  const changed=h.animState!==next;
   for(const [name,a] of Object.entries(actions)){
     if(name===next){
       const looping=(next==='idle'||next==='walk'||next==='run'||next==='clean');
@@ -5706,7 +5740,7 @@ function forceHumanActionPose(h,preferred='idle'){
       a.paused=false;
       if(looping){
         nudgeLoopActionOffBindPose(a);
-      }else{
+      }else if(changed){
         a.stop();
         a.reset();
       }
@@ -5719,7 +5753,7 @@ function forceHumanActionPose(h,preferred='idle'){
   }
   h.animState=next;
   humanPoseRefreshCount++;
-  h.inst.mixer.update(1/30);
+  if(changed) h.inst.mixer.update(1/60);
   syncRetargetPose(h.inst);
   if(h.inst.outer) h.inst.outer.updateMatrixWorld(true);
   if(h.root) h.root.updateMatrixWorld(true);
@@ -11288,35 +11322,30 @@ function softClampZ(p){
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
 function wrapLoopPositionX(p){
+  // No visible teleport. The map is now treated as a resident closed street
+  // circuit made of the front road, the rear road, and the two temple-side
+  // connectors. X is bounded to the generated circuit instead of wrapping the
+  // player through an invisible seam.
   if(!p || !Number.isFinite(p.x)) return false;
-  if(p.x>WORLD_LOOP_MAX_X-WORLD_LOOP_WRAP_MARGIN){
-    p.x=WORLD_LOOP_MIN_X+WORLD_LOOP_WRAP_MARGIN;
-    return true;
-  }
-  if(p.x<WORLD_LOOP_MIN_X+WORLD_LOOP_WRAP_MARGIN){
-    p.x=WORLD_LOOP_MAX_X-WORLD_LOOP_WRAP_MARGIN;
-    return true;
-  }
-  return false;
+  const minX=TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+1.2;
+  const maxX=(TEMPLE_CHUNK_IDX+1)*CHUNK_SIZE-1.2;
+  const oldX=p.x;
+  if(p.x<minX) p.x=minX;
+  else if(p.x>maxX) p.x=maxX;
+  return p.x!==oldX;
 }
 function softClampTempleX(p){
   wrapLoopPositionX(p);
 }
 function wrapWorldLoopEntity(ent,prevX=null,prevZ=null){
   if(!ent?.root?.position) return false;
-  const pos=ent.root.position;
-  const beforeX=pos.x;
-  const wrapped=wrapLoopPositionX(pos);
-  if(!wrapped) return false;
-  const dx=pos.x-beforeX;
-  if(ent.targetPos?.set && Number.isFinite(ent.targetPos.x)) ent.targetPos.x+=dx;
-  if(ent.roamTarget?.x!==undefined && Number.isFinite(ent.roamTarget.x)) ent.roamTarget.x+=dx;
-  if(ent.streetBurstTarget?.x!==undefined && Number.isFinite(ent.streetBurstTarget.x)) ent.streetBurstTarget.x+=dx;
-  if(ent.streetBurstOrigin?.x!==undefined && Number.isFinite(ent.streetBurstOrigin.x)) ent.streetBurstOrigin.x+=dx;
-  if(ent===player || ent===game.controlled || ent===game.parasitisedHost){
-    ensureChunksAroundX(pos.x);
+  const clamped=wrapLoopPositionX(ent.root.position);
+  if(clamped && (ent?.kind==='human' || ent?.kind==='rat')){
+    ent.yaw=(ent.yaw||0)+Math.PI;
+    ent.root.rotation.y=ent.yaw;
+    if(ent.targetPos?.set) ent.targetPos.set(ent.root.position.x,0,ent.root.position.z);
   }
-  return true;
+  return clamped;
 }
 function sampleSupportHeight(ent,x,z,currentY){
   let support=(ent.baseY??0)+GROUND_Y_OFFSET;
@@ -11428,6 +11457,7 @@ function forceControlledJump(){
     ent.actionName='jump';
     ent.actionStamp=(ent.actionStamp||0)+1;
     ent.actionTimer=Math.max(0.38,Math.min(0.9,ent.inst.actions.jump.getClip?.().duration||0.55));
+    forceHumanActionPose(ent,'jump');
   }
   inputFlags.jump=false;
   if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent});
@@ -11524,6 +11554,12 @@ function updatePlayer(dt){
       const jumpMultiplier=game.testMode?1:2;
       ent.vy=(isHost?JUMP_VEL*0.92:JUMP_VEL)*jumpMultiplier;
       ent.isAir=true;
+      if(isHost && ent.inst?.actions?.jump){
+        ent.actionName='jump';
+        ent.actionStamp=(ent.actionStamp||0)+1;
+        ent.actionTimer=Math.max(0.38,Math.min(0.9,ent.inst.actions.jump.getClip?.().duration||0.55));
+        forceHumanActionPose(ent,'jump');
+      }
       if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent});
     }
     inputFlags.jump=false;
@@ -12151,12 +12187,12 @@ function tickBreeding(dt){
 // === Idol-follower swarm — rats hunt humans within the awakened idol's
 // range, climb their bodies, and trigger a transformation into a new
 // idol-skinned wanderer once enough rats have piled on.
-const RAT_HUNT_HUMAN_RANGE=84;           // idol-centric attack radius; requested ×3
+const RAT_HUNT_HUMAN_RANGE=150;          // expanded ritual escort detection radius
 const RAT_HUNT_HUMAN_RANGE_SQ=RAT_HUNT_HUMAN_RANGE*RAT_HUNT_HUMAN_RANGE;
-const RAT_CLIMB_GRAB_DIST=0.85;          // when rat sticks to the human
+const RAT_CLIMB_GRAB_DIST=1.35;          // when rat sticks to the human
 const RAT_CLIMB_GRAB_DIST_SQ=RAT_CLIMB_GRAB_DIST*RAT_CLIMB_GRAB_DIST;
-const HUMAN_RAT_ATTACK_CAP=14;           // max rats per human at once
-const HUMAN_RAT_TRANSFORM_RATS=8;        // minimum climbers to start transforming
+const HUMAN_RAT_ATTACK_CAP=28;           // max rats per human at once; enough to visibly cover the model
+const HUMAN_RAT_TRANSFORM_RATS=10;       // minimum climbers to start transforming
 const HUMAN_RAT_TRANSFORM_TIME=2.4;      // seconds at full coverage → transform
 const RAT_BLOOD_SPRAY_INTERVAL=0.18;     // throttle per-human blood spawns
 // Hysteresis: enter active state inside 32 m, leave active state only
@@ -12755,8 +12791,8 @@ function tickRatClimbingHuman(rat,dt){
   const phase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(rat.swarmPhase=Math.random()*Math.PI*2);
   h._ratScreamTimer=(h._ratScreamTimer||0)-dt;
   if(h._ratScreamTimer<=0){
-    playHumanBiteScream(h,true);
-    h._ratScreamTimer=0.85+Math.random()*0.55;
+    playHumanBiteScream(h,false);
+    h._ratScreamTimer=0.42+Math.random()*0.25;
   }
   const t=(rat.climbHumanTimer=(rat.climbHumanTimer||0)+dt);
   // Spiral up the body from waist height to head height.
@@ -13709,7 +13745,9 @@ async function init(){
       return null;
     })));
     const cleanBoyFBX=null;
-    humanAnimationDriverSource=idleBoyFBX||walkBoyFBX||runBoyFBX;
+    // No hidden animation-driver rig. The requested boy FBX clips are used
+    // directly on each visible human clone after track filtering.
+    humanAnimationDriverSource=null;
     HUMAN_VARIANTS.length=0;
     const sharedHumanClips={
       idle:idleBoyFBX,
