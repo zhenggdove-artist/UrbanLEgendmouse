@@ -139,7 +139,7 @@
     transform:translate(-50%,-50%);pointer-events:none;z-index:0}
   .intro-card::before{
     width:100%;height:100%;
-    background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/100% 100% no-repeat
+    background:none
   }
   .selfie-card::before{
     width:calc(100% + 44px);height:calc(100% + 40px);
@@ -279,7 +279,7 @@
     text-align:center;padding:70px 56px;font-family:"Courier New",monospace;box-sizing:border-box}
   #rats-win::before{content:'';position:absolute;left:50%;top:50%;width:100%;height:100%;
     transform:translate(-50%,-50%);pointer-events:none;z-index:0;
-    background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/100% 100% no-repeat}
+    background:none}
   #rats-win > *{position:relative;z-index:1}
   #rats-win.show{display:flex}
   #rats-win .rw-text{font-size:24px;letter-spacing:0.20em;color:var(--accent-soft);margin-bottom:10px;white-space:nowrap}
@@ -839,11 +839,9 @@ screenScene.add(screenQuad);
 const scene=new THREE.Scene();
 // Linear distance fog hides chunk pop-in. MeshBasicMaterial respects it.
 scene.fog=new THREE.Fog('#ff4fa8',18,104);
-// Sky background: vertical pink gradient with a 101-tower + skyline
-// silhouette baked into the lower band. We use a wide texture
-// (1024×256) so the silhouette has horizontal detail, and assign
-// scene.background to this — it is rendered behind everything at an
-// effectively infinite distance, never clips with foreground geometry.
+// Sky background: plain vertical pink gradient only. The earlier
+// skyline / Taipei 101 silhouette was the remaining opening-screen
+// backdrop the user asked to remove.
 const skyCV=document.createElement('canvas');skyCV.width=1024;skyCV.height=256;
 const skyCtx=skyCV.getContext('2d');
 const skyTex=pixelate(new THREE.CanvasTexture(skyCV));
@@ -852,15 +850,6 @@ skyGrad.addColorStop(0,'#ff8fd4');
 skyGrad.addColorStop(0.45,'#ff4fa8');
 skyGrad.addColorStop(1,'#7a214f');
 skyCtx.fillStyle=skyGrad;skyCtx.fillRect(0,0,1024,256);
-// Distant low-rise silhouette band (about y=170..220)
-skyCtx.fillStyle='rgba(48,40,72,0.78)';
-for(let i=0;i<48;i++){
-  const w=18+Math.random()*42;
-  const h=14+Math.random()*46;
-  const x=(i*22+Math.random()*6)%1024;
-  skyCtx.fillRect(x,222-h,w,h);
-}
-// 101 tower silhouette — drawn near horizontal centre of the sky.
 skyTex.needsUpdate=true;
 scene.background=skyTex;
 
@@ -870,9 +859,7 @@ scene.add(new THREE.AmbientLight('#9a86b8',0.85));
 const sun=new THREE.DirectionalLight('#ffd4a0',0.7);
 sun.position.set(6,12,-2);
 scene.add(sun);
-// The 101 silhouette + city skyline is baked into scene.background as a
-// 2D image — see the sky-canvas drawing above. No 3D model is added to
-// the scene, so the tower can never clip through the temple.
+// No 2D skyline silhouette remains in the background.
 function buildTaipeiSkyline(){/* intentionally empty */ }
 
 const introShowcasePivot=new THREE.Group();
@@ -1997,31 +1984,21 @@ function getSourceCompatibleClip(source,srcClip){
   return filteredClip;
 }
 function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
-  // ATTEMPT: bypass getSourceCompatibleClip entirely. Pass the raw
-  // AnimationClip extracted directly from the FBX object. Three.js's
-  // AnimationMixer does its own name-based binding via PropertyBinding
-  // and silently skips tracks for bones that don't exist in the mixer
-  // root. The previous filter step may have been silently dropping
-  // tracks whose `track.name.split('.')[0]` didn't exactly match
-  // (e.g., scale tracks named `mixamorigHips.scale[2]` get split to
-  // `mixamorigHips` which DOES match, but other naming quirks I haven't
-  // anticipated could trip the filter). Letting the mixer handle
-  // binding is the simplest possible path and matches every Three.js
-  // FBX example online.
+  const clipFor=srcClip=>getSourceCompatibleClip(source,srcClip);
   return {
     name,
     source,
     skin,
     clips:{
-      idle:resolveAnimationClip(idle),
-      walk:resolveAnimationClip(walk),
-      run:resolveAnimationClip(run),
-      jump:resolveAnimationClip(jump),
-      kick:resolveAnimationClip(kick),
-      pickup:resolveAnimationClip(pickup),
+      idle:clipFor(idle),
+      walk:clipFor(walk),
+      run:clipFor(run),
+      jump:clipFor(jump),
+      kick:clipFor(kick),
+      pickup:clipFor(pickup),
       punch:null,
       punchcombo:null,
-      clean:resolveAnimationClip(clean)
+      clean:clipFor(clean)
     }
   };
 }
@@ -8683,7 +8660,7 @@ function buildUILayoutMetricsFromRect(def,metrics,rect){
   metrics.h=+((rect.height/Math.max(bounds.height,1))*100).toFixed(3);
 }
 function measureUILayoutRect(def,metrics){
-  if(uiLayoutState.active && !def?.isCustomFrame && !def?.isSkinArt){
+  if(uiLayoutState.active){
     return getUILayoutBoxRect(def,metrics);
   }
   const el=def.isCustomFrame
@@ -9256,7 +9233,7 @@ function handleUILayoutPointerMove(e){
     next.top+=dy;
   }else{
     const isCorner=drag.corner.length===2;
-    const keepAspect=isCorner && (def.isCustomFrame || def.isSkinArt);
+    const keepAspect=isCorner && def.isSkinArt;
     if(keepAspect){
       const aspect=drag.startRect.width/Math.max(1,drag.startRect.height);
       let width=drag.startRect.width;
@@ -10831,8 +10808,9 @@ function doHostAttack(){
     kickAct.fadeIn(0.05).play();
   }
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
-  const attackOriginX=host.root.position.x+fx*0.98;
-  const attackOriginZ=host.root.position.z+fz*0.98;
+  const attackOriginX=host.root.position.x+fx*0.82;
+  const attackOriginZ=host.root.position.z+fz*0.82;
+  const attackReach=HOST_ATTACK_RADIUS+0.28;
   let struck=false;
   const nearbyProps=getPropsNear(host.root.position.x,host.root.position.z,HOST_ATTACK_RADIUS+2.2);
   for(const p of nearbyProps){
@@ -10841,14 +10819,14 @@ function doHostAttack(){
     const dz=p.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
     const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
-    if(dot<0.0)continue;
+    if(dot<-0.18)continue;
     const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-0.18;
     const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+0.18;
     const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-0.18;
     const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+0.18;
     const hitDx=Math.max(minX-attackOriginX,0,attackOriginX-maxX);
     const hitDz=Math.max(minZ-attackOriginZ,0,attackOriginZ-maxZ);
-    if(Math.hypot(hitDx,hitDz)>HOST_ATTACK_RADIUS)continue;
+    if(Math.hypot(hitDx,hitDz)>attackReach)continue;
     triggerPropTip(p,Math.atan2(dz,dx),1.2,'host');
     p.root.rotation.z=lerp(p.root.rotation.z,-fx*Math.PI*0.36,0.9);
     p.root.rotation.x=lerp(p.root.rotation.x, fz*Math.PI*0.36,0.9);
@@ -10863,10 +10841,10 @@ function doHostAttack(){
     const dz=h.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
     const dot=(dx*fx+dz*fz)/Math.max(0.001,d);
-    if(dot<0.0)continue;
+    if(dot<-0.18)continue;
     const hitDx=Math.max(0,Math.abs(h.root.position.x-attackOriginX)-0.52);
     const hitDz=Math.max(0,Math.abs(h.root.position.z-attackOriginZ)-0.40);
-    if(Math.hypot(hitDx,hitDz)>0.72)continue;
+    if(Math.hypot(hitDx,hitDz)>0.96)continue;
     knockHumanDown(h,host.yaw);
     struck=true;
   }
@@ -11206,11 +11184,23 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   else if(p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter') playSFX('vehicleBreak',{volume:0.8,cooldown:0.08,source:p});
   spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
   spawnComicImpact(p.root.position,p.kind==='stall'?'WHAM!':'POW!',p.kind==='stall'?'#fff2a6':'#fff7c2');
-  p.root.rotation.z=-Math.cos(angle)*Math.PI*0.40;
-  p.root.rotation.x=Math.sin(angle)*Math.PI*0.40;
-  p.root.position.y=Math.max(0.08,p.root.userData.baseY*0.45);
-  p.root.position.x+=Math.cos(angle)*(p.tipOffset||0.22);
-  p.root.position.z+=Math.sin(angle)*(p.tipOffset||0.22);
+  p.tipAnim={
+    progress:0,
+    duration:(source==='throw')?0.14:0.22,
+    startPos:p.root.position.clone(),
+    startRot:p.root.rotation.clone(),
+    endPos:new THREE.Vector3(
+      p.root.position.x+Math.cos(angle)*(p.tipOffset||0.22),
+      Math.max(0.08,p.root.userData.baseY*0.45),
+      p.root.position.z+Math.sin(angle)*(p.tipOffset||0.22)
+    ),
+    endRot:new THREE.Euler(
+      Math.sin(angle)*Math.PI*0.40,
+      p.root.rotation.y,
+      -Math.cos(angle)*Math.PI*0.40,
+      p.root.rotation.order
+    )
+  };
   if(p.reservedBy && p.reservedBy.role==='cleaner') p.reservedBy.behaviour='seek';
   if(p.steamSprite) p.steamSprite.visible=false;
   if(p.spillMesh){
@@ -11270,9 +11260,19 @@ function tickProps(dt){
       }
       continue;
     }
+    if(p.tipAnim){
+      p.tipAnim.progress=Math.min(1,p.tipAnim.progress+dt/Math.max(0.001,p.tipAnim.duration||0.2));
+      const t=1-Math.pow(1-p.tipAnim.progress,3);
+      p.root.position.lerpVectors(p.tipAnim.startPos,p.tipAnim.endPos,t);
+      p.root.rotation.x=THREE.MathUtils.lerp(p.tipAnim.startRot.x,p.tipAnim.endRot.x,t);
+      p.root.rotation.y=THREE.MathUtils.lerp(p.tipAnim.startRot.y,p.tipAnim.endRot.y,t);
+      p.root.rotation.z=THREE.MathUtils.lerp(p.tipAnim.startRot.z,p.tipAnim.endRot.z,t);
+      if(p.tipAnim.progress>=1) p.tipAnim=null;
+    }
     const stillActive=!!(
       p.heldBy ||
       p.throwVel ||
+      p.tipAnim ||
       p.fireFX?.active ||
       p.brothFX?.active ||
       p.spillMesh?.visible
@@ -11310,6 +11310,7 @@ function restorePropFromCleaner(prop){
   prop.root.position.y=prop.basePosition.y;
   prop.tipped=false;
   prop.tipTriggered=false;
+  prop.tipAnim=null;
   prop.heldBy=null;
   prop.throwVel=null;
   prop.throwOwner=null;
