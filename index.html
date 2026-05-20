@@ -666,7 +666,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','ring-map+ritual-rat+human-locomotion 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','fixed-ring-map+npc-brain+ritual-rats+procedural-human-pose 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1007,13 +1007,13 @@ const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
-// Continuous one-axis ring. The two temple rear streets are the seam points:
-// crossing past one rear street places the entity at the other rear street.
-// This is a world-coordinate wrap, not an interaction portal, so the temple
-// behaves like normal scenery and host/player state is preserved.
-const WORLD_LOOP_MIN_X=TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6+30;
-const WORLD_LOOP_MAX_X=TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+30;
+// Continuous one-axis ring. The seam is deliberately pushed several
+// chunks BEHIND the temple complexes, not at the temple rear doors.
+// The temples must read as ordinary fixed scenery; wrapping should only
+// happen at the far end of the extended street buffer.
 const WORLD_LOOP_WRAP_MARGIN=1.35;
+const WORLD_LOOP_MIN_X=(TEMPLE_A_CHUNK_IDX-2)*CHUNK_SIZE+WORLD_LOOP_WRAP_MARGIN;
+const WORLD_LOOP_MAX_X=(TEMPLE_CHUNK_IDX+5)*CHUNK_SIZE-WORLD_LOOP_WRAP_MARGIN;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
@@ -1120,13 +1120,59 @@ const FULL_WORLD_PRELOAD_MAX=TEMPLE_CHUNK_IDX+4;
 // player can't see. (Previously this pinned all 23 preloaded chunks
 // permanently, which is what caused severe lag on iPhone-class hardware.)
 function isTempleHotChunk(idx){
-  return idx===TEMPLE_CHUNK_IDX || idx===TEMPLE_A_CHUNK_IDX;
+  // Fixed-map mode: every chunk between the two buffer ends stays resident.
+  // This prevents the street population and scenery from refreshing at the
+  // temple boundary and stops parasitised hosts from disappearing when their
+  // birth chunk would otherwise be unloaded.
+  return idx>=FULL_WORLD_PRELOAD_MIN && idx<=FULL_WORLD_PRELOAD_MAX;
 }
 function pointInsideTempleZone(x,z,margin=0){
   for(const z0 of TEMPLE_KEEP_OUT_ZONES){
     if(x>=z0.minX-margin && x<=z0.maxX+margin && z>=z0.minZ-margin && z<=z0.maxZ+margin) return z0;
   }
   return null;
+}
+function getNearestTempleKeepOutZone(x,z,margin=0){
+  let best=null,bestD=Infinity;
+  for(const zone of TEMPLE_KEEP_OUT_ZONES){
+    const cx=clamp(x,zone.minX-margin,zone.maxX+margin);
+    const cz=clamp(z,zone.minZ-margin,zone.maxZ+margin);
+    const dx=x-cx,dz=z-cz;
+    const d2=dx*dx+dz*dz;
+    if(d2<bestD){bestD=d2;best=zone;}
+  }
+  return best;
+}
+function shouldTempleAvoidHuman(h){
+  return !!(h && h.kind==='human' && !h.controllable && !h.parasitised && !h.processionPath && !h.transformedToIdol && !h.dead);
+}
+function steerHumanAwayFromTemple(h,dt=1/60,lookAhead=1.4){
+  if(!shouldTempleAvoidHuman(h)||!h.root) return false;
+  const pos=h.root.position;
+  let zone=pointInsideTempleZone(pos.x,pos.z,0.35);
+  if(zone){
+    const leftGap=Math.abs(pos.x-zone.minX);
+    const rightGap=Math.abs(zone.maxX-pos.x);
+    const goRight=rightGap<leftGap;
+    pos.x=(goRight?zone.maxX:zone.minX)+(goRight?0.72:-0.72);
+    h.yaw=goRight?Math.PI/2:-Math.PI/2;
+    h.root.rotation.y=h.yaw;
+    h.wanderTimer=Math.max(h.wanderTimer||0,0.9);
+    return true;
+  }
+  const speed=Math.max(0.9,h.curSpeed||0.9);
+  const nx=pos.x+Math.sin(h.yaw||0)*speed*lookAhead;
+  const nz=pos.z+Math.cos(h.yaw||0)*speed*lookAhead;
+  zone=pointInsideTempleZone(nx,nz,1.8);
+  if(zone){
+    const center=(zone.minX+zone.maxX)*0.5;
+    const goRight=pos.x>center;
+    h.yaw=goRight?Math.PI/2:-Math.PI/2;
+    h.root.rotation.y=h.yaw;
+    h.wanderTimer=Math.max(h.wanderTimer||0,1.0);
+    return true;
+  }
+  return false;
 }
 
 let gameState='intro';
@@ -5090,33 +5136,13 @@ function generateChunk(idx){
 }
 
 function ensureChunksAroundX(x){
-  const c=Math.floor(x/CHUNK_SIZE);
-  const localX=x-c*CHUNK_SIZE;
-  let minChunk=Math.max(TEMPLE_A_CHUNK_IDX,c-CHUNK_WINDOW_A_SIDE);
-  let maxChunk=c+CHUNK_WINDOW_AHEAD;
-  if(localX<CHUNK_PREFETCH_MARGIN) minChunk=Math.max(TEMPLE_A_CHUNK_IDX,minChunk-CHUNK_PREFETCH_EXTRA);
-  for(let i=minChunk;i<=maxChunk;i++){
+  // Fixed resident ring: generate the whole playable loop once and never
+  // swap chunks in/out near the temple. This removes the visible "scene
+  // refresh" and keeps NPC identities stable across the map.
+  for(let i=FULL_WORLD_PRELOAD_MIN;i<=FULL_WORLD_PRELOAD_MAX;i++){
     if(!chunks.has(i)) generateChunk(i);
   }
-  const activeStreetChunks=[...chunks.keys()].filter(idx=>idx!==TEMPLE_CHUNK_IDX);
-  const leftmostChunk=activeStreetChunks.length?Math.min(...activeStreetChunks):minChunk;
-  const leftmostEdge=leftmostChunk*CHUNK_SIZE;
-  if(leftmostChunk>TEMPLE_A_CHUNK_IDX && x-leftmostEdge<CHUNK_SIZE*2.5){
-    for(let i=1;i<=CHUNK_PREFETCH_EXTRA;i++){
-      const nextIdx=leftmostChunk-i;
-      if(!chunks.has(nextIdx)) generateChunk(nextIdx);
-    }
-  }
-  const keepBehind=CHUNK_WINDOW_A_SIDE+CHUNK_PREFETCH_EXTRA;
-  const keepAhead=CHUNK_WINDOW_AHEAD;
-  for(const [idx,chunk] of [...chunks]){
-    if(idx===TEMPLE_CHUNK_IDX || idx===TEMPLE_A_CHUNK_IDX) continue;
-    if(isTempleHotChunk(idx)) continue;
-    if(idx<=(c-keepBehind-1) || idx>=(c+keepAhead+1)){
-      disposeChunk(chunk);chunks.delete(idx);
-    }
-  }
-  lastChunkIdx=c;
+  lastChunkIdx=Math.floor(x/CHUNK_SIZE);
 }
 let lastEnsuredChunkIndex=null;
 let lastEnsureChunkX=Infinity;
@@ -5563,6 +5589,61 @@ function nudgeLoopActionOffBindPose(action){
     action.time=0.10+Math.random()*Math.min(span,0.55);
   }
 }
+function cacheProceduralHumanBones(inst){
+  if(!inst || inst._proceduralHumanBones) return inst?._proceduralHumanBones||null;
+  const bones={};
+  const pick=(node)=>{
+    const n=(node.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(n.includes('leftupleg')) bones.leftUpLeg=node;
+    else if(n.includes('rightupleg')) bones.rightUpLeg=node;
+    else if(n.includes('leftleg') && !n.includes('upleg')) bones.leftLeg=node;
+    else if(n.includes('rightleg') && !n.includes('upleg')) bones.rightLeg=node;
+    else if(n.includes('leftfoot')) bones.leftFoot=node;
+    else if(n.includes('rightfoot')) bones.rightFoot=node;
+    else if(n.includes('leftarm') && !n.includes('forearm')) bones.leftArm=node;
+    else if(n.includes('rightarm') && !n.includes('forearm')) bones.rightArm=node;
+    else if(n.includes('leftforearm')) bones.leftForeArm=node;
+    else if(n.includes('rightforearm')) bones.rightForeArm=node;
+    else if(n.endsWith('spine') || n.includes('spine1')) bones.spine=bones.spine||node;
+  };
+  inst.root?.traverse?.(node=>{ if(node?.isBone) pick(node); });
+  for(const b of Object.values(bones)){
+    if(b && !b.userData.proceduralBaseRotation) b.userData.proceduralBaseRotation=b.rotation.clone();
+  }
+  inst._proceduralHumanBones=bones;
+  return bones;
+}
+function setBoneEulerFromBase(bone,dx=0,dy=0,dz=0){
+  if(!bone) return;
+  const base=bone.userData.proceduralBaseRotation||bone.rotation;
+  bone.rotation.set(base.x+dx,base.y+dy,base.z+dz);
+}
+function applyProceduralHumanPose(ent,dt){
+  if(!ent || ent.kind!=='human' || !ent.inst || ent.processionPath || ent.transformedToIdol) return;
+  const b=cacheProceduralHumanBones(ent.inst);
+  if(!b) return;
+  const speedNorm=clamp((ent.curSpeed||0)/Math.max(0.001,getHostControlMaxSpeed(ent)),0,1);
+  const moving=speedNorm>0.04;
+  const run=ent.controllable && speedNorm>0.25;
+  const freq=run?10.5:6.4;
+  const stride=(run?0.68:0.38)*speedNorm;
+  const t=(gameTime+(ent._posePhase||(ent._posePhase=Math.random()*10)))*freq;
+  const s1=Math.sin(t), s2=Math.sin(t+Math.PI);
+  const armDrop=1.10;
+  const armSwing=(moving?stride*0.75:0.04*Math.sin(t*0.35));
+  setBoneEulerFromBase(b.leftArm, armSwing,0, armDrop);
+  setBoneEulerFromBase(b.rightArm,-armSwing,0,-armDrop);
+  setBoneEulerFromBase(b.leftForeArm, Math.max(0, -s1)*0.18,0,0.22);
+  setBoneEulerFromBase(b.rightForeArm, Math.max(0, -s2)*0.18,0,-0.22);
+  setBoneEulerFromBase(b.leftUpLeg, s1*stride,0,0);
+  setBoneEulerFromBase(b.rightUpLeg, s2*stride,0,0);
+  setBoneEulerFromBase(b.leftLeg, Math.max(0,-s1)*stride*0.72,0,0);
+  setBoneEulerFromBase(b.rightLeg, Math.max(0,-s2)*stride*0.72,0,0);
+  setBoneEulerFromBase(b.leftFoot, Math.max(0,s1)*stride*0.22,0,0);
+  setBoneEulerFromBase(b.rightFoot, Math.max(0,s2)*stride*0.22,0,0);
+  setBoneEulerFromBase(b.spine, moving?0.035*Math.sin(t*0.5):0,0, moving?0.055*Math.sin(t*0.5):0);
+  ent.inst.outer?.updateMatrixWorld?.(true);
+}
 function forceHumanActionPose(h,preferred='idle'){
   if(!h || !h.inst || !h.inst.mixer || !h.inst.actions) return;
   const actions=h.inst.actions;
@@ -5570,6 +5651,7 @@ function forceHumanActionPose(h,preferred='idle'){
   if(h.dead && actions.death) next='death';
   else if(h.isAir && actions.jump) next='jump';
   else if(h.panicTimer>0 && actions.run) next='run';
+  else if(h.controllable && h.curSpeed>0.08 && actions.run) next='run';
   else if(h.curSpeed>0.08 && actions.walk) next='walk';
   else if(actions.idle) next='idle';
   else if(actions.walk) next='walk';
@@ -5775,12 +5857,20 @@ function tickActor(ent,dt){
     scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
+  if(ent.inst.actions){
+    for(const a of Object.values(ent.inst.actions)){
+      a?.setEffectiveTimeScale?.(scale);
+    }
+  }
   // Keep human mixers on a normal per-frame update. The earlier
   // frame-stride optimisation caused newly visible / reactivated humans
   // to linger in bind pose and occasionally fight the foot alignment
   // logic, which showed up as T-pose + sinking reports on device.
   ent.inst.mixer.update(dt);
-  if(ent.kind==='human') syncRetargetPose(ent.inst);
+  if(ent.kind==='human'){
+    syncRetargetPose(ent.inst);
+    applyProceduralHumanPose(ent,dt);
+  }
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
@@ -6277,6 +6367,44 @@ function startTempleAwakeningLegacy(){
 function startTempleAwakening(){
   startTempleAwakeningLegacy();
 }
+const RITUAL_STATUE_ESCORT_RAT_COUNT=96;
+function activateRitualEscortRat(rat,idol,index=0,total=RITUAL_STATUE_ESCORT_RAT_COUNT){
+  if(!rat||rat===player||!idol?.root) return;
+  rat.templeBound=false;
+  rat.templeSwarmVisual=false;
+  rat.followPlayer=false;
+  rat.followStatue=true;
+  rat.fullFollowerSim=true;
+  rat.ritualEscort=true;
+  rat.visualBudgetLockUntil=Infinity;
+  rat.swarmPhase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(index/Math.max(1,total))*Math.PI*2+Math.random()*0.4;
+  rat.targetHuman=null;
+  rat.climbingHuman=null;
+  if(rat.root){
+    rat.root.visible=true;
+    const ring=rat.swarmPhase;
+    if(!Number.isFinite(rat.root.position.x) || Math.hypot(rat.root.position.x-idol.root.position.x,rat.root.position.z-idol.root.position.z)>26){
+      rat.root.position.set(idol.root.position.x+Math.cos(ring)*(1.0+Math.random()*1.5),GROUND_Y_OFFSET,idol.root.position.z+Math.sin(ring)*(0.8+Math.random()*1.2));
+    }
+  }
+  if(rat.targetPos?.set){
+    rat.targetPos.set(idol.root.position.x,0,idol.root.position.z);
+  }
+  if(!game.templeEvent.swarmSprites.includes(rat)) game.templeEvent.swarmSprites.push(rat);
+}
+function ensureRitualStatueRatEscort(idol=game.templeEvent.idol){
+  if(!idol?.root || !game.templeEvent.awakened) return;
+  let escorts=game.rats.filter(r=>r!==player && r.followStatue && r.root?.parent);
+  for(let i=0;i<escorts.length;i++) activateRitualEscortRat(escorts[i],idol,i,Math.max(escorts.length,RITUAL_STATUE_ESCORT_RAT_COUNT));
+  let guard=0;
+  while(escorts.length<RITUAL_STATUE_ESCORT_RAT_COUNT && guard<180){
+    guard++;
+    const rat=buildRat({isPlayer:false});
+    game.rats.push(rat);
+    activateRitualEscortRat(rat,idol,escorts.length,RITUAL_STATUE_ESCORT_RAT_COUNT);
+    escorts.push(rat);
+  }
+}
 function awakenTempleIdol(idol){
   game.templeEvent.awakened=true;
   game.templeEvent.phase='procession';
@@ -6306,22 +6434,9 @@ function awakenTempleIdol(idol){
   }
   for(const rat of game.rats){
     if(rat===player)continue;
-    rat.templeBound=false;
-    rat.templeSwarmVisual=false;
-    rat.followPlayer=false;
-    rat.followStatue=true;
-    rat.fullFollowerSim=true;
-    rat.visualBudgetLockUntil=Infinity;
-    rat.root && (rat.root.visible=true);
-    if(rat.targetPos?.set && idol?.root){
-      const phase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(rat.swarmPhase=Math.random()*Math.PI*2);
-      rat.targetPos.set(
-        idol.root.position.x+Math.cos(phase)*1.4,
-        0,
-        idol.root.position.z+Math.sin(phase)*0.9
-      );
-    }
+    activateRitualEscortRat(rat,idol,game.rats.indexOf(rat),Math.max(1,game.rats.length));
   }
+  ensureRitualStatueRatEscort(idol);
   setTempleFlash(0);
   spawnTempleGlow(game.templeEvent.altarPos,180);
 }
@@ -6616,6 +6731,7 @@ function tickTempleEvent(dt){
     return;
   }
   if(game.templeEvent.awakened){
+    ensureRitualStatueRatEscort(idol);
     if(game.templeEvent.phase==='procession') tickTempleIdolProcession(idol,dt);
     else tickTempleIdolRoam(idol,dt);
     if(Math.random()<0.22) spawnTempleGlow(idol.root.position,4);
@@ -10457,7 +10573,7 @@ const exitHostBtn=document.getElementById('exit-host-btn');
   const end=e=>{if(e.pointerId!==ptrId)return;ptrId=null;joyX=0;joyY=0;stick.style.transform='translate(0,0)'};
   zone.addEventListener('pointerup',end);zone.addEventListener('pointercancel',end);
 }
-jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
+jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();if(game.controlMode==='host') forceControlledJump(); else inputFlags.jump=true});
 biteBtn.addEventListener('pointerdown',e=>{
   e.preventDefault();
   if(game.controlMode==='host') doHostAttack();
@@ -10557,7 +10673,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyS')keys.s=true;if(e.code==='KeyD')keys.d=true;
   if(e.code==='ArrowUp')keys.up=true;if(e.code==='ArrowDown')keys.down=true;
   if(e.code==='ArrowLeft')keys.left=true;if(e.code==='ArrowRight')keys.right=true;
-  if(e.code==='Space')inputFlags.jump=true;
+  if(e.code==='Space'){ if(game.controlMode==='host') forceControlledJump(); else inputFlags.jump=true; }
   if(e.code==='Digit1'&&game.testMode){
     e.preventDefault();
     const need=Math.max(0,TEMPLE_SWARM_TRIGGER-getTotalRatCount());
@@ -11255,9 +11371,31 @@ function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   let diff=targetYaw-curY;
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
+  const ordinaryNPCHuman=ent?.kind==='human' && !ent.controllable && !ent.parasitised && !ent.processionPath;
+  if(ordinaryNPCHuman){
+    ent.root.rotation.y=targetYaw;
+    ent.yaw=targetYaw;
+    return 0;
+  }
   ent.root.rotation.y=curY+diff*Math.min(1,dt*turnRate);
   ent.yaw=targetYaw;
   return diff;
+}
+function getHostControlMaxSpeed(ent){
+  if(ent?.variantName && String(ent.variantName).includes('女高中生')) return PLAYER_MAX_SPEED*1.32;
+  return HOST_MAX_SPEED;
+}
+function forceControlledJump(){
+  const ent=game.controlled;
+  if(!ent||!ent.controllable) return false;
+  const isHost=ent.kind==='human';
+  const groundY=(ent.baseY??0)+GROUND_Y_OFFSET;
+  if(ent.isAir && ent.root.position.y>groundY+0.22) return false;
+  ent.vy=(isHost?JUMP_VEL*0.98:JUMP_VEL)*(game.testMode?2:1);
+  ent.isAir=true;
+  inputFlags.jump=false;
+  if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent});
+  return true;
 }
 function updatePlayer(dt){
   if(game.ratCityMode)return;
@@ -11287,7 +11425,7 @@ function updatePlayer(dt){
   const mdz=-iy*fwdZ+ix*rightZ;
   const isHost=(ent.kind==='human');
   const speedMultiplier=game.testMode?10:1;
-  const targetSpeed=(isHost?HOST_MAX_SPEED:PLAYER_MAX_SPEED)*speedMultiplier;
+  const targetSpeed=(isHost?getHostControlMaxSpeed(ent):PLAYER_MAX_SPEED)*speedMultiplier;
   const accel=isHost?HOST_ACCEL:PLAYER_ACCEL;
   const prevX=ent.root.position.x, prevZ=ent.root.position.z;
   if(ent.kind==='rat'&&ent.ratAnim?.biteTimer>0){
@@ -11778,6 +11916,7 @@ function tickHumans(dt){
       continue;
     }
     activateHumanFromLOD(h);
+    if(shouldTempleAvoidHuman(h)) steerHumanAwayFromTemple(h,dt,1.8);
     if(h.idolWanderer){
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       h.wanderTimer=(h.wanderTimer||0)-dt;
@@ -11877,6 +12016,7 @@ function tickHumans(dt){
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
       resolveWorldCollisions(h,prevX,prevZ,0.38);
+      steerHumanAwayFromTemple(h,dt,1.2);
       if(h.root.position.z<ALLEY_Z_MIN+0.4||h.root.position.z>ALLEY_Z_MAX-0.4){
         h.yaw+=Math.PI*(Math.random()<0.5?0.8:1.2);
         softClampZ(h.root.position);
@@ -11910,6 +12050,7 @@ function tickHumans(dt){
           h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
           h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
           resolveWorldCollisions(h,prevX,prevZ,0.38);
+          steerHumanAwayFromTemple(h,dt,1.2);
           softClampZ(h.root.position);
           tickActor(h,dt);
           h._footstepTimer=0;
@@ -11929,6 +12070,7 @@ function tickHumans(dt){
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
       resolveWorldCollisions(h,prevX,prevZ,0.38);
+      steerHumanAwayFromTemple(h,dt,1.2);
       if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
         h.yaw+=Math.PI;softClampZ(h.root.position);
       }
@@ -12200,6 +12342,7 @@ function isRatCriticalForFullSim(rat){
     rat?.templeBound ||
     rat?.templeSwarmVisual ||
     rat?.followStatue ||
+    rat?.ritualEscort ||
     ((rat?.visualBudgetLockUntil||0)>gameTime) ||
     rat?.climbingHuman ||
     rat?.targetHuman
@@ -12269,6 +12412,7 @@ function enforceRatVisualBudget(maxVisuals=getMaxActiveRatVisuals()){
     !r.templeSwarmVisual &&
     (r.visualBudgetLockUntil||0)<=gameTime &&
     !r.followStatue &&
+    !r.ritualEscort &&
     !r.climbingHuman
   );
   candidates.sort((a,b)=>{
@@ -13629,7 +13773,7 @@ async function init(){
   // ~16 chunks that get torn down a frame later — pure waste, and the
   // cause of severe baseline lag on mobile devices.
   await warmChunksDuringIntro(
-    [TEMPLE_A_CHUNK_IDX,TEMPLE_CHUNK_IDX],
+    Array.from({length:FULL_WORLD_PRELOAD_MAX-FULL_WORLD_PRELOAD_MIN+1},(_,i)=>FULL_WORLD_PRELOAD_MIN+i),
     {progressStart:91,progressEnd:99,label:'WORLD'}
   );
   clearStartZone(player.root.position,3.6);
