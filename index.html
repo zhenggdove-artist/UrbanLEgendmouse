@@ -666,7 +666,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','lod-hysteresis+rat-follow+audio-unlock 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','ring-map+ritual-rat+human-locomotion 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1007,6 +1007,13 @@ const TEMPLE_IDOL_HEIGHT=5.4;
 const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
+// Continuous one-axis ring. The two temple rear streets are the seam points:
+// crossing past one rear street places the entity at the other rear street.
+// This is a world-coordinate wrap, not an interaction portal, so the temple
+// behaves like normal scenery and host/player state is preserved.
+const WORLD_LOOP_MIN_X=TEMPLE_A_CHUNK_IDX*CHUNK_SIZE+CHUNK_SIZE-6+30;
+const WORLD_LOOP_MAX_X=TEMPLE_CHUNK_IDX*CHUNK_SIZE+18+30;
+const WORLD_LOOP_WRAP_MARGIN=1.35;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
@@ -4390,60 +4397,10 @@ function setTempleLoopPortal(slot,plazaInfo){
   };
 }
 function tryLoopTempleEntity(ent,prevX,prevZ){
-  // The temple must behave like normal street scenery for the playable body.
-  // Do not portal/wrap the player or a possessed human at the temple rear:
-  // that path was the source of blank gaps, host-state loss and one-frame
-  // chunk stalls when the controlled entity crossed the hidden trigger.
-  if(ent===player || ent===game.controlled || ent===game.parasitisedHost) return false;
-  if(!ent?.root || !templeLoopPortals.a || !templeLoopPortals.b)return false;
-  if(ent.templeSwarmVisual)return false;
-  if((ent.loopPortalLockUntil||0)>gameTime)return false;
-  const pos=ent.root.position;
-  const moveX=pos.x-prevX;
-  const moveZ=pos.z-prevZ;
-  const pairs=[
-    {src:templeLoopPortals.a,dst:templeLoopPortals.b},
-    {src:templeLoopPortals.b,dst:templeLoopPortals.a}
-  ];
-  for(const {src,dst} of pairs){
-    const dx=pos.x-src.rearStreetPos.x;
-    const dz=pos.z-src.rearStreetPos.z;
-    if(dx*dx+dz*dz>TEMPLE_LOOP_PORTAL_RADIUS*TEMPLE_LOOP_PORTAL_RADIUS) continue;
-    const srcForward=yawToForwardVector(src.rearYaw);
-    const srcRight=yawToRightVector(src.rearYaw);
-    const forwardOffset=dx*srcForward.x+dz*srcForward.z;
-    if(Math.abs(forwardOffset)<0.2) continue;
-    const moveForward=moveX*srcForward.x+moveZ*srcForward.z;
-    // Bidirectional trigger: fire when the entity is past the portal in
-    // the same direction it is moving — handles BOTH directions of the
-    // ring loop. Standing still (moveForward ~ 0) does not fire.
-    if(moveForward*forwardOffset<=0.00005) continue;
-    const rightOffset=dx*srcRight.x+dz*srcRight.z;
-    const dstForward=yawToForwardVector(dst.rearYaw);
-    const dstRight=yawToRightVector(dst.rearYaw);
-    // Push the entity past the destination portal by RADIUS + margin in
-    // the direction it was moving, so it does NOT immediately re-trigger
-    // the dst portal on subsequent frames once the cooldown expires.
-    const exitDist=TEMPLE_LOOP_PORTAL_RADIUS+0.8;
-    const placedForward=(forwardOffset>0?+1:-1)*exitDist;
-    pos.set(
-      dst.rearStreetPos.x+dstForward.x*placedForward+dstRight.x*rightOffset,
-      pos.y,
-      dst.rearStreetPos.z+dstForward.z*placedForward+dstRight.z*rightOffset
-    );
-    const yawDelta=dst.rearYaw-src.rearYaw;
-    ent.root.rotation.y+=yawDelta;
-    ent.yaw=(ent.yaw??ent.root.rotation.y)+yawDelta;
-    if(ent.targetPos?.set) ent.targetPos.set(pos.x,ent.targetPos.y??0,pos.z);
-    if(ent.roamTarget) ent.roamTarget=null;
-    ent.loopPortalLockUntil=gameTime+TEMPLE_LOOP_PORTAL_COOLDOWN;
-    if(
-      ent===game.controlled ||
-      ent===game.parasitisedHost ||
-      ent===player
-    ) ensureChunksAroundX(pos.x);
-    return true;
-  }
+  // Disabled. The map loop is now handled by wrapWorldLoopEntity()/softClampTempleX()
+  // as a stable world-coordinate seam, not by invisible temple rear-door portals.
+  // Keeping this function as a no-op prevents older call sites from reintroducing
+  // host release, blank space, or one-frame chunk stalls near the temple.
   return false;
 }
 function disposeMaterials(m){if(!m)return;if(Array.isArray(m))m.forEach(disposeMaterials);else m.dispose?.()}
@@ -6350,8 +6307,20 @@ function awakenTempleIdol(idol){
   for(const rat of game.rats){
     if(rat===player)continue;
     rat.templeBound=false;
+    rat.templeSwarmVisual=false;
     rat.followPlayer=false;
     rat.followStatue=true;
+    rat.fullFollowerSim=true;
+    rat.visualBudgetLockUntil=Infinity;
+    rat.root && (rat.root.visible=true);
+    if(rat.targetPos?.set && idol?.root){
+      const phase=(rat.swarmPhase!==undefined)?rat.swarmPhase:(rat.swarmPhase=Math.random()*Math.PI*2);
+      rat.targetPos.set(
+        idol.root.position.x+Math.cos(phase)*1.4,
+        0,
+        idol.root.position.z+Math.sin(phase)*0.9
+      );
+    }
   }
   setTempleFlash(0);
   spawnTempleGlow(game.templeEvent.altarPos,180);
@@ -6383,8 +6352,10 @@ function tickTempleIdolProcession(idol,dt){
   if(dist>0.001){
     const yaw=Math.atan2(dx,dz);
     rotateTowardYaw(idol,yaw,dt,4.4);
+    const prevX=idol.root.position.x, prevZ=idol.root.position.z;
     idol.root.position.x+=Math.sin(yaw)*Math.min(step,dist);
     idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
+    wrapWorldLoopEntity(idol,prevX,prevZ);
   }
   // Smoothly LERP the idol's Y from current to ground sampled height,
   // instead of snapping each frame. This removes the abrupt sink that
@@ -6435,8 +6406,10 @@ function tickTempleIdolRoam(idol,dt){
     const yaw=Math.atan2(dx,dz);
     rotateTowardYaw(idol,yaw,dt,3.6);
     const move=Math.min(idol.curSpeed*dt,dist);
+    const prevX=idol.root.position.x, prevZ=idol.root.position.z;
     idol.root.position.x+=Math.sin(yaw)*move;
     idol.root.position.z+=Math.cos(yaw)*move;
+    wrapWorldLoopEntity(idol,prevX,prevZ);
   }
   idol.root.position.y=resolveIdolGroundY(idol);
   softClampZ(idol.root.position);
@@ -11167,8 +11140,36 @@ function softClampZ(p){
   if(p.z<ALLEY_Z_MIN)p.z=ALLEY_Z_MIN;
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
 }
+function wrapLoopPositionX(p){
+  if(!p || !Number.isFinite(p.x)) return false;
+  if(p.x>WORLD_LOOP_MAX_X-WORLD_LOOP_WRAP_MARGIN){
+    p.x=WORLD_LOOP_MIN_X+WORLD_LOOP_WRAP_MARGIN;
+    return true;
+  }
+  if(p.x<WORLD_LOOP_MIN_X+WORLD_LOOP_WRAP_MARGIN){
+    p.x=WORLD_LOOP_MAX_X-WORLD_LOOP_WRAP_MARGIN;
+    return true;
+  }
+  return false;
+}
 function softClampTempleX(p){
-  return;
+  wrapLoopPositionX(p);
+}
+function wrapWorldLoopEntity(ent,prevX=null,prevZ=null){
+  if(!ent?.root?.position) return false;
+  const pos=ent.root.position;
+  const beforeX=pos.x;
+  const wrapped=wrapLoopPositionX(pos);
+  if(!wrapped) return false;
+  const dx=pos.x-beforeX;
+  if(ent.targetPos?.set && Number.isFinite(ent.targetPos.x)) ent.targetPos.x+=dx;
+  if(ent.roamTarget?.x!==undefined && Number.isFinite(ent.roamTarget.x)) ent.roamTarget.x+=dx;
+  if(ent.streetBurstTarget?.x!==undefined && Number.isFinite(ent.streetBurstTarget.x)) ent.streetBurstTarget.x+=dx;
+  if(ent.streetBurstOrigin?.x!==undefined && Number.isFinite(ent.streetBurstOrigin.x)) ent.streetBurstOrigin.x+=dx;
+  if(ent===player || ent===game.controlled || ent===game.parasitisedHost){
+    ensureChunksAroundX(pos.x);
+  }
+  return true;
 }
 function sampleSupportHeight(ent,x,z,currentY){
   let support=(ent.baseY??0)+GROUND_Y_OFFSET;
@@ -11246,8 +11247,8 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     }
   }
   softClampZ(pos);
+  wrapWorldLoopEntity(ent,prevX,prevZ);
   softClampTempleX(pos);
-  tryLoopTempleEntity(ent,prevX,prevZ);
 }
 function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   const curY=ent.root.rotation.y;
@@ -11972,7 +11973,7 @@ function tickBreeding(dt){
 // === Idol-follower swarm — rats hunt humans within the awakened idol's
 // range, climb their bodies, and trigger a transformation into a new
 // idol-skinned wanderer once enough rats have piled on.
-const RAT_HUNT_HUMAN_RANGE=16;           // idol-centric attack radius
+const RAT_HUNT_HUMAN_RANGE=28;           // idol-centric attack radius
 const RAT_HUNT_HUMAN_RANGE_SQ=RAT_HUNT_HUMAN_RANGE*RAT_HUNT_HUMAN_RANGE;
 const RAT_CLIMB_GRAB_DIST=0.85;          // when rat sticks to the human
 const RAT_CLIMB_GRAB_DIST_SQ=RAT_CLIMB_GRAB_DIST*RAT_CLIMB_GRAB_DIST;
@@ -12832,6 +12833,16 @@ function tickFollowerRats(dt){
         };
       }
     }
+    if(r.followStatue && game.templeEvent.awakened && target && target.x!==undefined){
+      // Ritual rats must remain visually tied to the walking idol / victim.
+      // Do not leave a stale altar targetPos from the climb phase; update it
+      // every frame so the swarm does not run off-screen or appear to vanish.
+      r.targetPos?.set(target.x,0,target.z);
+      r.followPlayer=false;
+      r.fullFollowerSim=true;
+      r.visualBudgetLockUntil=Infinity;
+      if(r.root) r.root.visible=true;
+    }
     if(r.followPlayer && player && r.streetBurstTarget && !r.streetBurstOrigin){
       target={x:r.streetBurstTarget.x,z:r.streetBurstTarget.z};
       const burstDx=r.streetBurstTarget.x-r.root.position.x;
@@ -12900,6 +12911,7 @@ function tickFollowerRats(dt){
     const prevX=r.root.position.x, prevZ=r.root.position.z;
     r.root.position.x+=Math.sin(a)*spd*dt;
     r.root.position.z+=Math.cos(a)*spd*dt;
+    if(spd>0.05) wrapWorldLoopEntity(r,prevX,prevZ);
     // Skip O(blockers+props) sweeps for rats that didn't actually move
     // this frame. resolveWorldCollisions / sampleSupportHeight both
     // iterate every active blocker + prop, so calling them for a fully
@@ -13527,17 +13539,19 @@ async function init(){
         return;
       }
       const ownClip=resolveAnimationClip(config.source);
-      const isBoy=config.name==='男高中生';
+      const locomotionIdle=config.walk||config.run||config.idle||ownClip;
+      const locomotionWalk=config.walk||config.run||locomotionIdle;
+      const locomotionRun=config.run||config.walk||locomotionIdle;
       HUMAN_VARIANTS.push(makeHumanVariant({
         ...config,
-        // Non-boy Tripo/Mixamo FBXs can share bone names but still have
-        // incompatible bind poses. Own-source animation is safer than the
-        // boy clip for idle/walk; it prevents visible T-pose/rest-frame
-        // flashes at the cost of less varied locomotion on variants that
-        // only have an idle FBX. The boy keeps its full native motion set.
-        idle:ownClip||config.idle,
-        walk:isBoy ? config.walk : (ownClip||config.walk),
-        run:isBoy ? config.run : (ownClip||config.run),
+        // Do not use the individual Tripo "idle" FBX as the active idle clip.
+        // Several of those files are effectively a static bind/rest pose, which
+        // produced visible T-pose sliding even though PropertyBinding succeeded.
+        // Every variant now uses the boy locomotion set for idle/walk/run; idle
+        // is simply the walk cycle played at the lower idle mixer speed.
+        idle:locomotionIdle,
+        walk:locomotionWalk,
+        run:locomotionRun,
         skin:{
           base:config.skin?.base||null,
           normal:null,
