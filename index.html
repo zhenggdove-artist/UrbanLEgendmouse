@@ -2057,28 +2057,44 @@ function getCloneRootCompatibleClip(root,srcClip,label=''){
     ? clip
     : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
 }
+function trackHasAnimatedValues(track){
+  const arr=track?.values;
+  if(!arr || arr.length<2) return false;
+  const itemSize=track.getValueSize?.() || 1;
+  if(arr.length<=itemSize) return false;
+  for(let i=itemSize;i<arr.length;i++){
+    if(Math.abs(arr[i]-arr[i%itemSize])>1e-5) return true;
+  }
+  return false;
+}
 function findAnimatedBoneProbe(root,clip){
   if(!root || !clip?.tracks?.length) return null;
   const boneByName=new Map();
   root.traverse?.(node=>{
     if(node?.isBone && node.name) boneByName.set(node.name,node);
   });
-  const pickTrack=(suffix,preferNonHips=true)=>{
+  const pickTrack=(suffix,{allowHips=false,requireAnimated=true}={})=>{
     for(const track of clip.tracks){
       const trackName=track?.name||'';
       if(!trackName.endsWith(suffix)) continue;
+      if(requireAnimated && !trackHasAnimatedValues(track)) continue;
       const nodeName=getTrackTargetNodeName(trackName);
       const bone=boneByName.get(nodeName);
       if(!bone) continue;
       const lname=nodeName.toLowerCase();
-      if(preferNonHips && /(^|[:_])hips$/.test(lname)) continue;
+      if(!allowHips && lname.includes('hips')) continue;
       if(/end$/i.test(nodeName)) continue;
       return {bone,track,property:suffix.slice(1)};
     }
-    if(preferNonHips) return pickTrack(suffix,false);
     return null;
   };
-  return pickTrack('.quaternion',true) || pickTrack('.position',true) || pickTrack('.scale',true);
+  return pickTrack('.quaternion',{allowHips:false,requireAnimated:true})
+    || pickTrack('.position',{allowHips:false,requireAnimated:true})
+    || pickTrack('.quaternion',{allowHips:true,requireAnimated:true})
+    || pickTrack('.position',{allowHips:true,requireAnimated:true})
+    || pickTrack('.quaternion',{allowHips:false,requireAnimated:false})
+    || pickTrack('.position',{allowHips:false,requireAnimated:false})
+    || pickTrack('.scale',{allowHips:false,requireAnimated:false});
 }
 function snapshotAnimatedBoneProbe(probe){
   if(!probe?.bone) return null;
@@ -4374,6 +4390,11 @@ function setTempleLoopPortal(slot,plazaInfo){
   };
 }
 function tryLoopTempleEntity(ent,prevX,prevZ){
+  // The temple must behave like normal street scenery for the playable body.
+  // Do not portal/wrap the player or a possessed human at the temple rear:
+  // that path was the source of blank gaps, host-state loss and one-frame
+  // chunk stalls when the controlled entity crossed the hidden trigger.
+  if(ent===player || ent===game.controlled || ent===game.parasitisedHost) return false;
   if(!ent?.root || !templeLoopPortals.a || !templeLoopPortals.b)return false;
   if(ent.templeSwarmVisual)return false;
   if((ent.loopPortalLockUntil||0)>gameTime)return false;
@@ -4439,9 +4460,16 @@ function disposeChunk(chunk){
     const i=game.props.indexOf(p);if(i>=0)game.props.splice(i,1)
   }
   for(const h of chunk.humans){
-    // Keep corpses in the world even after their birth-chunk unloads.
+    // Keep corpses and the currently controlled / parasitised host in the
+    // world even after their birth-chunk unloads. A possessed human can walk
+    // far away from the chunk that spawned it; disposing that old chunk must
+    // not forcibly call exitHost(), otherwise temple/chunk boundaries eject
+    // the player from host mode.
     if(h.dead) continue;
-    if(h.parasitised) exitHost();
+    if(h===game.parasitisedHost || h.parasitised || h.controllable){
+      h._persistentAcrossChunkUnload=true;
+      continue;
+    }
     if(h.root && h.root.parent) h.root.parent.remove(h.root);
     const i=game.humans.indexOf(h);if(i>=0) game.humans.splice(i,1);
   }
@@ -5565,6 +5593,19 @@ function hardClampHumanToGround(h){
   h.vy=0;
   h.isAir=false;
 }
+function nudgeLoopActionOffBindPose(action){
+  if(!action?.getClip) return;
+  const clip=action.getClip();
+  if(!clip || !Number.isFinite(clip.duration) || clip.duration<=0.12) return;
+  // Some exported Mixamo/Tripo FBX clips contain a bind/T-pose-like first
+  // frame. Starting every looping human action at t=0 makes newly spawned or
+  // re-activated humans flash into that rest frame. Keep looping actions off
+  // the first few frames; one-shot attacks/death are still allowed to reset.
+  if(!Number.isFinite(action.time) || action.time<0.08){
+    const span=Math.max(0.1,clip.duration-0.12);
+    action.time=0.10+Math.random()*Math.min(span,0.55);
+  }
+}
 function forceHumanActionPose(h,preferred='idle'){
   if(!h || !h.inst || !h.inst.mixer || !h.inst.actions) return;
   const actions=h.inst.actions;
@@ -5580,17 +5621,19 @@ function forceHumanActionPose(h,preferred='idle'){
   if(!act) return;
   for(const [name,a] of Object.entries(actions)){
     if(name===next){
-      // Hard play: stop any prior fade, reset time, force enabled +
-      // running + full effective weight. Direct assignment. No fades.
-      a.stop();
-      a.reset();
+      const looping=(next==='idle'||next==='walk'||next==='run'||next==='clean');
       a.enabled=true;
       a.paused=false;
+      if(looping){
+        nudgeLoopActionOffBindPose(a);
+      }else{
+        a.stop();
+        a.reset();
+      }
       a.setEffectiveWeight(1);
       a.weight=1;
-      a.play();
+      if(!a.isRunning?.()) a.play();
     }else{
-      a.stop();
       a.setEffectiveWeight(0);
     }
   }
@@ -5731,6 +5774,7 @@ function tickActor(ent,dt){
           act.enabled=true;
           act.paused=false;
           if(shouldRestartAction) act.reset();
+          else if(ent.kind==='human' && (next==='idle'||next==='walk'||next==='run'||next==='clean')) nudgeLoopActionOffBindPose(act);
           act.setEffectiveWeight(1);
           if(!act.isRunning?.()) act.play();
         }else{
@@ -13482,8 +13526,18 @@ async function init(){
         console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
         return;
       }
+      const ownClip=resolveAnimationClip(config.source);
+      const isBoy=config.name==='男高中生';
       HUMAN_VARIANTS.push(makeHumanVariant({
         ...config,
+        // Non-boy Tripo/Mixamo FBXs can share bone names but still have
+        // incompatible bind poses. Own-source animation is safer than the
+        // boy clip for idle/walk; it prevents visible T-pose/rest-frame
+        // flashes at the cost of less varied locomotion on variants that
+        // only have an idle FBX. The boy keeps its full native motion set.
+        idle:ownClip||config.idle,
+        walk:isBoy ? config.walk : (ownClip||config.walk),
+        run:isBoy ? config.run : (ownClip||config.run),
         skin:{
           base:config.skin?.base||null,
           normal:null,
