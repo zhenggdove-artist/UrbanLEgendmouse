@@ -1018,7 +1018,7 @@ const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
-const RITUAL_RAT_VISIBLE_Y_OFFSET=0.40;
+const RITUAL_RAT_VISIBLE_Y_OFFSET=0.20;
 function getRitualRatGroundY(rat=null){return ((rat?.baseY??0)+GROUND_Y_OFFSET+RITUAL_RAT_VISIBLE_Y_OFFSET);}
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
@@ -1320,9 +1320,11 @@ const SOUND_PATHS={
   parasiteComplete:`${SOUND_DIR}完成寄生的時候撥放的音效.mp3`,
   ritualSwarm:`${SOUND_DIR}從神像被老鼠爬上去開始撥放到畫面變白之前撥放的聲音.mp3`,
   stallFire:`${SOUND_DIR}攤販出現火焰時撥放的聲音.mp3`,
-  stallBreak:`${SOUND_DIR}攤販被砸毀的聲音.mp3`,
-  vehicleBreak:`${SOUND_DIR}車子或有玻璃的物體被砸毀的聲音.mp3`,
+  stallBreak:`D:\\ELY\\作品相關\\###小遊戲製作GIT\\都市傳說\\都市傳說3-屬巴拉西\\UrbanLEgendmouse\\asset\\sound\\攤販跟車子被砸毀的聲音.mp3`,
+  vehicleBreak:`D:\\ELY\\作品相關\\###小遊戲製作GIT\\都市傳說\\都市傳說3-屬巴拉西\\UrbanLEgendmouse\\asset\\sound\\攤販跟車子被砸毀的聲音.mp3`,
   streetAmbience:`${SOUND_DIR}街道背景音效.wav`,
+  glassBreak:`D:\\ELY\\作品相關\\###小遊戲製作GIT\\都市傳說\\都市傳說3-屬巴拉西\\UrbanLEgendmouse\\asset\\sound\\有玻璃的物體被砸毀的聲音.mp3`,
+  parasiteComplete:`D:\\ELY\\作品相關\\###小遊戲製作GIT\\都市傳說\\都市傳說3-屬巴拉西\\UrbanLEgendmouse\\asset\\sound\\完成寄生的時候撥放的音效.mp3`,
   // Dedicated rat audio paths. These files don't yet exist in the
   // assets folder — drop the recordings at these exact paths and they
   // will play automatically. Until then the rats are silent (better
@@ -12689,11 +12691,13 @@ function refreshActiveFollowerRats(dt){
       r.templeSwarmVisual;
     if(critical){
       r.fullFollowerSim=true;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       activeFollowerRats.push(r);
       continue;
     }
     if(r.followStatue){
       r.fullFollowerSim=false;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       if(r.root) r.root.visible=true;
       continue;
     }
@@ -12703,9 +12707,11 @@ function refreshActiveFollowerRats(dt){
     const d2=dx*dx+dz*dz;
     if(d2<9 && activeFollowerRats.length<max){
       r.fullFollowerSim=true;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       activeFollowerRats.push(r);
     }else{
       r.fullFollowerSim=false;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       // User feedback: don't hide rats just because they fell outside
       // the AI-sim budget. They should still render as PNG sprites and
       // get frame animation. The budget caps SIMULATION cost, not
@@ -12873,10 +12879,12 @@ function enforceFollowerRatFullSimBudget(dt){
   for(const r of game.rats){
     if(!r || r===player || (!r.followPlayer && !r.followStatue)){
       if(r && r!==player) r.fullFollowerSim=false;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       continue;
     }
     if(r.climbingHuman || r.targetHuman || r.templeBound){
       r.fullFollowerSim=true;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       continue;
     }
     if(r.followStatue){
@@ -12885,6 +12893,7 @@ function enforceFollowerRatFullSimBudget(dt){
       const dx=r.root.position.x-ref.x;
       const dz=r.root.position.z-ref.z;
       r.fullFollowerSim=(dx*dx+dz*dz)<20*20 && used<max;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       if(r.fullFollowerSim) used++;
       continue;
     }
@@ -12893,9 +12902,11 @@ function enforceFollowerRatFullSimBudget(dt){
     const d2=dx*dx+dz*dz;
     if(d2<9 && used<max){
       r.fullFollowerSim=true;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
       used++;
     }else{
       r.fullFollowerSim=false;
+      if(r.followStatue) { r.curSpeed = (r.curSpeed || 1) * 0.5; }
     }
   }
 }
