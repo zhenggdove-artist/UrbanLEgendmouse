@@ -10572,12 +10572,8 @@ function updatePlayer(dt){
 }
 
 // ===== Chaos / prop tipping =====
-function summonSpillRats(x,z,count=2){
-  // Visible-rat cap enforcement BEFORE spawning, so chaos value can
-  // keep climbing past the cap (game.virtualRats is the counter the
-  // ritual reads) but the player never sees more than ~60/25 sprites
-  // alive on screen at once. Anything beyond becomes a virtual rat.
-  const maxVisuals=getActiveVisualMax();
+function _legacySummonSpillRats(x,z,count=2){
+  const maxVisuals=getMaxActiveRatVisuals();
   playSFX('playerMove',{volume:0.36,cooldown:0.12,source:{x,z}});
   for(let i=0;i<count;i++){
     if(game.rats.length>=maxVisuals){
@@ -10604,6 +10600,41 @@ function summonSpillRats(x,z,count=2){
     if(game.templeEvent.gathering && !game.templeEvent.started && !game.templeEvent.awakened){
       rat.templeBound=true;
       rat.followPlayer=false;
+    }
+    rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
+    rat.root.rotation.y=rat.yaw;
+    game.rats.push(rat);
+  }
+  registerChaosSpot(x,z,1.8,7.5);
+}
+function summonSpillRats(x,z,count=2){
+  const maxVisuals=getMaxActiveRatVisuals();
+  playSFX('playerMove',{volume:0.36,cooldown:0.12,source:{x,z}});
+  for(let i=0;i<count;i++){
+    if(game.rats.length>=maxVisuals){
+      game.virtualRats=(game.virtualRats||0)+1;
+      continue;
+    }
+    const rat=buildRat();
+    const spawnX=x+rand(-0.65,0.65);
+    const spawnZ=clamp(z+rand(-0.65,0.65),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
+    rat.root.position.set(spawnX,(rat.baseY??0)+GROUND_Y_OFFSET,spawnZ);
+    rat.targetPos.set(
+      x+rand(-2.4,2.4),
+      0,
+      clamp(z+rand(-2.2,2.2),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5)
+    );
+    rat.moveIntent.y=1;
+    rat.followPlayer=true;
+    rat.streetBurstOrigin={x,z};
+    rat.streetScatterUntil=gameTime+rand(0.65,1.25);
+    rat.visualBudgetLockUntil=gameTime+4.5;
+    rat.fullFollowerSim=true;
+    rat._followOffset=null;
+    if(game.templeEvent.gathering && !game.templeEvent.started && !game.templeEvent.awakened){
+      rat.templeBound=true;
+      rat.followPlayer=false;
+      rat.streetScatterUntil=0;
     }
     rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
     rat.root.rotation.y=rat.yaw;
@@ -10658,9 +10689,9 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
       p.root.position.z+fallDirZ*fallDistance
     ),
     endRot:new THREE.Euler(
-      -fallDirZ*fallTilt,
+      fallDirZ*fallTilt,
       p.root.rotation.y,
-      fallDirX*fallTilt,
+      -fallDirX*fallTilt,
       p.root.rotation.order
     )
   };
@@ -11066,7 +11097,7 @@ function tickBreeding(dt){
   if(breedTimer>0)return;
   breedTimer=Math.max(0.55,3.2-game.chaos*2.6);
   const hotspot=nearestChaosSpot(player.root.position) || {x:player.root.position.x,z:player.root.position.z};
-  const maxVisuals=getActiveVisualMax();
+  const maxVisuals=getMaxActiveRatVisuals();
   if(game.rats.length>=maxVisuals){
     game.virtualRats=(game.virtualRats||0)+1;
     return;
@@ -11316,6 +11347,7 @@ function isRatCriticalForFullSim(rat){
   return !!(
     rat?.templeBound ||
     rat?.templeSwarmVisual ||
+    ((rat?.visualBudgetLockUntil||0)>gameTime) ||
     rat?.climbingHuman ||
     rat?.targetHuman
   );
@@ -11382,6 +11414,7 @@ function enforceRatVisualBudget(maxVisuals=getMaxActiveRatVisuals()){
     r!==player &&
     r!==game.controlled &&
     !r.templeSwarmVisual &&
+    (r.visualBudgetLockUntil||0)<=gameTime &&
     !r.followStatue &&
     !r.climbingHuman
   );
@@ -11947,7 +11980,23 @@ function tickFollowerRats(dt){
         };
       }
     }
-    if(r.followPlayer && player){
+    if(r.followPlayer && player && (r.streetScatterUntil||0)>gameTime && r.streetBurstOrigin){
+      if(runBrain){
+        r.roamTimer=(r.roamTimer||0)-dt;
+        if(r.roamTimer<=0 || !r.targetPos){
+          r.targetPos?.set(
+            r.streetBurstOrigin.x+rand(-2.4,2.4),
+            0,
+            clamp(r.streetBurstOrigin.z+rand(-2.2,2.2),ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4)
+          );
+          r.roamTimer=rand(0.08,0.22);
+        }
+      }
+    }else if(r.streetBurstOrigin){
+      r.streetBurstOrigin=null;
+      r.streetScatterUntil=0;
+    }
+    if(r.followPlayer && player && !r.streetBurstOrigin){
       if(!r._followOffset){
         r._followOffset={
           back:rand(0.8,3.2),
@@ -11971,11 +12020,11 @@ function tickFollowerRats(dt){
     if(target && target.x!==undefined && runBrain){
       r.roamTimer=(r.roamTimer||0)-dt;
       if(r.roamTimer<=0 || !r.targetPos){
-        const jitterAmount=r.followPlayer?0.55:1.8;
+        const jitterAmount=(r.followPlayer && !r.streetBurstOrigin)?0.55:1.8;
         const jitterX=target.x+rand(-jitterAmount,jitterAmount);
         const jitterZ=clamp(target.z+rand(-jitterAmount,jitterAmount),ALLEY_Z_MIN+0.4,ALLEY_Z_MAX-0.4);
         r.targetPos?.set(jitterX,0,jitterZ);
-        r.roamTimer=r.followPlayer?rand(0.18,0.42):rand(0.35,1.2);
+        r.roamTimer=(r.followPlayer && !r.streetBurstOrigin)?rand(0.18,0.42):rand(0.35,1.2);
       }
     }
     const tx=(r.targetPos&&Number.isFinite(r.targetPos.x)) ? r.targetPos.x : (target?.x ?? player.root.position.x);
@@ -12392,6 +12441,12 @@ window.render_game_to_text=renderGameToText;
 // inaccessible from the console / from the keydown handler.
 window.game=game;
 Object.defineProperty(window,'player',{get(){return player;},configurable:true});
+window.__debugHooks={
+  summonSpillRats,
+  triggerPropTip,
+  getHumans:()=>game.humans,
+  getRats:()=>game.rats
+};
 
 // ===== Main loop =====
 let last=performance.now();
@@ -12641,7 +12696,11 @@ async function init(){
         kick:v.clips.kick?.tracks?.length||0
       });
     }
-    const usableVariants=HUMAN_VARIANTS.filter(v=>isUsableClip(v.clips.idle));
+    const usableVariants=HUMAN_VARIANTS.filter(v=>
+      isUsableClip(v.clips.idle) &&
+      (v.clips.idle?.tracks?.length||0) >= 50 &&
+      (v.clips.walk?.tracks?.length||0) >= 50
+    );
     if(usableVariants.length!==HUMAN_VARIANTS.length){
       console.warn('[human] filtered incompatible active variants',HUMAN_VARIANTS
         .filter(v=>!usableVariants.includes(v))
