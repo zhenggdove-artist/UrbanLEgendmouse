@@ -4789,8 +4789,18 @@ function removeObjectFromChunkMeshes(root){
 }
 function clearRingMirrorForEntity(ent){
   const mr=ent?._ringMirrorRoot;
-  if(mr?.parent) mr.parent.remove(mr);
+  let status='none';
+  if(mr){
+    mr.visible=false;
+    if(mr.parent){
+      mr.parent.remove(mr);
+      status='removed';
+    }else{
+      status='detached';
+    }
+  }
   if(ent) ent._ringMirrorRoot=null;
+  return status;
 }
 function removeRingSeamPreviewGroups(){
   const names=new Set(['ring_seam_preview_min_shifted_to_max','ring_seam_preview_max_shifted_to_min']);
@@ -5844,6 +5854,34 @@ function debugValidateHuman(h){
     if(h.root) h.root.updateMatrixWorld(true);
   }
 }
+function getActorMixerLODInterval(ent){
+  if(!IS_MOBILE_DEVICE || !ent?.root || !ent.inst?.mixer) return 0;
+  if(ent===player || ent===game.controlled || ent===game.parasitisedHost || ent.controllable) return 0;
+  if(isTempleIdolEntity(ent) || ent.actionTimer>0 || ent.dead || ent.transformedToIdol || ent.idolWanderer) return 0;
+  const focus=getGameplayFocusPosition();
+  if(!focus) return 0;
+  const dx=ent.root.position.x-focus.x;
+  const dz=ent.root.position.z-focus.z;
+  const d2=dx*dx+dz*dz;
+  if(ent.kind==='human'){
+    if(d2>30*30) return 0.12;
+    if(d2>18*18) return 0.067;
+    if(d2>10*10) return 0.034;
+  }
+  return 0;
+}
+function getActorMixerDeltaForLOD(ent,dt){
+  const interval=getActorMixerLODInterval(ent);
+  if(interval<=0){
+    ent._mixerLodAccum=0;
+    return dt;
+  }
+  ent._mixerLodAccum=(ent._mixerLodAccum||0)+dt;
+  if(ent._mixerLodAccum<interval) return 0;
+  const out=Math.min(0.12,ent._mixerLodAccum);
+  ent._mixerLodAccum=0;
+  return out;
+}
 
 /* Per-frame mixer advance. Stride frequency tracks the entity's
    current speed — when standing still we slow the mixer right down
@@ -6022,8 +6060,11 @@ function tickActor(ent,dt){
   // frame-stride optimisation caused newly visible / reactivated humans
   // to linger in bind pose and occasionally fight the foot alignment
   // logic, which showed up as T-pose + sinking reports on device.
-  ent.inst.mixer.update(dt);
-  if(ent.kind==='human') syncRetargetPose(ent.inst);
+  const mixerDt=getActorMixerDeltaForLOD(ent,dt);
+  if(mixerDt>0){
+    ent.inst.mixer.update(mixerDt);
+    if(ent.kind==='human') syncRetargetPose(ent.inst);
+  }
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
@@ -6822,13 +6863,25 @@ function tickTempleEvent(dt){
       // within ~1.2 m of the target XZ actually climb upward.
       const horizDist=Math.hypot(targetX-rat.root.position.x,targetZ-rat.root.position.z);
       const yGate=horizDist>1.2?getRitualRatGroundY(rat):targetY;
-      rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*lerpRate));
-      rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*lerpRate));
+      const moveT=Math.min(1,dt*lerpRate);
+      const nextX=lerp(rat.root.position.x,targetX,moveT);
+      const nextZ=lerp(rat.root.position.z,targetZ,moveT);
+      const stepX=nextX-rat.root.position.x;
+      const stepZ=nextZ-rat.root.position.z;
+      const stepLen=Math.hypot(stepX,stepZ);
+      if(stepLen>RITUAL_RAT_MAX_FRAME_MOVE){
+        const s=RITUAL_RAT_MAX_FRAME_MOVE/stepLen;
+        rat.root.position.x+=stepX*s;
+        rat.root.position.z+=stepZ*s;
+      }else{
+        rat.root.position.x=nextX;
+        rat.root.position.z=nextZ;
+      }
       rat.root.position.y=lerp(rat.root.position.y,yGate,Math.min(1,dt*(lerpRate+0.6)));
       wrapResidentRingEntity(rat);
       rat.root.rotation.y=Math.atan2(swarmSnapshot.altarPos.x-rat.root.position.x,swarmSnapshot.altarPos.z-rat.root.position.z);
       rat.moveIntent.y=-1;
-      tickRatBillboard(rat,dt);
+      tickRatVisualAnimLOD(rat,dt);
     }
     game.templeEvent.glowCooldown-=dt;
     if(game.templeEvent.glowCooldown<=0){
@@ -11609,6 +11662,82 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
   });
   return clone;
 }
+function isTempleIdolEntity(ent){
+  return !!(ent && (ent===game.templeEvent?.idol || ent.behaviour==='procession'));
+}
+function resyncActorMixerAfterWarp(ent){
+  const mixer=ent?.inst?.mixer;
+  const actions=ent?.inst?.actions;
+  if(!mixer || !actions) return 'no-mixer';
+  const preferred=isTempleIdolEntity(ent)
+    ? (actions.walk?'walk':(actions.run?'run':'idle'))
+    : (ent.animState||ent.actionName||'idle');
+  mixer.stopAllAction?.();
+  const preferredAct=actions[preferred];
+  const seenActions=new Set();
+  for(const [name,act] of Object.entries(actions)){
+    if(seenActions.has(act)) continue;
+    seenActions.add(act);
+    const active=(act===preferredAct || name===preferred);
+    act.stopFading?.();
+    act.stopWarping?.();
+    act.enabled=true;
+    act.paused=false;
+    act.reset?.();
+    act.setEffectiveWeight?.(active?1:0);
+    if(active) act.play?.();
+  }
+  ent.animState=preferred;
+  ent.actionName=preferred;
+  ent._animBlendFrom=null;
+  ent._animBlendTo=preferred;
+  ent._animBlendT=0;
+  mixer.update?.(0.001);
+  return `replayed:${preferred}`;
+}
+function buildRingMirrorBonePairs(sourceRoot,mirrorRoot){
+  const dstByName=new Map();
+  mirrorRoot.traverse(o=>{ if(o.isBone && o.name) dstByName.set(o.name,o); });
+  const pairs=[];
+  sourceRoot.traverse(o=>{
+    if(!o.isBone || !o.name) return;
+    const dst=dstByName.get(o.name);
+    if(dst) pairs.push([o,dst]);
+  });
+  mirrorRoot.userData.ringMirrorBonePairs=pairs;
+  return pairs;
+}
+function ensureRingMirrorForEntity(ent){
+  if(!ent?._ringMirrorRoot){
+    ent._ringMirrorRoot=SkeletonUtils.clone(ent.root);
+    ent._ringMirrorRoot.traverse(o=>{
+      if(o.isMesh||o.isSkinnedMesh){
+        o.frustumCulled=false;
+      }
+    });
+    buildRingMirrorBonePairs(ent.root,ent._ringMirrorRoot);
+    scene.add(ent._ringMirrorRoot);
+  }
+  return ent._ringMirrorRoot;
+}
+function syncRingMirrorPose(ent,shift){
+  const mirror=ensureRingMirrorForEntity(ent);
+  mirror.visible=ent.root.visible!==false;
+  mirror.position.copy(ent.root.position);
+  mirror.position.x+=shift;
+  mirror.rotation.copy(ent.root.rotation);
+  mirror.scale.copy(ent.root.scale);
+  const pairs=mirror.userData.ringMirrorBonePairs || buildRingMirrorBonePairs(ent.root,mirror);
+  for(let i=0;i<pairs.length;i++){
+    const src=pairs[i][0];
+    const dst=pairs[i][1];
+    dst.position.copy(src.position);
+    dst.quaternion.copy(src.quaternion);
+    dst.scale.copy(src.scale);
+  }
+  if(pairs.length) mirror.updateMatrixWorld(true);
+  return mirror;
+}
 function buildRingSeamPreviewClones(){
   if(ringSeamPreviewBuilt) return;
   ringSeamPreviewBuilt=true;
@@ -11667,6 +11796,7 @@ function wrapResidentRingEntity(ent){
   if(p.x>RING_SEAM_MAX_X){ shifted=-RING_SEAM_LENGTH; }
   else if(p.x<RING_SEAM_MIN_X){ shifted=RING_SEAM_LENGTH; }
   if(!shifted) return false;
+  const fromX=p.x;
   p.x+=shifted;
   if(ent.targetPos?.x!==undefined) ent.targetPos.x+=shifted;
   if(ent.roamTarget?.x!==undefined) ent.roamTarget.x+=shifted;
@@ -11678,9 +11808,10 @@ function wrapResidentRingEntity(ent){
   ent.loopPortalLockUntil=gameTime+0.42;
   ent.loopPortalShift=shifted;
   ent._lastLoopPortalWrapTime=gameTime;
-  if(ent._ringMirrorRoot){
-    ent._ringMirrorRoot.position.copy(ent.root.position);
-    ent._ringMirrorRoot.visible=false;
+  const proxyStatus=clearRingMirrorForEntity(ent);
+  if(isTempleIdolEntity(ent)){
+    const mixerStatus=resyncActorMixerAfterWarp(ent);
+    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}`);
   }
   return true;
 }
@@ -11716,23 +11847,18 @@ function syncRingSeamDynamicMirrors(){
   const keep=new Set();
   for(const ent of candidates){
     if(!ent?.root) continue;
+    if(isTempleIdolEntity(ent) && (ent.loopPortalLockUntil||0)>gameTime){
+      clearRingMirrorForEntity(ent);
+      continue;
+    }
     const shift=ringShiftNearestToReference(ent.root.position.x,focus.x);
     const shouldMirror=shift!==0 && Math.abs((ent.root.position.x+shift)-focus.x)<90;
     if(!shouldMirror){
       if(ent._ringMirrorRoot) ent._ringMirrorRoot.visible=false;
       continue;
     }
-    if(!ent._ringMirrorRoot){
-      ent._ringMirrorRoot=SkeletonUtils.clone(ent.root);
-      ent._ringMirrorRoot.traverse(o=>{ if(o.isMesh||o.isSkinnedMesh){ o.frustumCulled=false; } });
-      scene.add(ent._ringMirrorRoot);
-    }
-    ent._ringMirrorRoot.visible=ent.root.visible!==false;
-    ent._ringMirrorRoot.position.copy(ent.root.position);
-    ent._ringMirrorRoot.position.x+=shift;
-    ent._ringMirrorRoot.rotation.copy(ent.root.rotation);
-    ent._ringMirrorRoot.scale.copy(ent.root.scale);
-    keep.add(ent._ringMirrorRoot);
+    const mirror=syncRingMirrorPose(ent,shift);
+    keep.add(mirror);
   }
 }
 function softClampZ(p){
@@ -12700,6 +12826,10 @@ const RAT_MID_BRAIN_INTERVAL=0.10;
 const RAT_FAR_BRAIN_INTERVAL=0.22;
 const RAT_MID_WORLD_INTERVAL=0.08;
 const RAT_FAR_WORLD_INTERVAL=0.18;
+const RAT_MAX_FRAME_MOVE=IS_MOBILE_DEVICE?0.16:0.24;
+const RITUAL_RAT_MAX_FRAME_MOVE=IS_MOBILE_DEVICE?0.12:0.18;
+const RITUAL_RAT_MAX_SPEED=3.4;
+const RAT_CLIMB_BLEND_TIME=0.22;
 let ratVisualBudgetTimer=0;
 let followerBudgetTimer=0;
 const activeFollowerRats=[];
@@ -12952,6 +13082,21 @@ function getRatLODConfig(rat,focusPos){
     return {brainInterval:0,worldInterval:0};
   }
   if(rat.followStatue && !rat.climbingHuman && !rat.targetHuman){
+    const dx=rat.root.position.x-focusPos.x;
+    const dz=rat.root.position.z-focusPos.z;
+    const d2=dx*dx+dz*dz;
+    if(d2>40*40){
+      return {
+        brainInterval:IS_MOBILE_DEVICE?0.45:0.24,
+        worldInterval:IS_MOBILE_DEVICE?0.60:0.30
+      };
+    }
+    if(d2>24*24){
+      return {
+        brainInterval:IS_MOBILE_DEVICE?0.22:0.12,
+        worldInterval:IS_MOBILE_DEVICE?0.35:0.18
+      };
+    }
     return {
       brainInterval:IS_MOBILE_DEVICE?0.10:0.06,
       worldInterval:IS_MOBILE_DEVICE?0.18:0.12
@@ -13291,6 +13436,58 @@ function detachRatFromHuman(rat){
   rat.targetHuman=null;
   rat.climbHumanTimer=0;
 }
+function getRatMaxFrameMove(rat){
+  return (rat?.followStatue || rat?.templeBound || rat?.templeSwarmVisual || rat?.targetHuman || rat?.climbingHuman)
+    ? RITUAL_RAT_MAX_FRAME_MOVE
+    : RAT_MAX_FRAME_MOVE;
+}
+function moveRatTowardYawClamped(rat,yaw,dist,spd,dt,maxStep=getRatMaxFrameMove(rat)){
+  const rawStep=Math.max(0,spd*dt);
+  const step=Math.min(Number.isFinite(dist)?Math.max(0,dist):Infinity,rawStep,maxStep);
+  if(step<=0) return 0;
+  rat.root.position.x+=Math.sin(yaw)*step;
+  rat.root.position.z+=Math.cos(yaw)*step;
+  return step;
+}
+function startRatClimbingHuman(rat,human){
+  rat.climbingHuman=human;
+  rat.targetHuman=null;
+  rat.climbHumanTimer=0;
+  rat.climbBlend=0;
+  rat.climbStartX=rat.root.position.x;
+  rat.climbStartY=rat.root.position.y;
+  rat.climbStartZ=rat.root.position.z;
+}
+function tickRatVisualAnimLOD(rat,dt,focusPos=null){
+  if(!rat) return;
+  rat._visualAnimFrame=gameTime;
+  if(!IS_MOBILE_DEVICE || rat===player || rat===game.controlled || rat.climbingHuman || rat.targetHuman){
+    tickActor(rat,dt);
+    tickRatBillboard(rat,dt);
+    return;
+  }
+  const focus=focusPos||getGameplayFocusPosition();
+  let interval=0;
+  if(focus&&rat.root){
+    const dx=rat.root.position.x-focus.x;
+    const dz=rat.root.position.z-focus.z;
+    const d2=dx*dx+dz*dz;
+    if(d2>34*34) interval=0.16;
+    else if(d2>20*20) interval=0.08;
+  }
+  if(interval<=0){
+    rat._visualAnimAccum=0;
+    tickActor(rat,dt);
+    tickRatBillboard(rat,dt);
+    return;
+  }
+  rat._visualAnimAccum=(rat._visualAnimAccum||0)+dt;
+  if(rat._visualAnimAccum<interval) return;
+  const visualDt=Math.min(0.18,rat._visualAnimAccum);
+  rat._visualAnimAccum=0;
+  tickActor(rat,visualDt);
+  tickRatBillboard(rat,visualDt);
+}
 function tickRatClimbingHuman(rat,dt){
   const h=rat.climbingHuman;
   if(!h||h.dead||h.transformedToIdol||h.parasitised){
@@ -13306,11 +13503,19 @@ function tickRatClimbingHuman(rat,dt){
   const ringA=phase*2.3+t*4.5;
   const hx=h.root.position.x, hz=h.root.position.z;
   const hy=h.root.position.y;
-  rat.root.position.set(
-    hx+Math.cos(ringA)*ringR,
-    hy+yOffset,
-    hz+Math.sin(ringA)*ringR
-  );
+  const targetX=hx+Math.cos(ringA)*ringR;
+  const targetY=hy+yOffset;
+  const targetZ=hz+Math.sin(ringA)*ringR;
+  if((rat.climbBlend||0)<1){
+    rat.climbBlend=clamp((rat.climbBlend||0)+dt/RAT_CLIMB_BLEND_TIME,0,1);
+    const u=rat.climbBlend*rat.climbBlend*(3-2*rat.climbBlend);
+    const sx=Number.isFinite(rat.climbStartX)?rat.climbStartX:targetX;
+    const sy=Number.isFinite(rat.climbStartY)?rat.climbStartY:targetY;
+    const sz=Number.isFinite(rat.climbStartZ)?rat.climbStartZ:targetZ;
+    rat.root.position.set(lerp(sx,targetX,u),lerp(sy,targetY,u),lerp(sz,targetZ,u));
+  }else{
+    rat.root.position.set(targetX,targetY,targetZ);
+  }
   rat.root.rotation.y=ringA+Math.PI*0.5;
   rat.curSpeed=0;
   if(rat.moveIntent){rat.moveIntent.x=0;rat.moveIntent.y=1}
@@ -13423,17 +13628,16 @@ function tickFollowerRats(dt){
           const dx=exitTarget.x-r.root.position.x;
           const dz=exitTarget.z-r.root.position.z;
           const yaw=Math.atan2(dx,dz);
+          const dist=Math.hypot(dx,dz);
           const spd=2.1+game.chaos*1.5;
           r.followPlayer=false;
-          r.root.position.x+=Math.sin(yaw)*spd*dt;
-          r.root.position.z+=Math.cos(yaw)*spd*dt;
+          const movedStep=moveRatTowardYawClamped(r,yaw,dist,spd,dt);
           r.root.position.y=getRitualRatGroundY(r);
           r.root.rotation.y=yaw;
           wrapResidentRingEntity(r);
-          r.curSpeed=spd;
+          r.curSpeed=movedStep/Math.max(dt,0.0001);
           if(r.moveIntent){r.moveIntent.x=0;r.moveIntent.y=-1}
-          tickActor(r,dt);
-          tickRatBillboard(r,dt);
+          tickRatVisualAnimLOD(r,dt,focusPos);
           continue;
         }
       }
@@ -13472,16 +13676,15 @@ function tickFollowerRats(dt){
         const yaw=Math.atan2(dx,dz);
         const spd=arrived?0:(2.1+game.chaos*1.5);
         r.followPlayer=false;
+        let movedStep=0;
         if(!arrived){
-          r.root.position.x+=Math.sin(yaw)*spd*dt;
-          r.root.position.z+=Math.cos(yaw)*spd*dt;
+          movedStep=moveRatTowardYawClamped(r,yaw,Math.hypot(dx,dz),spd,dt);
           r.root.rotation.y=yaw;
         }
         r.root.position.y=getRitualRatGroundY(r);
-        r.curSpeed=spd;
+        r.curSpeed=movedStep/Math.max(dt,0.0001);
         if(r.moveIntent){r.moveIntent.x=0;r.moveIntent.y=-1}
-        tickActor(r,dt);
-        tickRatBillboard(r,dt);
+        tickRatVisualAnimLOD(r,dt,focusPos);
         continue;
       }
       const climb=clamp(game.templeEvent.swarmProgress*1.06,0,1);
@@ -13520,17 +13723,15 @@ function tickFollowerRats(dt){
       const yGate=horizDist>1.05?getRitualRatGroundY(r):climbY;
       const climbRate=climb>0.55?4.8:3.2;
       r.followPlayer=false;
-      r.root.position.x+=Math.sin(yaw)*spd*dt;
-      r.root.position.z+=Math.cos(yaw)*spd*dt;
+      const movedStep=moveRatTowardYawClamped(r,yaw,horizDist,spd,dt);
       r.root.position.y=lerp(r.root.position.y,yGate,Math.min(1,dt*climbRate));
       r.root.rotation.y=yaw;
-      r.curSpeed=spd;
+      r.curSpeed=movedStep/Math.max(dt,0.0001);
       if(r.moveIntent){
         r.moveIntent.x=0;
         r.moveIntent.y=-1;
       }
-      tickActor(r,dt);
-      tickRatBillboard(r,dt);
+      tickRatVisualAnimLOD(r,dt,focusPos);
       continue;
     }
     let chaosTarget=IS_MOBILE_DEVICE ? sharedChaosTarget : (r._cachedChaosTarget||null);
@@ -13580,9 +13781,7 @@ function tickFollowerRats(dt){
         if(vd2<=RAT_CLIMB_GRAB_DIST_SQ || (r.huntChaseTimer>1.25 && vd2<2.8*2.8)){
           // Latch onto the human and switch to climbing this frame.
           const firstClimber=(victim.ratCoverage||0)<=0;
-          r.climbingHuman=victim;
-          r.targetHuman=null;
-          r.climbHumanTimer=0;
+          startRatClimbingHuman(r,victim);
           r.huntChaseTimer=0;
           victim.ratCoverage=(victim.ratCoverage||0)+1;
           playHumanBiteScream(victim,firstClimber);
@@ -13664,15 +13863,15 @@ function tickFollowerRats(dt){
     const a=Math.atan2(dx,dz);
     const dist=Math.hypot(dx,dz);
     const baseSpd=(dist>0.35)?(1.2+game.chaos*1.5):0;
-    const spd=r.followStatue?baseSpd*2.6:baseSpd;
+    const spd=r.followStatue?Math.min(baseSpd*2.6,RITUAL_RAT_MAX_SPEED):baseSpd;
     const prevX=r.root.position.x, prevZ=r.root.position.z;
-    r.root.position.x+=Math.sin(a)*spd*dt;
-    r.root.position.z+=Math.cos(a)*spd*dt;
+    const movedStep=moveRatTowardYawClamped(r,a,dist,spd,dt);
+    const actualSpeed=movedStep/Math.max(dt,0.0001);
     // Skip O(blockers+props) sweeps for rats that didn't actually move
     // this frame. resolveWorldCollisions / sampleSupportHeight both
     // iterate every active blocker + prop, so calling them for a fully
     // idle rat is pure waste — especially once 500 rats are alive.
-    const moved=spd>0.05;
+    const moved=actualSpeed>0.05;
     const allowWorldCollision=
       ((r.fullFollowerSim || r.targetHuman) && !r.followStatue) ||
       r.climbingHuman ||
@@ -13699,14 +13898,13 @@ function tickFollowerRats(dt){
       r._cachedSupportY=Math.max(r._cachedSupportY ?? ritualGroundY,ritualGroundY);
     }
     r.root.rotation.y=a;
-    r.curSpeed=spd;
+    r.curSpeed=actualSpeed;
     if(r.moveIntent){
       r.moveIntent.x=0;
       const chasingPlayer=!!r.followPlayer || !!r.followStatue || !chaosTarget;
       r.moveIntent.y=spd>0.01?(chasingPlayer?1:-1):0;
     }
-    tickActor(r,dt);
-    tickRatBillboard(r,dt);
+    tickRatVisualAnimLOD(r,dt,focusPos);
   }
 }
 
@@ -14126,6 +14324,7 @@ function stepFrame(dt){
     for(const r of game.rats){
       if(!r || r===player || r===game.controlled) continue;
       if(r.root?.visible===false) continue;
+      if(r._visualAnimFrame===gameTime) continue;
       if(r.followStatue || r.templeSwarmVisual || r.templeBound || r.climbingHuman || r.targetHuman) continue;
       // Derive moveIntent from current velocity, with HYSTERESIS so a
       // follower whose curSpeed wobbles around the forward/idle frame-
