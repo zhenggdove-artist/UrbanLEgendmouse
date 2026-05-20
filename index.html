@@ -128,8 +128,8 @@
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:
-      linear-gradient(180deg,rgba(8,5,14,0.46) 0%,rgba(8,5,14,0.58) 100%),
-      url("./asset/COVER2.png") center/cover no-repeat #08050e;
+      radial-gradient(circle at 50% 18%,rgba(255,183,220,0.16),transparent 42%),
+      linear-gradient(180deg,rgba(8,5,14,0.68) 0%,rgba(8,5,14,0.78) 100%);
     z-index:30}
   .intro-card{width:min(420px,calc(100vw - 32px));min-height:min(620px,calc(100vh - 80px));
     background:transparent;border:none;border-radius:22px;padding:28px 28px 24px;text-align:center;
@@ -163,6 +163,8 @@
     color:#4b1330;font:700 13px/1 var(--ui-display-font);letter-spacing:0.20em;
     padding:12px 22px;cursor:pointer;width:100%;text-transform:uppercase;margin-top:auto}
   #start-btn:disabled{filter:grayscale(0.4);opacity:0.7;cursor:wait}
+  #start-btn-label{font:700 14px/1 var(--ui-display-font);letter-spacing:0.22em;color:#ffe7f4;
+    text-transform:uppercase;text-shadow:0 3px 10px rgba(0,0,0,0.45);pointer-events:none}
   #intro-progress{margin-top:12px}
   #intro-progress-text{font:700 14px/1 var(--ui-display-font);letter-spacing:0.12em;color:#fff4d7;text-align:center}
   #intro-progress-track{height:3px;margin-top:5px;background:#000;overflow:hidden;border-radius:2px}
@@ -570,7 +572,8 @@
       <p>You are an awakened Rat King. By biting humans, you can temporarily control them, and by destroying man-made structures, you can reshape the environment into a more suitable habitat for your fellow rats.</p>
       <p>A distant temple seems to be watching you. When your colony reaches 1000 rats, travel to the temple. The gods will descend.</p>
     </div>
-    <button id="start-btn" disabled>READY</button>
+    <div id="start-btn-label">BEGIN</div>
+    <button id="start-btn" disabled aria-label="Begin game"></button>
     <div id="intro-progress">
       <div id="intro-progress-text">0%</div>
       <div id="intro-progress-track"><div id="intro-progress-fill"></div></div>
@@ -870,7 +873,69 @@ scene.add(sun);
 // The 101 silhouette + city skyline is baked into scene.background as a
 // 2D image — see the sky-canvas drawing above. No 3D model is added to
 // the scene, so the tower can never clip through the temple.
-function buildTaipeiSkyline(){/* intentionally empty — 101 is in the sky texture */}
+function buildTaipeiSkyline(){/* intentionally empty */ }
+
+const introShowcasePivot=new THREE.Group();
+const introShowcaseCenter=new THREE.Vector3(-48,0.95,0);
+introShowcasePivot.position.copy(introShowcaseCenter);
+introShowcasePivot.visible=true;
+scene.add(introShowcasePivot);
+function buildIntroStreetShowcase(){
+  const root=new THREE.Group();
+  const road=new THREE.Mesh(
+    new THREE.BoxGeometry(14,0.24,6.8),
+    new THREE.MeshBasicMaterial({color:'#4b4754',fog:true})
+  );
+  road.position.y=-0.12;
+  root.add(road);
+  const lane=new THREE.Mesh(
+    new THREE.BoxGeometry(8.8,0.02,0.14),
+    new THREE.MeshBasicMaterial({color:'#e9d2a3',fog:true})
+  );
+  lane.position.set(0,0.02,0);
+  root.add(lane);
+  const curbMat=new THREE.MeshBasicMaterial({color:'#857b86',fog:true});
+  for(const side of [-1,1]){
+    const curb=new THREE.Mesh(new THREE.BoxGeometry(14,0.3,0.32),curbMat);
+    curb.position.set(0,0.02,side*3.1);
+    root.add(curb);
+  }
+  const shopMat=new THREE.MeshBasicMaterial({color:'#6f4d72',fog:true});
+  const awningMat=new THREE.MeshBasicMaterial({color:'#c4416f',fog:true});
+  for(const side of [-1,1]){
+    const shop=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.9,1.8),shopMat);
+    shop.position.set(side*1.8,1.34,side*1.95);
+    shop.rotation.y=-side*0.1;
+    root.add(shop);
+    const awning=new THREE.Mesh(new THREE.BoxGeometry(3.9,0.22,1.2),awningMat);
+    awning.position.set(side*1.86,1.45,side*1.02);
+    awning.rotation.x=side*0.18;
+    awning.rotation.y=-side*0.1;
+    root.add(awning);
+  }
+  const cart=new THREE.Mesh(
+    new THREE.BoxGeometry(2.3,1.15,1.2),
+    new THREE.MeshBasicMaterial({color:'#855b33',fog:true})
+  );
+  cart.position.set(-2.8,0.58,0.7);
+  cart.rotation.y=0.32;
+  root.add(cart);
+  const truck=new THREE.Mesh(
+    new THREE.BoxGeometry(3.2,1.4,1.55),
+    new THREE.MeshBasicMaterial({color:'#506376',fog:true})
+  );
+  truck.position.set(2.8,0.72,-0.92);
+  truck.rotation.y=-0.28;
+  root.add(truck);
+  const shrine=new THREE.Mesh(
+    new THREE.BoxGeometry(1.45,2.7,1.35),
+    new THREE.MeshBasicMaterial({color:'#7c2339',fog:true})
+  );
+  shrine.position.set(0,1.36,-2.2);
+  root.add(shrine);
+  return root;
+}
+introShowcasePivot.add(buildIntroStreetShowcase());
 
 /* Low-angle camera — rat-eye view of a 1.7 m human world. */
 const camera=new THREE.PerspectiveCamera(70,LOW_W/LOW_H,0.05,110);
@@ -5505,7 +5570,8 @@ function debugValidateHuman(h){
       controllable:h.controllable
     });
     hardClampHumanToGround(h);
-    forceHumanActionPose(h,'walk');
+    if(h.inst?.outer) h.inst.outer.updateMatrixWorld(true);
+    if(h.root) h.root.updateMatrixWorld(true);
   }
 }
 
@@ -6916,10 +6982,10 @@ function awardChaosScore(pos,baseGain,clusterRadius=4.2){
   spawnComicImpact(pos,`+${points} CHAOS`,'#ffb24a',{
     stroke:'#54110f',
     gradient:['#ff4d2a','#ff7f1f','#ffb23c'],
-    fontSize:66,
-    scaleX:2.8,
-    scaleY:1.08,
-    yOffset:1.55,
+    fontSize:96,
+    scaleX:4.9,
+    scaleY:1.7,
+    yOffset:1.8,
     life:1.58,
     gravity:0,
     vel:new THREE.Vector3(rand(-0.03,0.03),0.92,0),
@@ -7888,7 +7954,8 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'exit-host-btn',label:'Exit Host Button',scene:'game'},
   {id:'exit-host-btn-art',label:'Drop Host Art',isSkinArt:true,parentId:'exit-host-btn',scene:'game'},
   {id:'intro-card',label:'Loading Card',scene:'loading'},
-  {id:'start-btn',label:'Loading Button',isText:true,scene:'loading'},
+  {id:'start-btn-label',label:'Begin Text',isText:true,scene:'loading'},
+  {id:'start-btn',label:'Loading Button',scene:'loading'},
   {id:'intro-title',label:'Loading Title',isText:true,scene:'loading'},
   {id:'intro-tag',label:'Loading Subtitle',isText:true,scene:'loading'},
   {id:'intro-copy',label:'Loading Description',isText:true,multiline:true,scene:'loading'},
@@ -7908,12 +7975,12 @@ const UI_LAYOUT_ART_TARGETS={
   'pickup-btn':'pickup-btn-art',
   'exit-host-btn':'exit-host-btn-art'
 };
-const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rats-win','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rats-win','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_STYLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn']);
-const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn','intro-title','intro-tag','intro-copy','intro-progress-text','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_DEFAULTS={
   'rat-city-btn':'RAT CITY',
-  'start-btn':'BEGIN',
+  'start-btn-label':'BEGIN',
   'rw-text':'RATS WIN',
   'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
   'rw-replay':'PLAY AGAIN',
@@ -7958,7 +8025,8 @@ const UI_LAYOUT_REMOVED_FRAME_IDS=new Set([
 // can locate and resize them right after they appear in the editor.
 const UI_LAYOUT_INTRO_FALLBACK={
   'intro-card':{x:50,y:55,w:42,h:56,z:30,hidden:false,locked:false},
-  'start-btn':{x:50,y:86,w:20,h:5,z:32,hidden:false,locked:false,text:'BEGIN'},
+  'start-btn-label':{x:50,y:81.7,w:28,h:3.2,z:32,hidden:false,locked:false,text:'BEGIN'},
+  'start-btn':{x:50,y:86,w:20,h:5,z:31,hidden:false,locked:false},
   'intro-title':{x:50,y:30.5,w:26,h:4.8,z:31,hidden:false,locked:false},
   'intro-tag':{x:50,y:36.6,w:20,h:1.8,z:31,hidden:false,locked:false},
   'intro-copy':{x:50,y:53,w:45,h:30,z:31,hidden:false,locked:false},
@@ -8135,6 +8203,15 @@ function ensureUILayoutBuiltins(config){
         };
       }
       store.__chaosRatIconSeeded=true;
+    }
+    if(store['start-btn']?.text && !store['start-btn-label']?.text){
+      const fallback=UI_LAYOUT_INTRO_FALLBACK['start-btn-label'];
+      const migratedText=String(store['start-btn'].text||'').trim();
+      store['start-btn-label']={
+        ...fallback,
+        ...(store['start-btn-label']||{}),
+        text:migratedText||UI_LAYOUT_TEXT_DEFAULTS['start-btn-label']
+      };
     }
     if(store['intro-copy'] && !store.__loadingDescriptionRestoredApplied){
       store['intro-copy']={...store['intro-copy'],hidden:false};
@@ -9179,7 +9256,8 @@ function handleUILayoutPointerMove(e){
     next.top+=dy;
   }else{
     const isCorner=drag.corner.length===2;
-    if(isCorner){
+    const keepAspect=isCorner && (def.isCustomFrame || def.isSkinArt);
+    if(keepAspect){
       const aspect=drag.startRect.width/Math.max(1,drag.startRect.height);
       let width=drag.startRect.width;
       let height=drag.startRect.height;
@@ -10338,6 +10416,22 @@ canvas.addEventListener('wheel',e=>{
 function updateCam(){
   // Skylines are now world-fixed at the A/B ends of the loop — they no
   // longer follow the player. (See buildTaipeiSkyline.)
+  if(gameState==='intro'){
+    introShowcasePivot.visible=true;
+    const spin=performance.now()*0.00018;
+    introShowcasePivot.rotation.y=spin;
+    const tx=introShowcaseCenter.x;
+    const ty=introShowcaseCenter.y+0.6;
+    const tz=introShowcaseCenter.z;
+    const radius=9.8;
+    const cx=tx+Math.sin(spin*1.9)*radius;
+    const cy=ty+3.2;
+    const cz=tz+Math.cos(spin*1.9)*radius*0.82;
+    camera.position.set(cx,cy,cz);
+    camera.lookAt(tx,ty,tz);
+    return;
+  }
+  introShowcasePivot.visible=false;
   if(game.ratCityMode){
     const tx=player?player.root.position.x:12;
     const ty=1.2;
@@ -11505,6 +11599,11 @@ function tickBreeding(dt){
   if(breedTimer>0)return;
   breedTimer=Math.max(0.55,3.2-game.chaos*2.6);
   const hotspot=nearestChaosSpot(player.root.position) || {x:player.root.position.x,z:player.root.position.z};
+  const maxVisuals=getActiveVisualMax();
+  if(game.rats.length>=maxVisuals){
+    game.virtualRats=(game.virtualRats||0)+1;
+    return;
+  }
   const side=Math.random()<0.5?-1:1;
   const x=hotspot.x + side*rand(10,16);
   const z=clamp(hotspot.z+rand(-4,4),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
@@ -11512,7 +11611,7 @@ function tickBreeding(dt){
   rat.root.position.set(x,(rat.baseY??0)+GROUND_Y_OFFSET,z);
   rat.targetPos.set(hotspot.x,0,hotspot.z);
   rat.moveIntent.y=-1;
-  rat.followPlayer=Math.random()<0.28;
+  rat.followPlayer=true;
   if(game.templeEvent.gathering && !game.templeEvent.started && !game.templeEvent.awakened){
     rat.templeBound=true;
     rat.followPlayer=false;
@@ -12706,6 +12805,7 @@ function updateHUD(dt){
 
 // ===== Intro / state =====
 const startBtn=document.getElementById('start-btn');
+const startBtnLabel=document.getElementById('start-btn-label');
 const introEl=document.getElementById('intro');
 const introProgressFill=document.getElementById('intro-progress-fill');
 const introProgressText=document.getElementById('intro-progress-text');
@@ -12719,7 +12819,7 @@ function getUILayoutConfiguredText(id,fallback=''){
   return (typeof text==='string' && text.trim())?text:fallback;
 }
 function applyStartButtonLayoutText(fallback='BEGIN'){
-  startBtn.textContent=getUILayoutConfiguredText('start-btn',fallback);
+  if(startBtnLabel) startBtnLabel.textContent=getUILayoutConfiguredText('start-btn-label',fallback);
 }
 function renderIntroProgress(){
   const elapsedSec=Math.max(0,(performance.now()-introProgressState.bootStart)/1000);
@@ -12751,7 +12851,8 @@ startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX(
 startBtn.addEventListener('click',()=>{
   if(gameState!=='intro')return;
   unlockSFX();
-  startBtn.disabled=true;startBtn.textContent='LOADING…';
+  startBtn.disabled=true;
+  if(startBtnLabel) startBtnLabel.textContent='LOADING...';
   setIntroProgress(100);
   introEl.style.display='none';
   document.body.classList.remove('intro-active');
@@ -12762,6 +12863,8 @@ function startGame(){
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
   game.chaos=0;game.chaosDisplay=0;
+  sfxState.streetAmbienceGain=0.5;
+  if(sfxState.unlocked) startLoopSFX('streetAmbience',{volume:0.5,playbackRate:1,source:player});
   setRatCityMode(false);
   updateActionButtons();
   setIntroProgress(100);
