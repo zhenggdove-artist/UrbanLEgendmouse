@@ -676,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','tpose-host-jump-idol-ritual-debug-fix 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','transition-jitter-rootlock+ritual-rats+idol-exit-fix 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -2075,7 +2075,8 @@ const HUMAN_POSITION_LOCK_CACHE=new WeakMap();
 function sampleVectorTrackAt(track,time){
   const times=track?.times, values=track?.values;
   if(!times||!values||times.length<=0||values.length<3) return [0,0,0];
-  const t=clamp(time||0,times[0]||0,times[times.length-1]||0);
+  const maxT=times[times.length-1]||0;
+  const t=clamp(time||0,times[0]||0,maxT);
   if(times.length===1 || t<=times[0]) return [values[0],values[1],values[2]];
   const last=times.length-1;
   if(t>=times[last]) return [values[last*3],values[last*3+1],values[last*3+2]];
@@ -2097,25 +2098,28 @@ function lockHumanActionPositionTracks(clip,actionName=''){
   const cacheKey=actionName||'human';
   if(byAction.has(cacheKey)) return byAction.get(cacheKey);
   let changed=false;
-  const lockTime=Math.min(Math.max(HUMAN_ACTION_POSITION_LOCK_TIME,0.02),Math.max(0.02,(clip.duration||0)-0.02));
+  const duration=Math.max(0.02,clip.duration||0.02);
+  const lockTime=Math.min(Math.max(HUMAN_ACTION_POSITION_LOCK_TIME,0.02),Math.max(0.02,duration-0.02));
   const tracks=clip.tracks.map(track=>{
     const name=track?.name||'';
     if(!name.endsWith('.position') || !track?.values || !track?.times) return track;
-    // Human NPCs are moved by game physics/root position. Mixamo Hips/root
-    // position tracks are only allowed to define a stable local offset;
-    // if they keep animated vertical translation, the walk→idle switch
-    // visibly drops the inner skeleton below the already-correct outer root.
+    // Human world movement is controlled by root physics. FBX Hips/root
+    // position tracks are retained only as a constant local offset; letting
+    // them animate during walk<->idle switches causes the visible rig to
+    // lurch downward/sideways even when the outer root is stable.
     const v=sampleVectorTrackAt(track,lockTime);
     const vals=new Float32Array(track.values.length);
     for(let i=0;i<vals.length;i+=3){vals[i]=v[0];vals[i+1]=v[1];vals[i+2]=v[2];}
     changed=true;
     const Ctor=track.constructor||THREE.VectorKeyframeTrack;
-    return new Ctor(track.name,track.times.slice ? track.times.slice() : Array.from(track.times),vals);
+    const times=track.times.slice ? track.times.slice() : Array.from(track.times);
+    return new Ctor(track.name,times,vals);
   });
-  const out=changed?new THREE.AnimationClip(`${clip.name||'clip'}__humanRootLocked_${cacheKey}`,clip.duration,tracks,clip.blendMode):clip;
+  const out=changed?new THREE.AnimationClip(`${clip.name||'clip'}__rootPositionLocked_${cacheKey}`,clip.duration,tracks,clip.blendMode):clip;
   byAction.set(cacheKey,out);
   return out;
 }
+
 function trackHasAnimatedValues(track){
   const arr=track?.values;
   if(!arr || arr.length<2) return false;
@@ -5837,51 +5841,67 @@ function tickActor(ent,dt){
       && ent.actionName===next
       && ent.actionStamp!==undefined
       && ent.actionStamp!==ent.lastActionStamp;
-    if(ent.animState!==next || shouldRestartAction){
-      for(const [name,act] of Object.entries(ent.inst.actions)){
-        if(name===next){
-          // FLICKER FIX: do NOT call act.reset() on a regular state
-          // transition — reset zeroes the clip's time, so any state
-          // wobble produced a visible frame-0 strobe. Only reset when
-          // shouldRestartAction is set (e.g. a fresh attack action
-          // genuinely wants to play from the start). Otherwise just
-          // re-enable and let the clip continue from wherever it was.
-          act.enabled=true;
-          act.paused=false;
-          if(shouldRestartAction) act.reset();
-          else if(ent.kind==='human' && (next==='idle'||next==='walk'||next==='run'||next==='clean')) nudgeLoopActionOffBindPose(act);
-          if(ent.kind==='human' && (next==='idle'||next==='walk'||next==='run') && (!Number.isFinite(act.time)||act.time<0.08)) nudgeLoopActionOffBindPose(act);
-          act.setEffectiveWeight(1);
-          if(!act.isRunning?.()) act.play();
-        }else{
-          // Stop the action outright instead of fadeOut. fadeOut sets
-          // a weight interpolant that lerps from current→0 and, when
-          // it finishes, three.js sets `this.enabled=false`. Combined
-          // with rapid idle↔walk transitions (every wander tick), this
-          // produces edge states where the previously-chosen action's
-          // weight is stuck at 0 AND enabled is false — even after a
-          // later transition, the action wouldn't snap back to weight=1
-          // until forceHumanActionPose ran again. Direct stop() + weight
-          // 0 skips that minefield, at the cost of a hard transition
-          // instead of a 0.12s crossfade (acceptable for PS1 look).
-          act.enabled=true;
-          act.paused=false;
-          if(!act.isRunning?.()) act.play();
-          act.setEffectiveWeight(0);
-        }
+    const actionsMap=ent.inst.actions;
+    const prevState=ent.animState;
+    if(prevState!==next || shouldRestartAction){
+      const nextAct=actionsMap[next];
+      const prevAct=prevState ? actionsMap[prevState] : null;
+      const loopNext=(next==='idle'||next==='walk'||next==='run'||next==='clean');
+      if(nextAct){
+        nextAct.enabled=true;
+        nextAct.paused=false;
+        if(shouldRestartAction) nextAct.reset();
+        else if(ent.kind==='human' && loopNext) nudgeLoopActionOffBindPose(nextAct);
+        if(!nextAct.isRunning?.()) nextAct.play();
       }
+      if(prevAct && prevAct!==nextAct){
+        prevAct.enabled=true;
+        prevAct.paused=false;
+        if(!prevAct.isRunning?.()) prevAct.play();
+      }
+      const locomotionSwitch=ent.kind==='human' && (
+        prevState==='idle'||prevState==='walk'||prevState==='run'||
+        next==='idle'||next==='walk'||next==='run'
+      );
+      ent._animBlendFrom=(prevAct && prevAct!==nextAct)?prevState:null;
+      ent._animBlendTo=next;
+      ent._animBlendT=0;
+      ent._animBlendDur=locomotionSwitch?0.18:0.055;
       ent.animState=next;
       if(shouldRestartAction) ent.lastActionStamp=ent.actionStamp;
+    }
+    // Manual crossfade. We avoid three.js fadeOut() because earlier builds
+    // left actions disabled at weight 0, but instant hard switching creates
+    // the current walk<->idle shaking. Keep actions running, blend weights
+    // explicitly, then zero every non-participating action.
+    const toName=ent._animBlendTo || next;
+    const fromName=ent._animBlendFrom;
+    const toAct=actionsMap[toName];
+    const fromAct=fromName ? actionsMap[fromName] : null;
+    let blendDone=true;
+    if(toAct && fromAct && fromAct!==toAct){
+      ent._animBlendT=(ent._animBlendT||0)+dt;
+      const dur=Math.max(0.035,ent._animBlendDur||0.12);
+      const u=clamp(ent._animBlendT/dur,0,1);
+      const w=u*u*(3-2*u);
+      toAct.enabled=true;toAct.paused=false;if(!toAct.isRunning?.()) toAct.play();
+      fromAct.enabled=true;fromAct.paused=false;if(!fromAct.isRunning?.()) fromAct.play();
+      toAct.setEffectiveWeight(w);
+      fromAct.setEffectiveWeight(1-w);
+      blendDone=u>=1;
+    }
+    if(blendDone){
+      ent._animBlendFrom=null;
+      ent._animBlendTo=next;
+      for(const [name,act] of Object.entries(actionsMap)){
+        act.enabled=true;
+        act.paused=false;
+        if(!act.isRunning?.()) act.play();
+        act.setEffectiveWeight(name===next?1:0);
+      }
     }else{
-      // Steady state: re-assert the chosen action's full weight every
-      // frame. Cheap, and immune to whatever weight the action might
-      // have ended up at via an earlier fade interpolant.
-      const chosen=ent.inst.actions[next];
-      if(chosen && chosen.getEffectiveWeight?.()<0.999){
-        chosen.enabled=true;
-        chosen.paused=false;
-        chosen.setEffectiveWeight(1);
-        if(!chosen.isRunning?.()) chosen.play();
+      for(const [name,act] of Object.entries(actionsMap)){
+        if(name!==toName && name!==fromName) act.setEffectiveWeight(0);
       }
     }
   }
@@ -5892,6 +5912,9 @@ function tickActor(ent,dt){
   }else{
     // Run cycle goes from a slow march at idle to 1.4× at full speed.
     scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
+  }
+  if(ent.inst.actions){
+    for(const act of Object.values(ent.inst.actions)) act.setEffectiveTimeScale?.(scale);
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
   // Keep human mixers on a normal per-frame update. The earlier
@@ -6428,6 +6451,25 @@ function tickTempleIdolKills(idol){
     if(hitDist<=idol.killRadius) killHost(h);
   }
 }
+
+function shouldIdolIgnoreTempleExitCollision(idol){
+  if(!idol?.root) return false;
+  const p=idol.root.position;
+  if(pointInsideTempleZone(p.x,p.z,6.0)) return true;
+  const refs=[
+    game.templeEvent.altarTopPos,
+    game.templeEvent.altarFrontPos,
+    game.templeEvent.doorwayPos,
+    game.templeEvent.streetPos,
+    game.templeEvent.rearDoorwayPos,
+    game.templeEvent.rearStreetPos
+  ];
+  for(const q of refs){
+    if(q && Number.isFinite(q.x) && Math.hypot(p.x-q.x,p.z-q.z)<18) return true;
+  }
+  return false;
+}
+
 function tickTempleIdolProcession(idol,dt){
   const path=idol.processionPath?.length?idol.processionPath:game.templeEvent.processionPath;
   if(!path?.length)return;
@@ -6453,10 +6495,21 @@ function tickTempleIdolProcession(idol,dt){
     idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
   }
   idolBreakNearbyProps(idol);
-  const idolInsideTemple=!!pointInsideTempleZone(idol.root.position.x,idol.root.position.z,1.8);
-  let idolHitObstacle=false;
-  if(!idolInsideTemple) idolHitObstacle=!!resolveWorldCollisions(idol,prevX,prevZ,1.05);
-  else softClampZ(idol.root.position);
+  if(!shouldIdolIgnoreTempleExitCollision(idol)){
+    resolveWorldCollisions(idol,prevX,prevZ,1.05);
+  }else{
+    wrapResidentRingEntity(idol);
+  }
+  const afterMoveDist=Math.hypot(idol.root.position.x-prevX,idol.root.position.z-prevZ);
+  if(dist>0.8 && step>0.01 && afterMoveDist<step*0.18){
+    idol._processionStuckTimer=(idol._processionStuckTimer||0)+dt;
+    if(idol._processionStuckTimer>0.65 && idol.processIndex<path.length-1){
+      idol.processIndex++;
+      idol._processionStuckTimer=0;
+    }
+  }else{
+    idol._processionStuckTimer=0;
+  }
   // Smoothly LERP the idol's Y from current to ground sampled height,
   // instead of snapping each frame. This removes the abrupt sink that
   // happened the moment the new walk rig appeared at altar height and
@@ -6472,9 +6525,6 @@ function tickTempleIdolProcession(idol,dt){
     idol.root.position.y=lerp(idol.root.position.y,groundY,Math.min(1,dt*2.6));
   }
   wrapResidentRingEntity(idol);
-  if(idolHitObstacle && dist>1.2){
-    idol.roamTimer=0;
-  }
   if(dist<0.5){
     if(idol.processIndex<path.length-1) idol.processIndex++;
     else game.templeEvent.phase='roam';
@@ -6514,9 +6564,11 @@ function tickTempleIdolRoam(idol,dt){
     idol.root.position.x+=Math.sin(yaw)*move;
     idol.root.position.z+=Math.cos(yaw)*move;
     idolBreakNearbyProps(idol);
-    const idolInsideTemple=!!pointInsideTempleZone(idol.root.position.x,idol.root.position.z,1.8);
-    if(!idolInsideTemple) resolveWorldCollisions(idol,prevX,prevZ,1.05);
-    else softClampZ(idol.root.position);
+    if(!shouldIdolIgnoreTempleExitCollision(idol)){
+      resolveWorldCollisions(idol,prevX,prevZ,1.05);
+    }else{
+      wrapResidentRingEntity(idol);
+    }
   }
   idol.root.position.y=resolveIdolGroundY(idol);
   softClampZ(idol.root.position);
@@ -6561,7 +6613,6 @@ function tickTempleEvent(dt){
     startTempleAwakening();
   }
   tickTempleSwarmSpawnQueue();
-  if(game.templeEvent.awakened) ensureRitualEscortRats();
   if(!game.templeEvent.started)return;
   if(game.templeEvent.phase==='gather'){
     game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.22);
@@ -6624,13 +6675,13 @@ function tickTempleEvent(dt){
         const lift=(climb-0.38)/0.20;
         targetX=altarFootX+Math.cos(ringAngle)*0.45;
         targetZ=altarFootZ+Math.sin(ringAngle)*0.30;
-        targetY=lerp(GROUND_Y_OFFSET,altarEdgeTop.y+0.05,lift);
+        targetY=lerp(RITUAL_RAT_VISIBLE_Y_OFFSET+GROUND_Y_OFFSET,altarEdgeTop.y+0.05+RITUAL_RAT_VISIBLE_Y_OFFSET,lift);
       }else if(climb<0.78){
         // Stage 4: walk across the altar top toward the idol's base.
         const topLift=(climb-0.58)/0.20;
         targetX=lerp(altarFootX,altarTop.x,topLift)+Math.cos(ringAngle)*0.95;
         targetZ=lerp(altarFootZ,altarTop.z,topLift)+Math.sin(ringAngle)*0.55;
-        targetY=lerp(altarEdgeTop.y+0.05,altarTop.y+0.08,topLift);
+        targetY=lerp(altarEdgeTop.y+0.05+RITUAL_RAT_VISIBLE_Y_OFFSET,altarTop.y+0.08+RITUAL_RAT_VISIBLE_Y_OFFSET,topLift);
       }else{
         // Stage 5: swarm the idol body — orbit the idol shrinking inward
         // while rising up its silhouette so they BLANKET the statue.
@@ -6641,7 +6692,7 @@ function tickTempleEvent(dt){
         const bodyT=(phase%Math.PI)/Math.PI;
         const climbCeiling=idolBaseY+TEMPLE_IDOL_HEIGHT+0.25;
         const climbFloor=idolBaseY+0.20;
-        targetY=lerp(altarTop.y+0.08,lerp(climbFloor,climbCeiling,bodyT),crest);
+        targetY=lerp(altarTop.y+0.08+RITUAL_RAT_VISIBLE_Y_OFFSET,lerp(climbFloor,climbCeiling,bodyT)+RITUAL_RAT_VISIBLE_Y_OFFSET,crest);
       }
       // Climb stages use a fast lerp so rats actually arrive at the
       // crest height before the swarm-progress timer caps; otherwise the
@@ -6654,7 +6705,7 @@ function tickTempleEvent(dt){
       // from the altar don't take off into the air. Only rats already
       // within ~1.2 m of the target XZ actually climb upward.
       const horizDist=Math.hypot(targetX-rat.root.position.x,targetZ-rat.root.position.z);
-      const yGate=horizDist>1.2?GROUND_Y_OFFSET:targetY;
+      const yGate=horizDist>1.2?getRitualRatGroundY(rat):targetY;
       rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*lerpRate));
       rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*lerpRate));
       rat.root.position.y=lerp(rat.root.position.y,yGate,Math.min(1,dt*(lerpRate+0.6)));
@@ -6727,6 +6778,7 @@ function tickTempleEvent(dt){
     return;
   }
   if(game.templeEvent.awakened){
+    ensureRitualEscortRats();
     if(game.templeEvent.phase==='procession') tickTempleIdolProcession(idol,dt);
     else tickTempleIdolRoam(idol,dt);
     if(Math.random()<0.22) spawnTempleGlow(idol.root.position,4);
@@ -6744,67 +6796,6 @@ function spawnChunkHuman(chunk,x,z,role='wanderer',groupMeta=null){
   chunk.humans.push(h);
   game.humans.push(h);
   return h;
-}
-
-function countVisibleHumanGroupsNear(pos,radius=34){
-  const groups=new Set();
-  let solos=0;
-  for(const h of game.humans){
-    if(!h?.root||h.dead||h.transformedToIdol) continue;
-    const dx=h.root.position.x-pos.x, dz=h.root.position.z-pos.z;
-    if(dx*dx+dz*dz>radius*radius) continue;
-    if(h.socialGroupId) groups.add(h.socialGroupId);
-    else solos++;
-  }
-  return {groups:groups.size,solos};
-}
-function findVisibleHumanSpawnPointNear(pos,forwardX=1,forwardZ=0){
-  const baseChunkIdx=Math.floor(pos.x/CHUNK_SIZE);
-  for(let tries=0;tries<24;tries++){
-    const ahead=rand(7,28);
-    const side=rand(-4.2,4.2);
-    const x=pos.x+forwardX*ahead+forwardZ*side;
-    const z=clamp(pos.z+forwardZ*ahead-forwardX*side,ALLEY_Z_MIN+0.9,ALLEY_Z_MAX-0.9);
-    if(pointInsideTempleZone(x,z,1.1)) continue;
-    const tooClose=game.humans.some(h=>h?.root && Math.hypot(h.root.position.x-x,h.root.position.z-z)<0.9);
-    if(tooClose) continue;
-    return {x,z,chunkIdx:Math.floor(x/CHUNK_SIZE)||baseChunkIdx};
-  }
-  return null;
-}
-function ensureVisibleHumanGroupsNearPlayer(force=false){
-  if(!player?.root || !HUMAN_VARIANTS.length) return;
-  const pos=game.controlled?.root?.position||player.root.position;
-  const forwardX=Math.sin(game.controlled?.yaw||player.yaw||0)||1;
-  const forwardZ=Math.cos(game.controlled?.yaw||player.yaw||0)||0;
-  const current=countVisibleHumanGroupsNear(pos,34);
-  const needGroups=Math.max(0,2-current.groups);
-  const needSolos=Math.max(0,3-current.solos);
-  if(!force && needGroups<=0 && needSolos<=0) return;
-  for(let g=0;g<needGroups;g++){
-    const spawn=findVisibleHumanSpawnPointNear(pos,forwardX,forwardZ);
-    if(!spawn) continue;
-    const chunk=chunks.get(spawn.chunkIdx)||chunks.get(Math.floor(pos.x/CHUNK_SIZE))||{humans:[]};
-    const groupId=`visible-${Math.floor(gameTime*1000)}-${g}-${Math.random().toString(16).slice(2)}`;
-    const size=3+Math.floor(Math.random()*3);
-    const leader=spawnChunkHuman(chunk,spawn.x,spawn.z,'wanderer',{id:groupId});
-    if(!leader) continue;
-    leader.groupLeader=null;
-    leader.wanderTimer=rand(0.25,0.8);
-    for(let m=1;m<size;m++){
-      const angle=(m/(size-1))*Math.PI*2+rand(-0.25,0.25);
-      const rad=0.85+Math.floor(m/2)*0.45;
-      const mx=spawn.x+Math.cos(angle)*rad;
-      const mz=clamp(spawn.z+Math.sin(angle)*rad,ALLEY_Z_MIN+0.9,ALLEY_Z_MAX-0.9);
-      spawnChunkHuman(chunk,mx,mz,'wanderer',{id:groupId,leader,offset:new THREE.Vector3(Math.cos(angle)*rad,0,Math.sin(angle)*rad)});
-    }
-  }
-  for(let i=0;i<needSolos;i++){
-    const spawn=findVisibleHumanSpawnPointNear(pos,forwardX,forwardZ);
-    if(!spawn) continue;
-    const chunk=chunks.get(spawn.chunkIdx)||chunks.get(Math.floor(pos.x/CHUNK_SIZE))||{humans:[]};
-    spawnChunkHuman(chunk,spawn.x,spawn.z,'wanderer');
-  }
 }
 function getHumanHeadWorldPos(host){
   const v=new THREE.Vector3();
@@ -11540,7 +11531,6 @@ function sampleSupportHeight(ent,x,z,currentY){
   return support;
 }
 function resolveWorldCollisions(ent,prevX,prevZ,radius){
-  let collided=false;
   const pos=ent.root.position;
   const footY=pos.y-GROUND_Y_OFFSET;
   const headY=footY+(ent.height||1.6);
@@ -11565,7 +11555,6 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     }else{
       pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
     }
-    collided=true;
   }
   const nearProps=getPropsNear(pos.x,pos.z,radius+1.5);
   for(let i=0;i<nearProps.length;i++){
@@ -11584,13 +11573,11 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     }else{
       pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
     }
-    collided=true;
   }
   softClampZ(pos);
   softClampTempleX(pos);
   wrapResidentRingEntity(ent);
   tryLoopTempleEntity(ent,prevX,prevZ);
-  return collided;
 }
 function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   const curY=ent.root.rotation.y;
@@ -12272,8 +12259,7 @@ function tickHumans(dt){
           const prevX=h.root.position.x, prevZ=h.root.position.z;
           h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
           h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-          const hitObstacle=resolveWorldCollisions(h,prevX,prevZ,0.38);
-          if(hitObstacle){h.yaw+=Math.PI*(Math.random()<0.5?0.65:1.35);h.wanderTimer=rand(0.35,0.9);}
+          resolveWorldCollisions(h,prevX,prevZ,0.38);
           softClampZ(h.root.position);
           tickActor(h,dt);
           h._footstepTimer=0;
@@ -12292,8 +12278,7 @@ function tickHumans(dt){
       const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      const hitObstacle=resolveWorldCollisions(h,prevX,prevZ,0.38);
-      if(hitObstacle){h.yaw+=Math.PI*(Math.random()<0.5?0.62:1.38);h.wanderTimer=rand(0.35,0.85);}
+      resolveWorldCollisions(h,prevX,prevZ,0.38);
       if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
         h.yaw+=Math.PI;softClampZ(h.root.position);
       }
@@ -12727,7 +12712,8 @@ function buildTransformedIdolNPCFromHuman(human){
     tint:null,
     clips:variant.clips,
     source:variant.source,
-    skin:variant.skin
+    skin:variant.skin,
+    lockHumanClipPositions:true
   });
   const root=inst.outer;
   root.position.set(anchorX,anchorGroundY,anchorZ);
@@ -12805,7 +12791,8 @@ function transformHumanToIdolModelLegacy(human){
     tint:null,
     clips:variant.clips,
     source:variant.source,
-    skin:variant.skin
+    skin:variant.skin,
+    lockHumanClipPositions:true
   });
   const root=inst.outer;
   root.position.set(anchorX,anchorGroundY,anchorZ);
@@ -13614,7 +13601,6 @@ function startGame(){
   if(sfxState.unlocked) startLoopSFX('streetAmbience',{volume:0.5,playbackRate:1,source:player});
   setRatCityMode(false);
   updateActionButtons();
-  ensureVisibleHumanGroupsNearPlayer(true);
   setIntroProgress(100);
   console.log('[boot] startGame');
 }
@@ -13700,8 +13686,6 @@ function stepFrame(dt){
     if(game.controlMode==='host') tickControllableHostState(dt);
     tickProps(dt);
     tickHumans(dt);
-    ensureVisibleHumanGroupsNearPlayer._timer=(ensureVisibleHumanGroupsNearPlayer._timer||0)-dt;
-    if(ensureVisibleHumanGroupsNearPlayer._timer<=0){ensureVisibleHumanGroupsNearPlayer._timer=2.4;ensureVisibleHumanGroupsNearPlayer(false);}
     tickBreeding(dt);
     enforceFollowerRatFullSimBudget(dt);
     tickFollowerRats(dt);
