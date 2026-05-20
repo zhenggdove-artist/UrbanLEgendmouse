@@ -728,7 +728,15 @@ window.addEventListener('keydown',e=>{
       }
     }
     let firstBoneName='-';
-    nearest.inst.root.traverse(o=>{ if(o?.isBone && !firstBoneName==='-') return; if(o?.isBone && firstBoneName==='-') firstBoneName=o.name; });
+    nearest.inst.root.traverse(o=>{
+      if(o?.isBone && firstBoneName==='-') firstBoneName=o.name;
+    });
+    const probe=findAnimatedBoneProbe(nearest.inst.root,clip);
+    const beforeValue=snapshotAnimatedBoneProbe(probe);
+    nearest.inst.mixer?.update?.(0.12);
+    syncRetargetPose(nearest.inst);
+    const afterValue=snapshotAnimatedBoneProbe(probe);
+    const moved=didAnimatedBoneProbeMove(probe,beforeValue,afterValue);
     console.log(
       '[B-TEST] variant='+nearest.variantName+
       ' actionRunning='+(action.isRunning?.())+
@@ -739,6 +747,12 @@ window.addEventListener('keydown',e=>{
       ' bound='+bound+' unbound='+unbound+
       ' firstBoneInClone='+firstBoneName+
       ' firstTrack='+(tracks[0]?.name||'-')+
+      ' probeBone='+(probe?.bone?.name||'-')+
+      ' probeTrack='+(probe?.track?.name||'-')+
+      ' probeProperty='+(probe?.property||'-')+
+      ' probeBefore=['+formatAnimatedBoneProbeValue(probe,beforeValue)+']'+
+      ' probeAfter0.12s=['+formatAnimatedBoneProbeValue(probe,afterValue)+']'+
+      ' MOVED='+moved+
       ' samples='+JSON.stringify(sample)
     );
   }
@@ -1986,6 +2000,104 @@ function getSourceCompatibleClip(source,srcClip){
     : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
   clipCache.set(cacheKey,filteredClip);
   return filteredClip;
+}
+function getTrackTargetNodeName(trackName){
+  if(!trackName || typeof trackName!=='string') return '';
+  const dotIdx=trackName.indexOf('.');
+  if(dotIdx<=0) return '';
+  const direct=trackName.slice(0,dotIdx);
+  const boneMatch=direct.match(/^\.bones\[([^\]]+)\]$/);
+  return boneMatch ? boneMatch[1] : direct;
+}
+function getRootNodeNames(root){
+  const names=new Set();
+  root?.traverse?.(node=>{
+    if(node?.name) names.add(node.name);
+  });
+  return names;
+}
+function getCloneRootCompatibleClip(root,srcClip,label=''){
+  // Final safety pass performed AFTER SkeletonUtils.clone(source).
+  // Source-level filtering can still leave tracks whose targets are not
+  // present in the actual cloned mixer root. Three.js then emits
+  // PropertyBinding warnings and silently skips those tracks. Filtering
+  // against the real clone root prevents that failure without rewriting
+  // track names or deleting all position tracks.
+  const clip=resolveAnimationClip(srcClip);
+  if(!clip || !root?.traverse || !Array.isArray(clip.tracks)) return clip;
+  const rootNodeNames=getRootNodeNames(root);
+  const filteredTracks=[];
+  const dropped=[];
+  for(const track of clip.tracks){
+    const nodeName=getTrackTargetNodeName(track?.name||'');
+    if(!nodeName || rootNodeNames.has(nodeName)){
+      filteredTracks.push(track);
+    }else{
+      dropped.push(track?.name||'(unnamed-track)');
+    }
+  }
+  if(!filteredTracks.length){
+    const key=`${label}|${clip.name}|all-dropped`;
+    if(!getCloneRootCompatibleClip._logged) getCloneRootCompatibleClip._logged=new Set();
+    if(!getCloneRootCompatibleClip._logged.has(key)){
+      getCloneRootCompatibleClip._logged.add(key);
+      console.warn('[HUMAN CLIP FILTER] all tracks were dropped for clone root',{label,clip:clip.name,total:clip.tracks.length,sample:dropped.slice(0,8)});
+    }
+    return null;
+  }
+  if(dropped.length){
+    const key=`${label}|${clip.name}|${filteredTracks.length}/${clip.tracks.length}`;
+    if(!getCloneRootCompatibleClip._logged) getCloneRootCompatibleClip._logged=new Set();
+    if(!getCloneRootCompatibleClip._logged.has(key)){
+      getCloneRootCompatibleClip._logged.add(key);
+      console.warn('[HUMAN CLIP FILTER] dropped tracks missing from clone root',{label,clip:clip.name,kept:filteredTracks.length,dropped:dropped.length,sample:dropped.slice(0,8)});
+    }
+  }
+  return filteredTracks.length===clip.tracks.length
+    ? clip
+    : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
+}
+function findAnimatedBoneProbe(root,clip){
+  if(!root || !clip?.tracks?.length) return null;
+  const boneByName=new Map();
+  root.traverse?.(node=>{
+    if(node?.isBone && node.name) boneByName.set(node.name,node);
+  });
+  const pickTrack=(suffix,preferNonHips=true)=>{
+    for(const track of clip.tracks){
+      const trackName=track?.name||'';
+      if(!trackName.endsWith(suffix)) continue;
+      const nodeName=getTrackTargetNodeName(trackName);
+      const bone=boneByName.get(nodeName);
+      if(!bone) continue;
+      const lname=nodeName.toLowerCase();
+      if(preferNonHips && /(^|[:_])hips$/.test(lname)) continue;
+      if(/end$/i.test(nodeName)) continue;
+      return {bone,track,property:suffix.slice(1)};
+    }
+    if(preferNonHips) return pickTrack(suffix,false);
+    return null;
+  };
+  return pickTrack('.quaternion',true) || pickTrack('.position',true) || pickTrack('.scale',true);
+}
+function snapshotAnimatedBoneProbe(probe){
+  if(!probe?.bone) return null;
+  if(probe.property==='quaternion') return probe.bone.quaternion.clone();
+  if(probe.property==='position') return probe.bone.position.clone();
+  if(probe.property==='scale') return probe.bone.scale.clone();
+  return null;
+}
+function didAnimatedBoneProbeMove(probe,before,after){
+  if(!probe || !before || !after) return false;
+  if(probe.property==='quaternion') return before.angleTo(after)>0.0001;
+  if(before.distanceTo) return before.distanceTo(after)>0.0001;
+  return false;
+}
+function formatAnimatedBoneProbeValue(probe,value){
+  if(!probe || !value) return '(none)';
+  const f=n=>Number.isFinite(n)?n.toFixed(3):String(n);
+  if(probe.property==='quaternion') return `${f(value.x)},${f(value.y)},${f(value.z)},${f(value.w)}`;
+  return `${f(value.x)},${f(value.y)},${f(value.z)}`;
 }
 function makeHumanVariant({name='',source,idle,walk,run,jump,kick,pickup,clean,skin}){
   const clipFor=srcClip=>getSourceCompatibleClip(source,srcClip);
@@ -5161,7 +5273,9 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   if(clips){
     for(const [name,srcClip] of Object.entries(clips)){
       if(!srcClip) continue;
-      const act=mixer.clipAction(srcClip);
+      const safeClip=getCloneRootCompatibleClip(root,srcClip,`actor:${name}`);
+      if(!isUsableClip(safeClip)) continue;
+      const act=mixer.clipAction(safeClip);
       act.enabled=true;
       if(name==='idle'||name==='walk'||name==='run'||name==='clean'){
         act.setLoop(THREE.LoopRepeat,Infinity);
@@ -5397,17 +5511,18 @@ function buildHuman({position,role='wanderer'}={}){
       else if(n.endsWith('.scale')) sTracks++;
       else oTracks++;
     }
-    // Pre-tick snapshot of first bone's quaternion, then advance the
-    // mixer 0.1s and snapshot again. If they DIFFER, the binding worked
-    // and animation IS driving the bone — any visible T-pose at that
-    // point is a render/skinning issue. If they MATCH, binding silently
-    // failed and we need to look at PropertyBinding / clone topology.
-    const q0=firstBoneInClone?.quaternion;
-    const before=q0?`${q0.x.toFixed(3)},${q0.y.toFixed(3)},${q0.z.toFixed(3)},${q0.w.toFixed(3)}`:'(no bone)';
+    // Probe an actually-bound non-Hips animation track. The old debug
+    // compared the first bone's quaternion, but Mixamo Hips frequently
+    // moves through position tracks, so unchanged Hips quaternion did
+    // not prove animation failure. This probe chooses a track that
+    // exists on the clone root and then checks whether mixer.update()
+    // really changes that target.
+    const probe=findAnimatedBoneProbe(inst.root,idleClip);
+    const beforeValue=snapshotAnimatedBoneProbe(probe);
     inst.mixer?.update?.(0.1);
-    const q1=firstBoneInClone?.quaternion;
-    const after=q1?`${q1.x.toFixed(3)},${q1.y.toFixed(3)},${q1.z.toFixed(3)},${q1.w.toFixed(3)}`:'(no bone)';
-    const moved=before!==after;
+    syncRetargetPose(inst);
+    const afterValue=snapshotAnimatedBoneProbe(probe);
+    const moved=didAnimatedBoneProbeMove(probe,beforeValue,afterValue);
     console.log(
       '[HUMAN DIAG] '+variant.name+
       ' bones='+boneCount+
@@ -5416,8 +5531,11 @@ function buildHuman({position,role='wanderer'}={}){
       ' skinBone0InClone='+skinBone0InClone+
       ' idleTracks(q/p/s/o)='+qTracks+'/'+pTracks+'/'+sTracks+'/'+oTracks+
       ' total='+idleTracks.length+
-      ' boneQuatBefore=['+before+']'+
-      ' boneQuatAfter0.1s=['+after+']'+
+      ' probeBone='+(probe?.bone?.name||'-')+
+      ' probeTrack='+(probe?.track?.name||'-')+
+      ' probeProperty='+(probe?.property||'-')+
+      ' probeBefore=['+formatAnimatedBoneProbeValue(probe,beforeValue)+']'+
+      ' probeAfter0.1s=['+formatAnimatedBoneProbeValue(probe,afterValue)+']'+
       ' MOVED='+moved
     );
   }
