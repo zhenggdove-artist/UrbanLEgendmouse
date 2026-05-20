@@ -676,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','tpose-rollback-visible-humans-host-jump-obstacle-ai 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','tpose-host-jump-idol-ritual-debug-fix 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1018,6 +1018,8 @@ const TEMPLE_IDOL_KILL_RADIUS=1.2;
 const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
+const RITUAL_RAT_VISIBLE_Y_OFFSET=0.20;
+function getRitualRatGroundY(rat=null){return ((rat?.baseY??0)+GROUND_Y_OFFSET+RITUAL_RAT_VISIBLE_Y_OFFSET);}
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
   // window (designed for jumping humans). The idol never jumps but DOES
@@ -4624,6 +4626,8 @@ function spawnTempleIdol(plazaInfo,{decorative=false}={}){
     skin:idolVariant.skin
   });
   const root=inst.outer;
+  root.userData.noRingSeamPreview=true;
+  root.name='temple_idol_root';
   root.position.copy(plazaInfo.altarPos);
   root.position.y+=TEMPLE_IDOL_SPAWN_Y_OFFSET;
   root.rotation.y=-Math.PI/2;
@@ -4719,6 +4723,68 @@ function despawnSecondaryTempleIdols(){
   game.templeEvent.secondaryIdols.length=0;
   game.templeEvent.pendingSecondaryPlazas.length=0;
 }
+function removeObjectFromChunkMeshes(root){
+  if(!root) return;
+  for(const chunk of chunks.values()){
+    if(!chunk?.meshes) continue;
+    let idx;
+    while((idx=chunk.meshes.indexOf(root))>=0) chunk.meshes.splice(idx,1);
+  }
+}
+function clearRingMirrorForEntity(ent){
+  const mr=ent?._ringMirrorRoot;
+  if(mr?.parent) mr.parent.remove(mr);
+  if(ent) ent._ringMirrorRoot=null;
+}
+function removeRingSeamPreviewGroups(){
+  const names=new Set(['ring_seam_preview_min_shifted_to_max','ring_seam_preview_max_shifted_to_min']);
+  const doomed=[];
+  scene?.traverse?.(o=>{ if(names.has(o.name)) doomed.push(o); });
+  for(const o of doomed){ o.parent?.remove(o); }
+  ringSeamPreviewBuilt=false;
+}
+function ensureRitualEscortRats(){
+  const idol=game.templeEvent.idol;
+  if(!idol?.root) return;
+  const escorts=game.rats.filter(r=>r && r!==player && (r.followStatue || r.templeSwarmVisual || r.templeBound));
+  const targetCount=Math.min(96,Math.max(36,game.templeEvent.swarmSprites?.length||0));
+  while(escorts.length<targetCount){
+    const rat=buildRat({isPlayer:false});
+    const a=Math.random()*Math.PI*2;
+    const rad=rand(0.6,2.6);
+    rat.root.position.set(idol.root.position.x+Math.cos(a)*rad,getRitualRatGroundY(rat),idol.root.position.z+Math.sin(a)*rad);
+    rat.swarmPhase=Math.random()*Math.PI*2;
+    game.rats.push(rat);
+    game.templeEvent.swarmSprites.push(rat);
+    escorts.push(rat);
+  }
+  for(const rat of escorts){
+    if(!rat?.root || rat===player) continue;
+    rat.templeBound=false;
+    rat.templeSwarmVisual=false;
+    rat.followPlayer=false;
+    rat.followStatue=true;
+    rat.fullFollowerSim=true;
+    rat.visualBudgetLockUntil=gameTime+99999;
+    rat.root.visible=true;
+    if(!Number.isFinite(rat.root.position.y) || rat.root.position.y<getRitualRatGroundY(rat)-0.35){
+      rat.root.position.y=getRitualRatGroundY(rat);
+    }
+  }
+}
+function idolBreakNearbyProps(idol){
+  if(!idol?.root) return;
+  const props=getPropsNear(idol.root.position.x,idol.root.position.z,3.1);
+  for(const p of props){
+    if(!p || p.tipTriggered || p.heldBy || p.throwVel) continue;
+    const dx=p.root.position.x-idol.root.position.x;
+    const dz=p.root.position.z-idol.root.position.z;
+    const d=Math.hypot(dx,dz);
+    if(d>2.65) continue;
+    const angle=Math.atan2(dx,dz);
+    triggerPropTip(p,angle,0,'idol');
+  }
+}
 function replaceTempleIdolWithWalkRig(idol){
   const previousRoot=idol.root;
   const idlePos=previousRoot.position.clone();
@@ -4739,10 +4805,15 @@ function replaceTempleIdolWithWalkRig(idol){
     skin:walkVariant.skin
   });
   const root=inst.outer;
+  root.userData.noRingSeamPreview=true;
+  root.name='temple_idol_walk_root';
   root.position.copy(idlePos);
   root.rotation.copy(idleRot);
   addDynamicChunkObject(root);
+  clearRingMirrorForEntity(idol);
+  removeObjectFromChunkMeshes(previousRoot);
   previousRoot.parent?.remove(previousRoot);
+  removeRingSeamPreviewGroups();
   const originalMaterials=[];
   root.traverse(o=>{
     if(!o.isMesh)return;
@@ -5085,12 +5156,12 @@ function generateChunk(idx){
   };
   // All NPCs are wanderers — the cleaner role has been removed at user
   // request. Tipped props now stay tipped (no tidy progression).
-  const soloCount=RESIDENT_RING_MODE?0:(2+(Math.random()<0.75?1:0)+(Math.random()<0.35?1:0));
+  const soloCount=RESIDENT_RING_MODE?(1+(Math.random()<0.22?1:0)):(2+(Math.random()<0.75?1:0)+(Math.random()<0.35?1:0));
   for(let i=0;i<soloCount;i++){
     const {x,z}=pickHumanSpawn();
     spawnChunkHuman(chunk,x,z,'wanderer');
   }
-  const groupCount=RESIDENT_RING_MODE?0:(1+((Math.random()<0.28 && idx%2===0)?1:0));
+  const groupCount=RESIDENT_RING_MODE?((Math.random()<0.10 && idx%3===0)?1:0):(1+((Math.random()<0.28 && idx%2===0)?1:0));
   for(let g=0;g<groupCount;g++){
     const size=3+Math.floor(Math.random()*5);
     const {x:leadX,z:leadZ}=pickHumanSpawn();
@@ -5698,14 +5769,11 @@ function tickActor(ent,dt){
       if(ent.actionTimer>0 && ent.actionName && ent.inst.actions[ent.actionName]) next=ent.actionName;
       else if(ent.isAir && isUsableAction(ent.inst.actions.jump)) next='jump';
       else if(ent.controllable){
-        // Controlled hosts must never fall back to the idle clip while
-        // standing still. The idle/export first frame is where the
-        // parasitised body was flashing into bind/T-pose. NPCs may use
-        // idle; player-controlled humans hold a locomotion pose instead.
-        if(ent.curSpeed>0.12 && isUsableAction(ent.inst.actions.run)) next='run';
+        if(ent.curSpeed>0.18 && isUsableAction(ent.inst.actions.run)) next='run';
+        else if(ent.curSpeed>0.08 && isUsableAction(ent.inst.actions.walk)) next='walk';
+        else if(isUsableAction(ent.inst.actions.idle)) next='idle';
         else if(isUsableAction(ent.inst.actions.walk)) next='walk';
         else if(isUsableAction(ent.inst.actions.run)) next='run';
-        else if(isUsableAction(ent.inst.actions.idle)) next='idle';
       }
       else if(ent.panicTimer>0 && isUsableAction(ent.inst.actions.run)) next='run';
       else if(ent.curSpeed>0.4 && isUsableAction(ent.inst.actions.walk)) next='walk';
@@ -5773,7 +5841,7 @@ function tickActor(ent,dt){
     scale=lerp(0.4,1.6,clamp(ent.curSpeed/PLAYER_MAX_SPEED,0,1));
   }else{
     // Run cycle goes from a slow march at idle to 1.4× at full speed.
-    scale=(ent.kind==='human' && ent.controllable && ent.curSpeed<0.05) ? 0.18 : lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
+    scale=lerp(0.45,1.4,clamp(ent.curSpeed/HOST_MAX_SPEED,0,1));
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
   // Keep human mixers on a normal per-frame update. The earlier
@@ -6169,7 +6237,7 @@ function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null,entrance=n
   const side=rand(-2.8,2.8);
   const sx=street.x - inX*backOff + perpX*side;
   const sz=street.z - inZ*backOff + perpZ*side;
-  rat.root.position.set(sx,GROUND_Y_OFFSET,sz);
+  rat.root.position.set(sx,getRitualRatGroundY(rat),sz);
   rat.spawnX=sx;
   rat.spawnZ=sz;
   rat.templeBound=true;
@@ -6178,6 +6246,9 @@ function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null,entrance=n
   rat.templeSwarmIdol=idolActor||null;
   rat.followPlayer=false;
   rat.followStatue=false;
+  rat.visualBudgetLockUntil=gameTime+99999;
+  rat.fullFollowerSim=true;
+  rat.root.visible=true;
   rat.targetPos.set(plazaSnapshot.altarFrontPos.x,0,plazaSnapshot.altarFrontPos.z);
   rat.moveIntent.y=1;
   rat.swarmSpawnIndex=index;
@@ -6296,12 +6367,7 @@ function awakenTempleIdol(idol){
     walk.setEffectiveWeight?.(1);
     walk.play();
   }
-  for(const rat of game.rats){
-    if(rat===player)continue;
-    rat.templeBound=false;
-    rat.followPlayer=false;
-    rat.followStatue=true;
-  }
+  ensureRitualEscortRats();
   setTempleFlash(0);
   spawnTempleGlow(game.templeEvent.altarPos,180);
 }
@@ -6325,16 +6391,19 @@ function tickTempleIdolProcession(idol,dt){
     return;
   }
   const target=path[Math.min(idol.processIndex,path.length-1)];
+  const prevX=idol.root.position.x, prevZ=idol.root.position.z;
   const dx=target.x-idol.root.position.x;
   const dz=target.z-idol.root.position.z;
   const dist=Math.hypot(dx,dz);
   const step=idol.curSpeed*dt;
   if(dist>0.001){
     const yaw=Math.atan2(dx,dz);
-    rotateTowardYaw(idol,yaw,dt,4.4);
+    rotateTowardYaw(idol,yaw,dt,7.5);
     idol.root.position.x+=Math.sin(yaw)*Math.min(step,dist);
     idol.root.position.z+=Math.cos(yaw)*Math.min(step,dist);
   }
+  idolBreakNearbyProps(idol);
+  resolveWorldCollisions(idol,prevX,prevZ,1.05);
   // Smoothly LERP the idol's Y from current to ground sampled height,
   // instead of snapping each frame. This removes the abrupt sink that
   // happened the moment the new walk rig appeared at altar height and
@@ -6384,9 +6453,12 @@ function tickTempleIdolRoam(idol,dt){
   if(dist>0.01){
     const yaw=Math.atan2(dx,dz);
     rotateTowardYaw(idol,yaw,dt,3.6);
+    const prevX=idol.root.position.x, prevZ=idol.root.position.z;
     const move=Math.min(idol.curSpeed*dt,dist);
     idol.root.position.x+=Math.sin(yaw)*move;
     idol.root.position.z+=Math.cos(yaw)*move;
+    idolBreakNearbyProps(idol);
+    resolveWorldCollisions(idol,prevX,prevZ,1.05);
   }
   idol.root.position.y=resolveIdolGroundY(idol);
   softClampZ(idol.root.position);
@@ -6479,14 +6551,14 @@ function tickTempleEvent(dt){
           targetX=lerp(doorway.x+doorJitterX,altarFootX+Math.cos(ringAngle)*0.5,seg);
           targetZ=lerp(doorway.z+doorJitterZ,altarFootZ+Math.sin(ringAngle)*0.35,seg);
         }
-        targetY=GROUND_Y_OFFSET;
+        targetY=RITUAL_RAT_VISIBLE_Y_OFFSET+GROUND_Y_OFFSET;
       }else if(climb<0.38){
         // Stage 2: pack tight against the altar's front face on the ground
         // so the wave of rats arrives BEFORE any vertical lift starts.
         const pack=(climb-0.20)/0.18;
         targetX=altarFootX+Math.cos(ringAngle)*lerp(1.4,0.45,pack);
         targetZ=altarFootZ+Math.sin(ringAngle)*lerp(0.85,0.30,pack);
-        targetY=GROUND_Y_OFFSET;
+        targetY=RITUAL_RAT_VISIBLE_Y_OFFSET+GROUND_Y_OFFSET;
       }else if(climb<0.58){
         // Stage 3: climb the altar's front face. XZ holds against the
         // collision-body edge; Y rises from ground up to altar top.
@@ -6583,7 +6655,7 @@ function tickTempleEvent(dt){
     setTempleFlash(Math.max(0,0.95-dropProgress*1.25));
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
-      rat.root.position.y=lerp(rat.root.position.y,GROUND_Y_OFFSET,Math.min(1,dt*6.5));
+      rat.root.position.y=lerp(rat.root.position.y,getRitualRatGroundY(rat),Math.min(1,dt*6.5));
       rat.followStatue=true;
       rat.templeBound=false;
       rat.templeSwarmVisual=false;
@@ -6591,6 +6663,7 @@ function tickTempleEvent(dt){
     }
     if(game.templeEvent.phaseTimer<=0){
       awakenTempleIdol(idol);
+      ensureRitualEscortRats();
     }
     return;
   }
@@ -11347,7 +11420,6 @@ function sampleSupportHeight(ent,x,z,currentY){
   return support;
 }
 function resolveWorldCollisions(ent,prevX,prevZ,radius){
-  let collided=false;
   const pos=ent.root.position;
   const footY=pos.y-GROUND_Y_OFFSET;
   const headY=footY+(ent.height||1.6);
@@ -11369,10 +11441,8 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
     if(pushX<pushZ){
       pos.x=(Math.abs(maxX-pos.x)<Math.abs(pos.x-minX))?maxX:minX;
-      collided=true;
     }else{
       pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
-      collided=true;
     }
   }
   const nearProps=getPropsNear(pos.x,pos.z,radius+1.5);
@@ -11389,19 +11459,14 @@ function resolveWorldCollisions(ent,prevX,prevZ,radius){
     const pushZ=Math.min(Math.abs(maxZ-pos.z),Math.abs(pos.z-minZ));
     if(pushX<pushZ){
       pos.x=(Math.abs(maxX-pos.x)<Math.abs(pos.x-minX))?maxX:minX;
-      collided=true;
     }else{
       pos.z=(Math.abs(maxZ-pos.z)<Math.abs(pos.z-minZ))?maxZ:minZ;
-      collided=true;
     }
   }
-  const beforeClampZ=pos.z;
   softClampZ(pos);
-  if(Math.abs(pos.z-beforeClampZ)>1e-4) collided=true;
   softClampTempleX(pos);
   wrapResidentRingEntity(ent);
   tryLoopTempleEntity(ent,prevX,prevZ);
-  return collided;
 }
 function rotateTowardYaw(ent,targetYaw,dt,turnRate=5.8){
   const curY=ent.root.rotation.y;
@@ -11501,12 +11566,13 @@ function updatePlayer(dt){
   if(inputFlags.jump){
     if(!ent.isAir){
       const jumpMultiplier=game.testMode?1:2;
-      ent.vy=(isHost?JUMP_VEL*0.92:JUMP_VEL)*jumpMultiplier;
+      ent.vy=JUMP_VEL*jumpMultiplier;
       ent.isAir=true;
       if(isHost){
         ent.actionName='jump';
         ent.actionTimer=Math.max(0.46,ent.inst?.actions?.jump?.getClip?.().duration||0.46);
         ent.actionStamp=(ent.actionStamp||0)+1;
+        ent.lastActionStamp=-1;
       }
       if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent});
     }
@@ -11922,118 +11988,6 @@ function tickCleaner(cleaner,dt){
     cleaner.tidyTimer=0;
   }
 }
-
-// View-scoped human population. This is intentionally conservative:
-// we do not constantly despawn/rebuild humans (that churn was what made
-// the T-pose problem look worse). The resident chunks contain no NPCs;
-// this pool seeds the player's immediate sightline, then adds only when
-// the nearby count drops below target.
-const VIEW_HUMAN_TARGET_DESKTOP=32;
-const VIEW_HUMAN_TARGET_MOBILE=16;
-let visibleHumanSpawnTimer=0;
-let dynamicHumanGroupId=0;
-function isProtectedHuman(h){
-  return !!(h?.controllable||h?.parasitised||h===game.parasitisedHost||h===game.controlled||h.dead||h.transformedToIdol||h.idolWanderer);
-}
-function isGoodHumanSpawnPoint(x,z){
-  if(pointInsideTempleZone(x,z,1.8)) return false;
-  if(z<ALLEY_Z_MIN+0.85 || z>ALLEY_Z_MAX-0.85) return false;
-  const nearBlockers=getBlockersNear(x,z,1.25);
-  for(const b of nearBlockers){
-    if(!b?.root || b.supportOnly) continue;
-    const minX=((b.minX??(b.centerX??b.root.position.x)+(b.minXOffset??-(b.halfX||b.radius||0.6))))-0.52;
-    const maxX=((b.maxX??(b.centerX??b.root.position.x)+(b.maxXOffset?? (b.halfX||b.radius||0.6))))+0.52;
-    const minZ=((b.minZ??(b.centerZ??b.root.position.z)+(b.minZOffset??-(b.halfZ||b.radius||0.6))))-0.52;
-    const maxZ=((b.maxZ??(b.centerZ??b.root.position.z)+(b.maxZOffset?? (b.halfZ||b.radius||0.6))))+0.52;
-    if(x>=minX&&x<=maxX&&z>=minZ&&z<=maxZ) return false;
-  }
-  const nearProps=getPropsNear(x,z,1.1);
-  for(const p of nearProps){
-    if(!p?.root || p.heldBy || p.throwVel) continue;
-    const minX=(p.root.position.x+(p.minXOffset??-(p.halfX||p.radius||0.45)))-0.48;
-    const maxX=(p.root.position.x+(p.maxXOffset?? (p.halfX||p.radius||0.45)))+0.48;
-    const minZ=(p.root.position.z+(p.minZOffset??-(p.halfZ||p.radius||0.45)))-0.48;
-    const maxZ=(p.root.position.z+(p.maxZOffset?? (p.halfZ||p.radius||0.45)))+0.48;
-    if(x>=minX&&x<=maxX&&z>=minZ&&z<=maxZ) return false;
-  }
-  return true;
-}
-function warmHumanActionAfterSpawn(h){
-  if(!h?.inst?.actions) return;
-  const act=h.inst.actions.walk||h.inst.actions.idle||h.inst.actions.run;
-  if(!act) return;
-  for(const a of Object.values(h.inst.actions)){
-    a.enabled=true;
-    a.paused=false;
-    if(!a.isRunning?.()) a.play();
-    a.setEffectiveWeight(a===act?1:0);
-  }
-  h.animState=(act===h.inst.actions.walk)?'walk':((act===h.inst.actions.run)?'run':'idle');
-  nudgeLoopActionOffBindPose(act);
-  h.inst.mixer.update(0.08+Math.random()*0.08);
-  syncRetargetPose(h.inst);
-}
-function spawnVisibleHumanAt(x,z,groupMeta=null){
-  const chunkIdx=Math.floor(x/CHUNK_SIZE);
-  const chunk=chunks.get(chunkIdx)||{humans:[]};
-  const h=spawnChunkHuman(chunk,x,z,'wanderer',groupMeta||undefined);
-  if(h){
-    h.dynamicViewHuman=true;
-    h.wanderTimer=0.35+Math.random()*1.4;
-    warmHumanActionAfterSpawn(h);
-  }
-  return h;
-}
-function spawnVisibleHumanGroup(cx,cz,count){
-  const groupId='view-group-'+(++dynamicHumanGroupId);
-  const leader=spawnVisibleHumanAt(cx,cz,{id:groupId});
-  if(!leader) return 0;
-  leader.groupLeader=null;
-  let made=1;
-  for(let i=1;i<count;i++){
-    const side=(i%2?1:-1)*(0.70+Math.floor(i/2)*0.36);
-    const back=0.55+Math.floor(i/2)*0.48;
-    const x=cx-back+rand(-0.32,0.32);
-    const z=clamp(cz+side+rand(-0.2,0.2),ALLEY_Z_MIN+0.9,ALLEY_Z_MAX-0.9);
-    if(!isGoodHumanSpawnPoint(x,z)) continue;
-    const member=spawnVisibleHumanAt(x,z,{id:groupId,leader,offset:new THREE.Vector3(-back,0,side)});
-    if(member) made++;
-  }
-  return made;
-}
-function maintainVisibleHumanPopulation(dt,force=false){
-  if(!RESIDENT_RING_MODE || !player?.root || gameState!=='playing') return;
-  visibleHumanSpawnTimer-=dt;
-  if(!force && visibleHumanSpawnTimer>0) return;
-  visibleHumanSpawnTimer=force?0.05:0.8;
-  const focus=getGameplayFocusPosition()||player.root.position;
-  const target=IS_MOBILE_DEVICE?VIEW_HUMAN_TARGET_MOBILE:VIEW_HUMAN_TARGET_DESKTOP;
-  let active=0;
-  for(const h of game.humans){
-    if(!h?.root || isProtectedHuman(h)) continue;
-    const dx=nearestRingDelta(h.root.position.x,focus.x);
-    const dz=h.root.position.z-focus.z;
-    const d2=dx*dx+dz*dz;
-    if(d2<42*42) active++;
-  }
-  let attempts=0;
-  while(active<target && attempts<70){
-    attempts++;
-    const group=Math.random()<0.58;
-    const count=group?(3+Math.floor(Math.random()*3)):1;
-    const near=force && active<10;
-    const ahead=near?rand(5,18):rand(9,34);
-    const lateral=rand(-4.8,4.8);
-    const yaw=(game.controlled?.yaw??player.yaw??0);
-    const fx=Math.sin(yaw), fz=Math.cos(yaw);
-    const rx=Math.cos(yaw), rz=-Math.sin(yaw);
-    const x=focus.x+fx*ahead+rx*lateral;
-    const z=clamp(focus.z+fz*ahead+rz*lateral,ALLEY_Z_MIN+1.0,ALLEY_Z_MAX-1.0);
-    if(!isGoodHumanSpawnPoint(x,z)) continue;
-    active+=group?spawnVisibleHumanGroup(x,z,count):(spawnVisibleHumanAt(x,z)?1:0);
-  }
-}
-
 function tickHumans(dt){
   const focusPos=getGameplayFocusPosition();
   for(const h of game.humans){
@@ -12043,12 +11997,13 @@ function tickHumans(dt){
       h.skinCheckTimer=1.6+Math.random()*0.9;
     }
     if(h!==game.parasitisedHost) h._footstepTimer=0;
-    if(!shouldSimulateHumanEntity(h,focusPos)){
-      deactivateHumanForLOD(h);
-      continue;
-    }
-    activateHumanFromLOD(h);
+    // Player-controlled host must not pass through LOD reactivation or
+    // hardClampHumanToGround: activateHumanFromLOD() zeroes vy/isAir,
+    // which was the real reason jump was visually playing but the body
+    // snapped back to the ground.
     if(h===game.parasitisedHost || h.controllable || h===game.controlled){
+      h._lodInactive=false;
+      h.root.visible=true;
       h.panicTimer=0;
       h.panicTurnTimer=0;
       h.behaviour='controlled';
@@ -12057,6 +12012,11 @@ function tickHumans(dt){
       debugHumanAction(h);
       continue;
     }
+    if(!shouldSimulateHumanEntity(h,focusPos)){
+      deactivateHumanForLOD(h);
+      continue;
+    }
+    activateHumanFromLOD(h);
     if(h.idolWanderer){
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       h.wanderTimer=(h.wanderTimer||0)-dt;
@@ -12070,8 +12030,7 @@ function tickHumans(dt){
       const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
-      if(hit){ h.yaw+=rand(Math.PI*0.72,Math.PI*1.28); h.wanderTimer=0.5+Math.random()*1.2; h.curSpeed=0; }
+      resolveWorldCollisions(h,prevX,prevZ,0.38);
       softClampZ(h.root.position);
       if(typeof h._lockedFeetY==='number') h.root.position.y=h._lockedFeetY;
       tickActor(h,dt);
@@ -12156,8 +12115,7 @@ function tickHumans(dt){
       const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
-      if(hit){ h.yaw+=rand(Math.PI*0.82,Math.PI*1.18); h.panicTurnTimer=0.04; h.curSpeed=0.35; }
+      resolveWorldCollisions(h,prevX,prevZ,0.38);
       if(h.root.position.z<ALLEY_Z_MIN+0.4||h.root.position.z>ALLEY_Z_MAX-0.4){
         h.yaw+=Math.PI*(Math.random()<0.5?0.8:1.2);
         softClampZ(h.root.position);
@@ -12190,8 +12148,7 @@ function tickHumans(dt){
           const prevX=h.root.position.x, prevZ=h.root.position.z;
           h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
           h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-          const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
-          if(hit){ h.yaw+=rand(Math.PI*0.65,Math.PI*1.35); h.wanderTimer=0.45+Math.random()*1.0; h.curSpeed=0; }
+          resolveWorldCollisions(h,prevX,prevZ,0.38);
           softClampZ(h.root.position);
           tickActor(h,dt);
           h._footstepTimer=0;
@@ -12210,8 +12167,7 @@ function tickHumans(dt){
       const prevX=h.root.position.x, prevZ=h.root.position.z;
       h.root.position.x+=Math.sin(h.root.rotation.y)*h.curSpeed*dt;
       h.root.position.z+=Math.cos(h.root.rotation.y)*h.curSpeed*dt;
-      const hit=resolveWorldCollisions(h,prevX,prevZ,0.38);
-      if(hit){ h.yaw+=rand(Math.PI*0.72,Math.PI*1.28); h.wanderTimer=0.55+Math.random()*1.1; h.curSpeed=0; }
+      resolveWorldCollisions(h,prevX,prevZ,0.38);
       if(h.root.position.z<ALLEY_Z_MIN+0.3||h.root.position.z>ALLEY_Z_MAX-0.5){
         h.yaw+=Math.PI;softClampZ(h.root.position);
       }
@@ -13200,7 +13156,8 @@ function tickFollowerRats(dt){
     if(moved && runWorldProbe && allowWorldCollision){
       const supportY=sampleSupportHeight(r,r.root.position.x,r.root.position.z,r.root.position.y);
       const baseGroundY=(r.baseY??0)+GROUND_Y_OFFSET;
-      const targetY=supportY>baseGroundY+0.001 ? supportY : baseGroundY;
+      let targetY=supportY>baseGroundY+0.001 ? supportY : baseGroundY;
+      if(r.followStatue || r.templeSwarmVisual || r.templeBound) targetY+=RITUAL_RAT_VISIBLE_Y_OFFSET;
       r.root.position.y=targetY;
       r._cachedSupportY=targetY;
     }else if(moved){
@@ -13532,7 +13489,6 @@ function startGame(){
   setRatCityMode(false);
   updateActionButtons();
   setIntroProgress(100);
-  maintainVisibleHumanPopulation(999,true);
   console.log('[boot] startGame');
 }
 function triggerRatsWin(){
@@ -13605,7 +13561,6 @@ function stepFrame(dt){
     // and any other proximity query share one consistent snapshot.
     refreshActiveFollowerRats(dt);
     rebuildRatsGrid();
-    maintainVisibleHumanPopulation(dt);
     maybeRebuildHumansGrid(dt);
     updateSharedChaosTarget(dt);
     syncPlayerBiteLoop();
