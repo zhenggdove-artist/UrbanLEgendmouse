@@ -676,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','resident-ring-preview-seam-no-veil+temple-prop-filter 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','map-stable+human-actions+ritual-seam+host-panic-fix 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -1998,7 +1998,7 @@ function getSourceCompatibleClip(source,srcClip){
     clipCache=new Map();
     SOURCE_CLIP_FILTER_CACHE.set(source,clipCache);
   }
-  const cacheKey=`${clip.name}::${clip.duration}::${clip.tracks.length}`;
+  const cacheKey=`${source?.uuid||source?.name||'source'}::${clip.name}::${clip.duration}::${clip.tracks.length}`;
   if(clipCache.has(cacheKey)) return clipCache.get(cacheKey);
   const sourceNodeNames=getSourceNodeNames(source);
   const filteredTracks=clip.tracks.filter(track=>{
@@ -6340,6 +6340,7 @@ function tickTempleIdolProcession(idol,dt){
   }else{
     idol.root.position.y=lerp(idol.root.position.y,groundY,Math.min(1,dt*2.6));
   }
+  wrapResidentRingEntity(idol);
   if(dist<0.5){
     if(idol.processIndex<path.length-1) idol.processIndex++;
     else game.templeEvent.phase='roam';
@@ -6381,6 +6382,7 @@ function tickTempleIdolRoam(idol,dt){
   idol.root.position.y=resolveIdolGroundY(idol);
   softClampZ(idol.root.position);
   softClampTempleX(idol.root.position);
+  wrapResidentRingEntity(idol);
   tickTempleIdolKills(idol);
   tickActor(idol,dt);
   tickFootstepSFX(idol,dt,'idolStep',{minSpeed:0.22,baseInterval:0.58,volume:0.82,cooldown:0.08,rateScale:0.04});
@@ -6516,6 +6518,7 @@ function tickTempleEvent(dt){
       rat.root.position.x=lerp(rat.root.position.x,targetX,Math.min(1,dt*lerpRate));
       rat.root.position.z=lerp(rat.root.position.z,targetZ,Math.min(1,dt*lerpRate));
       rat.root.position.y=lerp(rat.root.position.y,yGate,Math.min(1,dt*(lerpRate+0.6)));
+      wrapResidentRingEntity(rat);
       rat.root.rotation.y=Math.atan2(swarmSnapshot.altarPos.x-rat.root.position.x,swarmSnapshot.altarPos.z-rat.root.position.z);
       rat.moveIntent.y=-1;
       tickRatBillboard(rat,dt);
@@ -11056,6 +11059,9 @@ function doHostAttack(){
 function tickControllableHostState(dt){
   const host=game.parasitisedHost;
   if(!host)return;
+  host.panicTimer=0;
+  host.panicTurnTimer=0;
+  host.behaviour='controlled';
   if(game.testMode) host.parasiteTimer=HOST_PARASITE_TIME;
   else host.parasiteTimer=Math.max(0,host.parasiteTimer-dt);
   modeBadge.textContent=`CONTROL · HOST ${host.parasiteTimer.toFixed(0)}S`;
@@ -11231,9 +11237,6 @@ function wrapResidentRingEntity(ent){
   const p=ent.root.position;
   if(!Number.isFinite(p.x) || RING_SEAM_LENGTH<=CHUNK_SIZE) return false;
   let shifted=0;
-  // Wrap inside the fog corridor, not at the literal end of the generated
-  // street. This prevents the player from seeing a blank terminus and
-  // reframes the seam as an atmospheric passage rather than a teleport.
   if(p.x>RING_SEAM_MAX_X){ shifted=-RING_SEAM_LENGTH; }
   else if(p.x<RING_SEAM_MIN_X){ shifted=RING_SEAM_LENGTH; }
   if(!shifted) return false;
@@ -11241,11 +11244,60 @@ function wrapResidentRingEntity(ent){
   if(ent.targetPos?.x!==undefined) ent.targetPos.x+=shifted;
   if(ent.roamTarget?.x!==undefined) ent.roamTarget.x+=shifted;
   if(ent.followOffset?.x!==undefined) ent.followOffset.x+=shifted;
+  if(ent.processionPath?.length){ for(const q of ent.processionPath){ if(q?.x!==undefined) q.x+=shifted; } }
   if(ent===player || ent===game.controlled || ent.controllable){
     ringSeamLastWrapTime=gameTime;
   }
   ent.loopPortalLockUntil=gameTime+0.35;
   return true;
+}
+function ringShiftNearestToReference(x,refX){
+  if(!RESIDENT_RING_MODE || !Number.isFinite(x) || !Number.isFinite(refX) || RING_SEAM_LENGTH<=0) return 0;
+  let best=0,bestD=Math.abs(x-refX);
+  for(const sh of [-RING_SEAM_LENGTH,RING_SEAM_LENGTH]){
+    const d=Math.abs((x+sh)-refX);
+    if(d<bestD){bestD=d;best=sh;}
+  }
+  return best;
+}
+function nearestRingDelta(ax,bx){
+  if(!RESIDENT_RING_MODE || RING_SEAM_LENGTH<=0) return ax-bx;
+  let d=ax-bx;
+  if(d> RING_SEAM_LENGTH*0.5) d-=RING_SEAM_LENGTH;
+  if(d<-RING_SEAM_LENGTH*0.5) d+=RING_SEAM_LENGTH;
+  return d;
+}
+function syncRingSeamDynamicMirrors(){
+  if(!RESIDENT_RING_MODE || !scene || RING_SEAM_LENGTH<=0) return;
+  const focus=(game.controlled?.root?.position||player?.root?.position||null);
+  if(!focus) return;
+  const candidates=[];
+  if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
+  for(const r of game.rats){
+    if(!r?.root || r===player || r===game.controlled) continue;
+    if(r.followStatue || r.templeSwarmVisual || r.templeBound || r.climbingHuman || r.targetHuman) candidates.push(r);
+  }
+  const keep=new Set();
+  for(const ent of candidates){
+    if(!ent?.root) continue;
+    const shift=ringShiftNearestToReference(ent.root.position.x,focus.x);
+    const shouldMirror=shift!==0 && Math.abs((ent.root.position.x+shift)-focus.x)<90;
+    if(!shouldMirror){
+      if(ent._ringMirrorRoot) ent._ringMirrorRoot.visible=false;
+      continue;
+    }
+    if(!ent._ringMirrorRoot){
+      ent._ringMirrorRoot=SkeletonUtils.clone(ent.root);
+      ent._ringMirrorRoot.traverse(o=>{ if(o.isMesh||o.isSkinnedMesh){ o.frustumCulled=false; } });
+      scene.add(ent._ringMirrorRoot);
+    }
+    ent._ringMirrorRoot.visible=ent.root.visible!==false;
+    ent._ringMirrorRoot.position.copy(ent.root.position);
+    ent._ringMirrorRoot.position.x+=shift;
+    ent._ringMirrorRoot.rotation.copy(ent.root.rotation);
+    ent._ringMirrorRoot.scale.copy(ent.root.scale);
+    keep.add(ent._ringMirrorRoot);
+  }
 }
 function softClampZ(p){
   if(p.z<ALLEY_Z_MIN)p.z=ALLEY_Z_MIN;
@@ -11911,7 +11963,7 @@ function tickHumans(dt){
       debugHumanAction(h);
       continue;
     }
-    if(!h.controllable && !h.parasitised){
+    if(!h.controllable && !h.parasitised && h!==game.parasitisedHost && h!==game.controlled){
       const ratPressure=countNearbyGroundRats(h.root.position,3.25);
       if(ratPressure>=10){
         h.panicTimer=Math.max(h.panicTimer,1.75);
@@ -11921,7 +11973,7 @@ function tickHumans(dt){
       // random directions when the giant walking statue passes within
       // 14 m. Triggers the same panic state used by rat pressure, so
       // existing flee-from-environment logic handles the movement.
-      if(game.templeEvent.idol && game.templeEvent.awakened && !h.dead && !h.transformedToIdol && !h.idolWanderer){
+      if(game.templeEvent.idol && game.templeEvent.awakened && !h.dead && !h.transformedToIdol && !h.idolWanderer && !h.parasitised && h!==game.parasitisedHost && h!==game.controlled){
         const idol=game.templeEvent.idol;
         const idx=h.root.position.x-idol.root.position.x;
         const idz=h.root.position.z-idol.root.position.z;
@@ -11943,7 +11995,7 @@ function tickHumans(dt){
       debugHumanAction(h);
       continue;
     }
-    if(h.panicTimer>0 && !h.controllable){
+    if(h.panicTimer>0 && !h.controllable && !h.parasitised && h!==game.parasitisedHost && h!==game.controlled){
       h.panicTimer=Math.max(0,h.panicTimer-dt);
       h.cleanBar.root.visible=false;
       if(h.targetProp && h.targetProp.reservedBy===h) h.targetProp.reservedBy=null;
@@ -12759,6 +12811,7 @@ function tickFollowerRats(dt){
           r.root.position.z+=Math.cos(yaw)*spd*dt;
           r.root.position.y=(r.baseY??0)+GROUND_Y_OFFSET;
           r.root.rotation.y=yaw;
+          wrapResidentRingEntity(r);
           r.curSpeed=spd;
           if(r.moveIntent){r.moveIntent.x=0;r.moveIntent.y=-1}
           tickActor(r,dt);
@@ -13456,6 +13509,7 @@ function stepFrame(dt){
     }
     updateHUD(dt);
     updateRingSeamVeil(dt);
+    syncRingSeamDynamicMirrors();
     maybeEnsureChunksAroundPlayer(dt);
   }else if(gameState==='intro'){
     if(startBtn.disabled) renderIntroProgress();
@@ -13463,6 +13517,7 @@ function stepFrame(dt){
     for(const h of game.humans){h.curSpeed=0.4;tickActor(h,dt)}
     if(player){player.curSpeed=0.4;tickActor(player,dt)}
     updateRingSeamVeil(dt);
+    syncRingSeamDynamicMirrors();
   }
   updateCam();
 }
@@ -13613,18 +13668,21 @@ async function init(){
         console.error('[fbx] missing required human source; skipped variant',config?.name||'(unnamed)');
         return;
       }
-      const ownClip=resolveAnimationClip(config.source);
-      const isBoy=config.name==='男高中生';
+      // Authoritative human action map. All visible human bodies keep their
+      // own mesh/texture source, but their actions are the specific boy FBX
+      // clips requested by the project: idle=發呆, walk=走路, run=跑動,
+      // jump=跳躍, kick=踢ATTACK, death=死亡. Do not substitute each
+      // variant's own idle FBX here; that was the source of mixed/static
+      // clips and inconsistent animation state.
       HUMAN_VARIANTS.push(makeHumanVariant({
         ...config,
-        // Non-boy Tripo/Mixamo FBXs can share bone names but still have
-        // incompatible bind poses. Own-source animation is safer than the
-        // boy clip for idle/walk; it prevents visible T-pose/rest-frame
-        // flashes at the cost of less varied locomotion on variants that
-        // only have an idle FBX. The boy keeps its full native motion set.
-        idle:ownClip||config.idle,
-        walk:isBoy ? config.walk : (ownClip||config.walk),
-        run:isBoy ? config.run : (ownClip||config.run),
+        idle:sharedHumanClips.idle,
+        walk:sharedHumanClips.walk,
+        run:sharedHumanClips.run,
+        jump:sharedHumanClips.jump,
+        kick:sharedHumanClips.kick,
+        pickup:sharedHumanClips.pickup,
+        clean:sharedHumanClips.clean,
         skin:{
           base:config.skin?.base||null,
           normal:null,
