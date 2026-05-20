@@ -1981,11 +1981,9 @@ function getSourceCompatibleClip(source,srcClip){
     const nodeName=(track?.name||'').split('.')[0];
     return !nodeName || sourceNodeNames.has(nodeName);
   });
-  const finalTracks=filteredTracks.filter(track=>!(track?.name||'').endsWith('.position'));
-  const clipTracks=finalTracks.length?finalTracks:filteredTracks;
-  const filteredClip=(clipTracks.length===clip.tracks.length)
+  const filteredClip=(filteredTracks.length===clip.tracks.length)
     ? clip
-    : new THREE.AnimationClip(clip.name,clip.duration,clipTracks,clip.blendMode);
+    : new THREE.AnimationClip(clip.name,clip.duration,filteredTracks,clip.blendMode);
   clipCache.set(cacheKey,filteredClip);
   return filteredClip;
 }
@@ -4306,7 +4304,11 @@ function tryLoopTempleEntity(ent,prevX,prevZ){
     if(ent.targetPos?.set) ent.targetPos.set(pos.x,ent.targetPos.y??0,pos.z);
     if(ent.roamTarget) ent.roamTarget=null;
     ent.loopPortalLockUntil=gameTime+TEMPLE_LOOP_PORTAL_COOLDOWN;
-    if(player && ent===player) ensureChunksAroundX(pos.x);
+    if(
+      ent===game.controlled ||
+      ent===game.parasitisedHost ||
+      ent===player
+    ) ensureChunksAroundX(pos.x);
     return true;
   }
   return false;
@@ -5025,8 +5027,9 @@ let chunkEnsureTimer=0;
 function maybeEnsureChunksAroundPlayer(dt){
   chunkEnsureTimer-=dt;
   if(chunkEnsureTimer>0) return;
-  if(!player?.root) return;
-  const x=player.root.position.x;
+  const tracked=game.controlled?.root?.position || game.parasitisedHost?.root?.position || player?.root?.position;
+  if(!tracked) return;
+  const x=tracked.x;
   const c=Math.floor(x/CHUNK_SIZE);
   const localX=x-c*CHUNK_SIZE;
   const nearPrefetch=localX<CHUNK_PREFETCH_MARGIN || localX>CHUNK_SIZE-CHUNK_PREFETCH_MARGIN;
@@ -5115,8 +5118,7 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
       if(remapped[i]!==origBones[i]){ anyRemapped=true; break; }
     }
     if(!anyRemapped) return;
-    const freshSkeleton=new THREE.Skeleton(remapped);
-    freshSkeleton.calculateInverses();
+    const freshSkeleton=new THREE.Skeleton(remapped,o.skeleton.boneInverses);
     o.bind(freshSkeleton,o.bindMatrix.clone());
   });
   root.traverse(o=>{
@@ -6942,7 +6944,7 @@ function makeComicTextTexture(text,fill='#fff7c2',stroke='#310c16',fontSize=44){
 }
 function spawnComicImpact(pos,text='BAM!',fill='#fff7c2',opts={}){
   const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-    map:makeComicTextTexture(text,fill,opts.stroke||'#310c16',opts.fontSize||44,opts),transparent:true,depthWrite:false,fog:false
+    map:makeComicTextTexture(text,fill,opts.stroke||'#310c16',opts.fontSize||44,opts),transparent:true,depthWrite:false,depthTest:opts.depthTest??false,fog:false
   }));
   sprite.position.copy(pos).y+=(opts.yOffset??0.9);
   sprite.scale.set(opts.scaleX??1.25,opts.scaleY??0.62,1);
@@ -6969,18 +6971,20 @@ function awardChaosScore(pos,baseGain,clusterRadius=4.2){
   const points=Math.round(gain*1000);
   game.chaosScore+=points;
   spawnComicImpact(pos,`+${points} CHAOS`,'#ffb24a',{
+    kind:'chaos-comic',
     stroke:'#54110f',
     gradient:['#ff4d2a','#ff7f1f','#ffb23c'],
-    fontSize:96,
-    scaleX:4.9,
-    scaleY:1.7,
-    yOffset:1.8,
-    life:1.58,
+    fontSize:112,
+    scaleX:6.2,
+    scaleY:2.05,
+    yOffset:2.15,
+    life:1.72,
     gravity:0,
     vel:new THREE.Vector3(rand(-0.03,0.03),0.92,0),
-    grow:0.22,
+    grow:0.12,
     spin:0,
-    rotate:false
+    rotate:false,
+    depthTest:false
   });
   const chaosRise=Math.max(0,game.chaos-prevChaos);
   if(chaosRise>0.009){
@@ -11245,7 +11249,7 @@ function _legacySummonSpillRats(x,z,count=2){
   }
   registerChaosSpot(x,z,1.8,7.5);
 }
-function summonSpillRats(x,z,count=2){
+function summonSpillRats(x,z,count=2,opts={}){
   const maxVisuals=getMaxActiveRatVisuals();
   if(game.rats.length+count>maxVisuals){
     const overflow=(game.rats.length+count)-maxVisuals;
@@ -11254,6 +11258,7 @@ function summonSpillRats(x,z,count=2){
       r!==game.controlled &&
       !r.templeSwarmVisual &&
       !r.templeBound &&
+      !r.followStatue &&
       !r.climbingHuman &&
       !r.targetHuman &&
       (r.visualBudgetLockUntil||0)<=gameTime
@@ -11272,24 +11277,41 @@ function summonSpillRats(x,z,count=2){
     }
   }
   playSFX('playerMove',{volume:0.36,cooldown:0.12,source:{x,z}});
+  const targetX=Number.isFinite(opts.targetX)?opts.targetX:x;
+  const targetZ=Number.isFinite(opts.targetZ)?opts.targetZ:z;
+  const spawnFromPlayer=!!opts.spawnFromPlayer && !!player?.root;
+  const playerYaw=player?.yaw ?? player?.root?.rotation?.y ?? 0;
+  const playerRightX=Math.cos(playerYaw);
+  const playerRightZ=-Math.sin(playerYaw);
+  const playerBackX=-Math.sin(playerYaw);
+  const playerBackZ=-Math.cos(playerYaw);
   for(let i=0;i<count;i++){
     if(game.rats.length>=maxVisuals){
       game.virtualRats=(game.virtualRats||0)+1;
       continue;
     }
     const rat=buildRat();
-    const spawnX=x+rand(-0.65,0.65);
-    const spawnZ=clamp(z+rand(-0.65,0.65),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5);
+    const spawnX=spawnFromPlayer
+      ? player.root.position.x+playerBackX*rand(1.5,2.8)+playerRightX*rand(-1.3,1.3)
+      : x+rand(-0.65,0.65);
+    const spawnZ=clamp(
+      spawnFromPlayer
+        ? player.root.position.z+playerBackZ*rand(1.5,2.8)+playerRightZ*rand(-1.3,1.3)
+        : z+rand(-0.65,0.65),
+      ALLEY_Z_MIN+0.5,
+      ALLEY_Z_MAX-0.5
+    );
     rat.root.position.set(spawnX,(rat.baseY??0)+GROUND_Y_OFFSET,spawnZ);
     rat.targetPos.set(
-      x+rand(-2.4,2.4),
+      targetX+rand(-2.4,2.4),
       0,
-      clamp(z+rand(-2.2,2.2),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5)
+      clamp(targetZ+rand(-2.2,2.2),ALLEY_Z_MIN+0.5,ALLEY_Z_MAX-0.5)
     );
     rat.moveIntent.y=1;
     rat.followPlayer=true;
-    rat.streetBurstOrigin={x,z};
-    rat.streetScatterUntil=gameTime+rand(0.65,1.25);
+    rat.streetBurstTarget={x:targetX,z:targetZ};
+    rat.streetBurstOrigin=spawnFromPlayer?null:{x:targetX,z:targetZ};
+    rat.streetScatterUntil=spawnFromPlayer?0:(gameTime+rand(0.65,1.25));
     rat.visualBudgetLockUntil=gameTime+4.5;
     rat.fullFollowerSim=true;
     rat._followOffset=null;
@@ -11297,8 +11319,9 @@ function summonSpillRats(x,z,count=2){
       rat.templeBound=true;
       rat.followPlayer=false;
       rat.streetScatterUntil=0;
+      rat.streetBurstTarget=null;
     }
-    rat.yaw=Math.atan2(x-rat.root.position.x,z-rat.root.position.z);
+    rat.yaw=Math.atan2(targetX-rat.root.position.x,targetZ-rat.root.position.z);
     rat.root.rotation.y=rat.yaw;
     game.rats.push(rat);
   }
@@ -11376,7 +11399,11 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     ? p.spawnRatsOnTip
     : ((source==='host' || source==='throw') ? ((p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter') ? 3 : 2) : 0);
   if(spillRatCount>0){
-    summonSpillRats(p.root.position.x,p.root.position.z,spillRatCount);
+    summonSpillRats(p.root.position.x,p.root.position.z,spillRatCount,{
+      spawnFromPlayer:source==='host',
+      targetX:p.root.position.x,
+      targetZ:p.root.position.z
+    });
     awardChaosScore(p.root.position,CHAOS_PER_TIP*0.8*spillRatCount,4.8);
   }
   awardChaosScore(p.root.position,CHAOS_PER_TIP*p.chaosWeight*chaosGain,4.8);
@@ -12009,6 +12036,7 @@ function isRatCriticalForFullSim(rat){
   return !!(
     rat?.templeBound ||
     rat?.templeSwarmVisual ||
+    rat?.followStatue ||
     ((rat?.visualBudgetLockUntil||0)>gameTime) ||
     rat?.climbingHuman ||
     rat?.targetHuman
@@ -12024,11 +12052,11 @@ function enforceFollowerRatFullSimBudget(dt){
   const pz=player.root.position.z;
   let used=0;
   for(const r of game.rats){
-    if(!r || r===player || !r.followPlayer){
+    if(!r || r===player || (!r.followPlayer && !r.followStatue)){
       if(r && r!==player) r.fullFollowerSim=false;
       continue;
     }
-    if(r.climbingHuman || r.targetHuman || r.templeBound){
+    if(r.climbingHuman || r.targetHuman || r.templeBound || r.followStatue){
       r.fullFollowerSim=true;
       continue;
     }
@@ -12640,6 +12668,16 @@ function tickFollowerRats(dt){
           x:idol.root.position.x-Math.sin(idol.yaw||idol.root.rotation.y)*trail+Math.cos(ring)*1.25,
           z:idol.root.position.z-Math.cos(idol.yaw||idol.root.rotation.y)*trail+Math.sin(ring)*0.8
         };
+      }
+    }
+    if(r.followPlayer && player && r.streetBurstTarget && !r.streetBurstOrigin){
+      target={x:r.streetBurstTarget.x,z:r.streetBurstTarget.z};
+      const burstDx=r.streetBurstTarget.x-r.root.position.x;
+      const burstDz=r.streetBurstTarget.z-r.root.position.z;
+      if(burstDx*burstDx+burstDz*burstDz<0.95*0.95){
+        r.streetBurstOrigin={x:r.streetBurstTarget.x,z:r.streetBurstTarget.z};
+        r.streetBurstTarget=null;
+        r.streetScatterUntil=gameTime+rand(0.65,1.25);
       }
     }
     if(r.followPlayer && player && (r.streetScatterUntil||0)>gameTime && r.streetBurstOrigin){
