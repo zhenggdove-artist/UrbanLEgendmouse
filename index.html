@@ -289,6 +289,15 @@
     background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
     letter-spacing:0.16em;cursor:pointer}
   #temple-flash{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:45;transition:opacity .08s linear}
+  #ring-seam-veil{position:fixed;inset:0;pointer-events:none;opacity:0;z-index:44;transition:none;
+    background:
+      radial-gradient(circle at 50% 52%,rgba(255,218,238,0.58) 0%,rgba(255,218,238,0.22) 28%,rgba(255,218,238,0.00) 52%),
+      linear-gradient(90deg,rgba(255,196,226,0.90) 0%,rgba(255,238,205,0.35) 18%,rgba(255,255,255,0.06) 50%,rgba(255,238,205,0.35) 82%,rgba(255,196,226,0.90) 100%);
+    mix-blend-mode:screen;filter:blur(0.5px);will-change:opacity}
+  #ring-seam-veil::after{content:'';position:absolute;inset:0;
+    background:radial-gradient(circle at 50% 50%,rgba(255,255,255,0.00) 0%,rgba(20,10,30,0.15) 72%,rgba(10,6,16,0.52) 100%);
+    opacity:0.78}
+
 
   body.ui-layout-admin *{cursor:default}
   #admin-stage{position:fixed;left:50%;top:50%;
@@ -614,6 +623,7 @@
   <button class="rw-btn" id="rw-replay">PLAY AGAIN</button>
 </div>
 <div id="temple-flash"></div>
+<div id="ring-seam-veil"></div>
 
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
@@ -666,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','lod-hysteresis+rat-follow+audio-unlock 2026-05-19 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','resident-ring-seam-transition-map-only 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -4378,6 +4388,17 @@ const RESIDENT_RING_MAX_CHUNK=TEMPLE_CHUNK_IDX+6;
 const RESIDENT_RING_MIN_X=(RESIDENT_RING_MIN_CHUNK+1)*CHUNK_SIZE;
 const RESIDENT_RING_MAX_X=(RESIDENT_RING_MAX_CHUNK)*CHUNK_SIZE;
 const RESIDENT_RING_LENGTH=RESIDENT_RING_MAX_X-RESIDENT_RING_MIN_X;
+// Professional seam hiding layer:
+// The map is still a one-axis resident ring, but the coordinate wrap no
+// longer happens at the exposed street end. It happens inside an art-
+// directed transition corridor before the dead end becomes visible.
+const RING_SEAM_WRAP_MARGIN=38;
+const RING_SEAM_FADE_ZONE=76;
+const RING_SEAM_MIN_X=RESIDENT_RING_MIN_X+RING_SEAM_WRAP_MARGIN;
+const RING_SEAM_MAX_X=RESIDENT_RING_MAX_X-RING_SEAM_WRAP_MARGIN;
+const RING_SEAM_LENGTH=RING_SEAM_MAX_X-RING_SEAM_MIN_X;
+let ringSeamLastWrapTime=-999;
+let ringSeamOccludersBuilt=false;
 let residentRingBuilt=false;
 let lastChunkIdx=null;
 function yawToForwardVector(yaw){
@@ -11081,18 +11102,91 @@ handleActionPress=()=>{
 // ===== Movement — same formula as 都市傳說2 =====
 // No pavement Z clamping — characters roam the whole alley freely.
 // A very loose corridor bound stops them sailing into the buildings.
+function smoothstep(edge0,edge1,x){
+  const t=clamp((x-edge0)/(edge1-edge0),0,1);
+  return t*t*(3-2*t);
+}
+function ringSeamIntensityForX(x){
+  if(!RESIDENT_RING_MODE || !Number.isFinite(x)) return 0;
+  const d=Math.min(Math.abs(x-RING_SEAM_MIN_X),Math.abs(RING_SEAM_MAX_X-x));
+  return 1-smoothstep(0,RING_SEAM_FADE_ZONE,d);
+}
+function updateRingSeamVeil(dt){
+  const el=document.getElementById('ring-seam-veil');
+  if(!el) return;
+  const ent=game.controlled||player;
+  const x=ent?.root?.position?.x;
+  const proximity=ringSeamIntensityForX(x);
+  const wrapFlash=Math.max(0,1-(gameTime-ringSeamLastWrapTime)/0.46);
+  const target=clamp(Math.max(proximity*0.86,wrapFlash),0,0.96);
+  const cur=parseFloat(el.style.opacity||'0')||0;
+  const speed=target>cur?9.5:4.2;
+  const next=lerp(cur,target,clamp(dt*speed,0,1));
+  el.style.opacity=String(next);
+  // Slightly desaturate during the hidden coordinate shift. This masks
+  // NPC/prop parallax discontinuity without a hard full-screen cut.
+  el.style.backdropFilter=next>0.15?`saturate(${Math.max(0.72,1-next*0.22)}) contrast(${Math.max(0.88,1-next*0.10)})`:'';
+}
+function makeRingSeamFogTexture(){
+  const c=document.createElement('canvas');c.width=128;c.height=512;
+  const g=c.getContext('2d');
+  const grd=g.createLinearGradient(0,0,0,c.height);
+  grd.addColorStop(0,'rgba(255,196,226,0.00)');
+  grd.addColorStop(0.22,'rgba(255,220,238,0.26)');
+  grd.addColorStop(0.50,'rgba(255,244,214,0.46)');
+  grd.addColorStop(0.78,'rgba(255,220,238,0.26)');
+  grd.addColorStop(1,'rgba(255,196,226,0.00)');
+  g.fillStyle=grd;g.fillRect(0,0,c.width,c.height);
+  // Pixel grain: keeps the seam consistent with the PS1/VHS aesthetic.
+  const img=g.getImageData(0,0,c.width,c.height);
+  for(let i=0;i<img.data.length;i+=4){
+    const n=(Math.random()*38)|0;
+    img.data[i]=Math.min(255,img.data[i]+n);
+    img.data[i+1]=Math.min(255,img.data[i+1]+n*0.55);
+    img.data[i+2]=Math.min(255,img.data[i+2]+n*0.8);
+  }
+  g.putImageData(img,0,0);
+  const tex=new THREE.CanvasTexture(c);pixelate(tex);tex.colorSpace=THREE.SRGBColorSpace;
+  return tex;
+}
+function buildRingSeamOccluders(){
+  if(ringSeamOccludersBuilt) return;
+  ringSeamOccludersBuilt=true;
+  const tex=makeRingSeamFogTexture();
+  const mat=new THREE.MeshBasicMaterial({map:tex,transparent:true,opacity:0.34,depthWrite:false,side:THREE.DoubleSide});
+  const make=(x,label)=>{
+    const group=new THREE.Group();group.name=label;
+    for(let i=0;i<4;i++){
+      const plane=new THREE.Mesh(new THREE.PlaneGeometry(42+i*10,8.5+i*2.2),mat.clone());
+      plane.position.set(x+(i-1.5)*1.8,3.9+i*0.15,0);
+      plane.rotation.y=Math.PI/2;
+      plane.material.opacity=0.18+i*0.045;
+      plane.renderOrder=2;
+      group.add(plane);
+    }
+    scene.add(group);
+  };
+  make(RING_SEAM_MIN_X,'ring_seam_fog_min');
+  make(RING_SEAM_MAX_X,'ring_seam_fog_max');
+}
 function wrapResidentRingEntity(ent){
   if(!RESIDENT_RING_MODE || !ent?.root || ent._noRingWrap) return false;
   const p=ent.root.position;
-  if(!Number.isFinite(p.x) || RESIDENT_RING_LENGTH<=CHUNK_SIZE) return false;
+  if(!Number.isFinite(p.x) || RING_SEAM_LENGTH<=CHUNK_SIZE) return false;
   let shifted=0;
-  if(p.x>RESIDENT_RING_MAX_X){ shifted=-RESIDENT_RING_LENGTH; }
-  else if(p.x<RESIDENT_RING_MIN_X){ shifted=RESIDENT_RING_LENGTH; }
+  // Wrap inside the fog corridor, not at the literal end of the generated
+  // street. This prevents the player from seeing a blank terminus and
+  // reframes the seam as an atmospheric passage rather than a teleport.
+  if(p.x>RING_SEAM_MAX_X){ shifted=-RING_SEAM_LENGTH; }
+  else if(p.x<RING_SEAM_MIN_X){ shifted=RING_SEAM_LENGTH; }
   if(!shifted) return false;
   p.x+=shifted;
   if(ent.targetPos?.x!==undefined) ent.targetPos.x+=shifted;
   if(ent.roamTarget?.x!==undefined) ent.roamTarget.x+=shifted;
   if(ent.followOffset?.x!==undefined) ent.followOffset.x+=shifted;
+  if(ent===player || ent===game.controlled || ent.controllable){
+    ringSeamLastWrapTime=gameTime;
+  }
   ent.loopPortalLockUntil=gameTime+0.35;
   return true;
 }
@@ -13304,12 +13398,14 @@ function stepFrame(dt){
       tickRatBillboard(r,dt);
     }
     updateHUD(dt);
+    updateRingSeamVeil(dt);
     maybeEnsureChunksAroundPlayer(dt);
   }else if(gameState==='intro'){
     if(startBtn.disabled) renderIntroProgress();
     syncStreetAmbience(dt);
     for(const h of game.humans){h.curSpeed=0.4;tickActor(h,dt)}
     if(player){player.curSpeed=0.4;tickActor(player,dt)}
+    updateRingSeamVeil(dt);
   }
   updateCam();
 }
@@ -13545,6 +13641,7 @@ async function init(){
     Array.from({length:RESIDENT_RING_MAX_CHUNK-RESIDENT_RING_MIN_CHUNK+1},(_,i)=>RESIDENT_RING_MIN_CHUNK+i),
     {progressStart:90,progressEnd:99,label:'RING'}
   );
+  buildRingSeamOccluders();
   ensureChunksAroundX(player.root.position.x);
   clearStartZone(player.root.position,3.6);
   setIntroProgress(100);
@@ -13553,7 +13650,7 @@ async function init(){
   applyStartButtonLayoutText('BEGIN');
   introProgressText.textContent='100%';
   console.log('[boot] PS1 scene ready — humans='+game.humans.length+' rats='+game.rats.length);
-  console.log('[ring-map] resident chunks',RESIDENT_RING_MIN_CHUNK,'→',RESIDENT_RING_MAX_CHUNK,'x',RESIDENT_RING_MIN_X,'→',RESIDENT_RING_MAX_X,'len',RESIDENT_RING_LENGTH,'chunksLoaded',chunks.size);
+  console.log('[ring-map] resident chunks',RESIDENT_RING_MIN_CHUNK,'→',RESIDENT_RING_MAX_CHUNK,'x',RESIDENT_RING_MIN_X,'→',RESIDENT_RING_MAX_X,'len',RESIDENT_RING_LENGTH,'softSeam',RING_SEAM_MIN_X,'→',RING_SEAM_MAX_X,'chunksLoaded',chunks.size);
 }
 init().catch(err=>{
   console.error('[boot] init failed',err);
