@@ -676,7 +676,7 @@ document.body.classList.toggle('mobile-vhs',IS_MOBILE_DEVICE);
 // Boot stamp — paste this into bug reports so we know which build was
 // running. If the user reports a fix didn't help, first thing to check
 // is whether this stamp matches the expected build (cache busts etc).
-console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','resident-ring-seam-transition-map-only 2026-05-20 build');
+console.log('%c[BUILD]','color:#ff4fa8;font-weight:bold','resident-ring-preview-clone-seam-map-only 2026-05-20 build');
 // T-POSE ROOT-CAUSE ISOLATION TEST
 // Press [T] in-game to manually rotate the nearest visible human's
 // head bone 45°. We use this to disambiguate WHERE the bug lives:
@@ -4399,6 +4399,7 @@ const RING_SEAM_MAX_X=RESIDENT_RING_MAX_X-RING_SEAM_WRAP_MARGIN;
 const RING_SEAM_LENGTH=RING_SEAM_MAX_X-RING_SEAM_MIN_X;
 let ringSeamLastWrapTime=-999;
 let ringSeamOccludersBuilt=false;
+let ringSeamPreviewBuilt=false;
 let residentRingBuilt=false;
 let lastChunkIdx=null;
 function yawToForwardVector(yaw){
@@ -11169,6 +11170,62 @@ function buildRingSeamOccluders(){
   make(RING_SEAM_MIN_X,'ring_seam_fog_min');
   make(RING_SEAM_MAX_X,'ring_seam_fog_max');
 }
+function cloneRingSeamPreviewObject(obj,shiftX,label){
+  const clone=obj.clone(true);
+  clone.name=`${obj.name||'chunkObject'}_ringPreview_${label}`;
+  clone.position.x+=shiftX;
+  clone.traverse(n=>{
+    n.userData={...(n.userData||{}),ringSeamPreview:true};
+    n.raycast=()=>{};
+    if(n.isMesh){
+      n.frustumCulled=false;
+      n.renderOrder=Math.max(n.renderOrder||0,1);
+    }
+  });
+  return clone;
+}
+function buildRingSeamPreviewClones(){
+  if(ringSeamPreviewBuilt) return;
+  ringSeamPreviewBuilt=true;
+  // The old soft seam only hid the moment of coordinate shift. It did
+  // not solve the perceptual mismatch: the player looked at one street
+  // end, then appeared in a different street. Industry looped-levels
+  // hide this with a destination preview: the space visible beyond the
+  // seam is already a shifted copy of the place the player will land.
+  const previewChunks=5;
+  const minGroup=new THREE.Group();minGroup.name='ring_seam_preview_min_shifted_to_max';
+  const maxGroup=new THREE.Group();maxGroup.name='ring_seam_preview_max_shifted_to_min';
+  const minStart=RESIDENT_RING_MIN_CHUNK;
+  const minEnd=Math.min(RESIDENT_RING_MAX_CHUNK,minStart+previewChunks-1);
+  const maxEnd=RESIDENT_RING_MAX_CHUNK;
+  const maxStart=Math.max(RESIDENT_RING_MIN_CHUNK,maxEnd-previewChunks+1);
+  let minClones=0,maxClones=0;
+  for(let idx=minStart;idx<=minEnd;idx++){
+    const chunk=chunks.get(idx); if(!chunk) continue;
+    for(const obj of chunk.meshes||[]){
+      if(!obj || obj.userData?.ringSeamPreview) continue;
+      minGroup.add(cloneRingSeamPreviewObject(obj,RING_SEAM_LENGTH,'minToMax'));
+      minClones++;
+    }
+  }
+  for(let idx=maxStart;idx<=maxEnd;idx++){
+    const chunk=chunks.get(idx); if(!chunk) continue;
+    for(const obj of chunk.meshes||[]){
+      if(!obj || obj.userData?.ringSeamPreview) continue;
+      maxGroup.add(cloneRingSeamPreviewObject(obj,-RING_SEAM_LENGTH,'maxToMin'));
+      maxClones++;
+    }
+  }
+  scene.add(minGroup);
+  scene.add(maxGroup);
+  console.log('[ring-map] seam preview clones',{
+    minSource:`${minStart}→${minEnd}`,
+    maxSource:`${maxStart}→${maxEnd}`,
+    minClones,
+    maxClones,
+    shift:RING_SEAM_LENGTH
+  });
+}
 function wrapResidentRingEntity(ent){
   if(!RESIDENT_RING_MODE || !ent?.root || ent._noRingWrap) return false;
   const p=ent.root.position;
@@ -13641,6 +13698,7 @@ async function init(){
     Array.from({length:RESIDENT_RING_MAX_CHUNK-RESIDENT_RING_MIN_CHUNK+1},(_,i)=>RESIDENT_RING_MIN_CHUNK+i),
     {progressStart:90,progressEnd:99,label:'RING'}
   );
+  buildRingSeamPreviewClones();
   buildRingSeamOccluders();
   ensureChunksAroundX(player.root.position.x);
   clearStartZone(player.root.position,3.6);
@@ -13650,7 +13708,7 @@ async function init(){
   applyStartButtonLayoutText('BEGIN');
   introProgressText.textContent='100%';
   console.log('[boot] PS1 scene ready — humans='+game.humans.length+' rats='+game.rats.length);
-  console.log('[ring-map] resident chunks',RESIDENT_RING_MIN_CHUNK,'→',RESIDENT_RING_MAX_CHUNK,'x',RESIDENT_RING_MIN_X,'→',RESIDENT_RING_MAX_X,'len',RESIDENT_RING_LENGTH,'softSeam',RING_SEAM_MIN_X,'→',RING_SEAM_MAX_X,'chunksLoaded',chunks.size);
+  console.log('[ring-map] resident chunks',RESIDENT_RING_MIN_CHUNK,'→',RESIDENT_RING_MAX_CHUNK,'x',RESIDENT_RING_MIN_X,'→',RESIDENT_RING_MAX_X,'len',RESIDENT_RING_LENGTH,'previewSeam',RING_SEAM_MIN_X,'→',RING_SEAM_MAX_X,'chunksLoaded',chunks.size);
 }
 init().catch(err=>{
   console.error('[boot] init failed',err);
