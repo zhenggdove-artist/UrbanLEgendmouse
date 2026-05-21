@@ -13931,17 +13931,6 @@ function buildRingMirrorBonePairs(sourceRoot,mirrorRoot){
   mirrorRoot.userData.ringMirrorBonePairs=pairs;
   return pairs;
 }
-function buildRingMirrorSpritePairs(sourceRoot,mirrorRoot){
-  const srcSprites=[];
-  const dstSprites=[];
-  sourceRoot.traverse(o=>{ if(o.isSprite) srcSprites.push(o); });
-  mirrorRoot.traverse(o=>{ if(o.isSprite) dstSprites.push(o); });
-  const pairs=[];
-  const n=Math.min(srcSprites.length,dstSprites.length);
-  for(let i=0;i<n;i++) pairs.push([srcSprites[i],dstSprites[i]]);
-  mirrorRoot.userData.ringMirrorSpritePairs=pairs;
-  return pairs;
-}
 function ensureRingMirrorForEntity(ent){
   if(!ent?._ringMirrorRoot){
     ent._ringMirrorRoot=SkeletonUtils.clone(ent.root);
@@ -13954,7 +13943,6 @@ function ensureRingMirrorForEntity(ent){
       }
     });
     buildRingMirrorBonePairs(ent.root,ent._ringMirrorRoot);
-    buildRingMirrorSpritePairs(ent.root,ent._ringMirrorRoot);
     scene.add(ent._ringMirrorRoot);
   }
   return ent._ringMirrorRoot;
@@ -13974,23 +13962,7 @@ function syncRingMirrorPose(ent,shift){
     dst.quaternion.copy(src.quaternion);
     dst.scale.copy(src.scale);
   }
-  const spritePairs=mirror.userData.ringMirrorSpritePairs || buildRingMirrorSpritePairs(ent.root,mirror);
-  for(let i=0;i<spritePairs.length;i++){
-    const src=spritePairs[i][0];
-    const dst=spritePairs[i][1];
-    dst.visible=src.visible!==false;
-    dst.position.copy(src.position);
-    dst.quaternion.copy(src.quaternion);
-    dst.scale.copy(src.scale);
-    if(src.material && dst.material){
-      dst.material.map=src.material.map;
-      dst.material.rotation=src.material.rotation||0;
-      dst.material.opacity=src.material.opacity;
-      dst.material.color?.copy?.(src.material.color);
-      dst.material.needsUpdate=true;
-    }
-  }
-  if(pairs.length || spritePairs.length) mirror.updateMatrixWorld(true);
+  if(pairs.length) mirror.updateMatrixWorld(true);
   return mirror;
 }
 function buildRingSeamPreviewClones(){
@@ -14001,7 +13973,7 @@ function buildRingSeamPreviewClones(){
   // end, then appeared in a different street. Industry looped-levels
   // hide this with a destination preview: the space visible beyond the
   // seam is already a shifted copy of the place the player will land.
-  const previewChunks=RESIDENT_RING_MAX_CHUNK-RESIDENT_RING_MIN_CHUNK+1;
+  const previewChunks=Math.max(8,Math.ceil((RING_SEAM_FADE_ZONE+RING_SEAM_WRAP_MARGIN)/CHUNK_SIZE)+4);
   const minGroup=new THREE.Group();minGroup.name='ring_seam_preview_min_shifted_to_max';
   const maxGroup=new THREE.Group();maxGroup.name='ring_seam_preview_max_shifted_to_min';
   minGroup.visible=false;
@@ -14051,15 +14023,9 @@ function shiftNearbySeamDependentsForLeader(ent,fromX,shifted){
   for(const r of game.rats){
     if(!r?.root || r===ent || r===player || r===game.controlled) continue;
     const d=Math.abs(r.root.position.x-oldX);
-    // Followers are part of the player swarm, not independent scenery.
-    // When the player wraps, move every followPlayer rat with the leader;
-    // otherwise the swarm remains stranded at the previous seam and vanishes.
-    if(!r.followPlayer && d>RING_SEAM_FADE_ZONE*1.45) continue;
-    if(r.followPlayer || d<=RING_SEAM_FADE_ZONE*1.75){
-      r.root.position.x+=shifted;
-    }else{
-      continue;
-    }
+    if(d>42 && !r.followPlayer) continue;
+    if(d>70) continue;
+    r.root.position.x+=shifted;
     if(r.targetPos?.x!==undefined) r.targetPos.x+=shifted;
     if(r.roamTarget?.x!==undefined) r.roamTarget.x+=shifted;
     if(r.followOffset?.x!==undefined) r.followOffset.x+=shifted;
@@ -14073,8 +14039,13 @@ function shiftNearbySeamDependentsForLeader(ent,fromX,shifted){
     }
     clearRingMirrorForEntity(r);
   }
-  // Static traces such as blood pools must NOT be shifted with the player.
-  // They are world-state marks; seam visibility is handled by live ring mirrors.
+  for(const h of game.humans){
+    const bp=h?.bloodPool;
+    if(bp && bp.visible!==false && bp.parent && Math.abs(bp.position.x-oldX)<70){
+      bp.position.x+=shifted;
+      bp.updateMatrixWorld?.(true);
+    }
+  }
 }
 function wrapResidentRingEntity(ent){
   if(!RESIDENT_RING_MODE || !ent?.root || ent._noRingWrap) return false;
@@ -14124,19 +14095,6 @@ function nearestRingDelta(ax,bx){
   if(d<-RING_SEAM_LENGTH*0.5) d+=RING_SEAM_LENGTH;
   return d;
 }
-function ringAwareDistanceSq(ax,az,bx,bz){
-  const dx=RESIDENT_RING_MODE ? nearestRingDelta(ax,bx) : (ax-bx);
-  const dz=az-bz;
-  return dx*dx+dz*dz;
-}
-function ringAwareAbsDeltaX(ax,bx){
-  return Math.abs(RESIDENT_RING_MODE ? nearestRingDelta(ax,bx) : (ax-bx));
-}
-function isRingSeamVirtualCopyNearX(x,focusX,range=RING_SEAM_FADE_ZONE*1.8){
-  if(!RESIDENT_RING_MODE || !Number.isFinite(x) || !Number.isFinite(focusX) || RING_SEAM_LENGTH<=0) return false;
-  const shifted=x+ringShiftNearestToReference(x,focusX);
-  return Math.abs(shifted-focusX)<=range;
-}
 function syncRingSeamBloodMirrors(){
   if(!RESIDENT_RING_MODE || !scene || RING_SEAM_LENGTH<=0){
     ringSeamBloodMirrorBySource.forEach?.(()=>{});
@@ -14152,7 +14110,7 @@ function syncRingSeamBloodMirrors(){
   }
   for(const src of sources){
     const shift=ringShiftNearestToReference(src.position.x,focus.x);
-    const shouldMirror=shift!==0 && Math.abs((src.position.x+shift)-focus.x)<RING_SEAM_FADE_ZONE*2.35;
+    const shouldMirror=shift!==0 && Math.abs((src.position.x+shift)-focus.x)<120;
     let mirror=ringSeamBloodMirrorBySource.get(src);
     if(!shouldMirror){
       if(mirror) mirror.visible=false;
@@ -14184,7 +14142,7 @@ function syncRingSeamDynamicMirrors(){
   const candidates=[];
   if(game.controlled?.root) candidates.push(game.controlled);
   for(const h of game.humans){
-    if(h?.root && h!==game.controlled && !h.transformedToIdol) candidates.push(h);
+    if(h?.root && h!==game.controlled && !h.dead && !h.transformedToIdol) candidates.push(h);
   }
   if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
   let mirroredRatCandidates=0;
@@ -14193,7 +14151,7 @@ function syncRingSeamDynamicMirrors(){
     // All visible follower rats, including newly spawned street rats, need a
     // seam mirror. Otherwise they appear to vanish on the landing side and
     // reappear only after walking back across the loop.
-    if(mirroredRatCandidates++<Math.max(140,getMaxActiveRatVisuals()*3)) candidates.push(r);
+    if(mirroredRatCandidates++<90) candidates.push(r);
   }
   const keep=new Set();
   for(const ent of candidates){
@@ -14203,13 +14161,10 @@ function syncRingSeamDynamicMirrors(){
       continue;
     }
     const shift=ringShiftNearestToReference(ent.root.position.x,focus.x);
-    const shouldMirror=shift!==0 && Math.abs((ent.root.position.x+shift)-focus.x)<RING_SEAM_FADE_ZONE*2.25;
+    const shouldMirror=shift!==0 && Math.abs((ent.root.position.x+shift)-focus.x)<90;
     if(!shouldMirror){
       if(ent._ringMirrorRoot) ent._ringMirrorRoot.visible=false;
       continue;
-    }
-    if(ent.kind==='human' && ent.root.visible===false && !ent.dead){
-      activateHumanFromLOD(ent);
     }
     const mirror=syncRingMirrorPose(ent,shift);
     keep.add(mirror);
@@ -15096,7 +15051,7 @@ function tickHumans(dt){
       // existing flee-from-environment logic handles the movement.
       if(game.templeEvent.idol && game.templeEvent.awakened && !h.dead && !h.transformedToIdol && !h.idolWanderer && !h.parasitised && h!==game.parasitisedHost && h!==game.controlled){
         const idol=game.templeEvent.idol;
-        const idx=RESIDENT_RING_MODE ? nearestRingDelta(h.root.position.x,idol.root.position.x) : (h.root.position.x-idol.root.position.x);
+        const idx=h.root.position.x-idol.root.position.x;
         const idz=h.root.position.z-idol.root.position.z;
         if(idx*idx+idz*idz<14*14){
           h.panicTimer=Math.max(h.panicTimer||0,1.6);
@@ -15349,7 +15304,7 @@ function refreshActiveFollowerRats(dt){
       continue;
     }
     if(!r.followPlayer) continue;
-    const dx=RESIDENT_RING_MODE ? nearestRingDelta(r.root.position.x,px) : (r.root.position.x-px);
+    const dx=r.root.position.x-px;
     const dz=r.root.position.z-pz;
     const d2=dx*dx+dz*dz;
     if(d2<9 && activeFollowerRats.length<max){
@@ -15475,9 +15430,6 @@ function updateSharedChaosTarget(dt){
 }
 function shouldSimulateHumanEntity(human,focusPos){
   if(!human?.root || !focusPos) return true;
-  if(RESIDENT_RING_MODE && isRingSeamVirtualCopyNearX(human.root.position.x,focusPos.x,RING_SEAM_FADE_ZONE*2.1)){
-    return true;
-  }
   if(!IS_MOBILE_DEVICE) return true;
   if(human.controllable || human.parasitised || human===game.parasitisedHost || human.dead || human.idolWanderer || human.transformedToIdol){
     return true;
@@ -15494,7 +15446,7 @@ function shouldSimulateHumanEntity(human,focusPos){
       return true;
     }
   }
-  const dx=RESIDENT_RING_MODE ? nearestRingDelta(human.root.position.x,focusPos.x) : (human.root.position.x-focusPos.x);
+  const dx=human.root.position.x-focusPos.x;
   const dz=human.root.position.z-focusPos.z;
   const d2=dx*dx+dz*dz;
   // Hysteresis: an active human stays active until it drifts past
@@ -15537,13 +15489,13 @@ function enforceFollowerRatFullSimBudget(dt){
       const idol=(r.targetIdol?.root?.parent?r.targetIdol:game.templeEvent.idol);
       r.targetIdol=idol||null;
       const ref=idol?.root?.position||{x:px,z:pz};
-      const dx=RESIDENT_RING_MODE ? nearestRingDelta(r.root.position.x,ref.x) : (r.root.position.x-ref.x);
+      const dx=r.root.position.x-ref.x;
       const dz=r.root.position.z-ref.z;
       r.fullFollowerSim=(dx*dx+dz*dz)<20*20 && used<max;
       if(r.fullFollowerSim) used++;
       continue;
     }
-    const dx=RESIDENT_RING_MODE ? nearestRingDelta(r.root.position.x,px) : (r.root.position.x-px);
+    const dx=r.root.position.x-px;
     const dz=r.root.position.z-pz;
     const d2=dx*dx+dz*dz;
     if(d2<9 && used<max){
@@ -15559,7 +15511,7 @@ function getRatLODConfig(rat,focusPos){
     return {brainInterval:0,worldInterval:0};
   }
   if(rat.followStatue && !rat.climbingHuman && !rat.targetHuman){
-    const dx=RESIDENT_RING_MODE ? nearestRingDelta(rat.root.position.x,focusPos.x) : (rat.root.position.x-focusPos.x);
+    const dx=rat.root.position.x-focusPos.x;
     const dz=rat.root.position.z-focusPos.z;
     const d2=dx*dx+dz*dz;
     if(d2>40*40){
@@ -15613,13 +15565,12 @@ function enforceRatVisualBudget(maxVisuals=getMaxActiveRatVisuals()){
     !r.templeSwarmVisual &&
     (r.visualBudgetLockUntil||0)<=gameTime &&
     !r.followStatue &&
-    !r.climbingHuman &&
-    !isRingSeamVirtualCopyNearX(r.root?.position?.x,focus.x,RING_SEAM_FADE_ZONE*2.1)
+    !r.climbingHuman
   );
   candidates.sort((a,b)=>{
-    const adx=RESIDENT_RING_MODE ? nearestRingDelta((a.root?.position?.x||0),focus.x) : ((a.root?.position?.x||0)-focus.x);
+    const adx=(a.root?.position?.x||0)-focus.x;
     const adz=(a.root?.position?.z||0)-focus.z;
-    const bdx=RESIDENT_RING_MODE ? nearestRingDelta((b.root?.position?.x||0),focus.x) : ((b.root?.position?.x||0)-focus.x);
+    const bdx=(b.root?.position?.x||0)-focus.x;
     const bdz=(b.root?.position?.z||0)-focus.z;
     return (bdx*bdx+bdz*bdz)-(adx*adx+adz*adz);
   });
