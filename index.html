@@ -2547,6 +2547,8 @@ function getSourceCompatibleClip(source,srcClip){
 }
 function getTrackTargetNodeName(trackName){
   if(!trackName || typeof trackName!=='string') return '';
+  const directBoneMatch=trackName.match(/^\.bones\[([^\]]+)\]\./);
+  if(directBoneMatch) return directBoneMatch[1];
   const dotIdx=trackName.indexOf('.');
   if(dotIdx<=0) return '';
   const direct=trackName.slice(0,dotIdx);
@@ -2682,58 +2684,113 @@ function lockVectorTrackToTime(track,time){
   const times=track.times.slice ? track.times.slice() : Array.from(track.times);
   return new Ctor(track.name,times,vals);
 }
-function sanitiseHostHandAttackClipForHostRig(clip,actionName=''){
+function getTrackTargetKeyVariants(trackName){
+  const nodeName=(getTrackTargetNodeName(trackName)||'').toLowerCase();
+  const out=[];
+  if(nodeName) out.push(nodeName);
+  const tail=nodeName.split(/[|/:_]/).filter(Boolean).pop()||'';
+  if(tail && !out.includes(tail)) out.push(tail);
+  const mixamoIdx=nodeName.indexOf('mixamorig');
+  if(mixamoIdx>=0){
+    const mixamoTail=nodeName.slice(mixamoIdx);
+    if(mixamoTail && !out.includes(mixamoTail)) out.push(mixamoTail);
+  }
+  return out;
+}
+function isHipsTrackTarget(trackName){
+  const keys=getTrackTargetKeyVariants(trackName);
+  return keys.some(k=>k==='hips' || k.endsWith('_hips') || k.endsWith(':hips') || k.includes('hips'));
+}
+function collectNeutralHumanPositionSamples(clip){
+  const map=new Map();
+  if(!clip || !Array.isArray(clip.tracks)) return map;
+  const sampleTime=Math.min(0.12,Math.max(0,Math.max(0.02,(clip.duration||0.02)-0.02)));
+  for(const track of clip.tracks){
+    const name=track?.name||'';
+    if(!name.endsWith('.position') || !track?.values || !track?.times) continue;
+    const sample=sampleVectorTrackAt(track,sampleTime);
+    for(const key of getTrackTargetKeyVariants(name)){
+      if(key && !map.has(key)) map.set(key,sample);
+    }
+  }
+  return map;
+}
+function getNeutralPositionSampleForTrack(trackName,neutralPositionByNode){
+  if(!neutralPositionByNode || !neutralPositionByNode.size) return null;
+  for(const key of getTrackTargetKeyVariants(trackName)){
+    const sample=neutralPositionByNode.get(key);
+    if(sample) return sample;
+  }
+  return null;
+}
+function constantVectorTrackFromSample(track,sample){
+  const vals=new Float32Array(track.values.length);
+  const v=sample||[0,0,0];
+  for(let i=0;i<vals.length;i+=3){vals[i]=v[0];vals[i+1]=v[1];vals[i+2]=v[2];}
+  const Ctor=track.constructor||THREE.VectorKeyframeTrack;
+  const times=track.times.slice ? track.times.slice() : Array.from(track.times);
+  return new Ctor(track.name,times,vals);
+}
+function sanitiseHostHandAttackClipForHostRig(clip,actionName='',neutralPositionByNode=null){
   if(!clip || !Array.isArray(clip.tracks) || !isHostHandAttackName(actionName)) return clip;
   let byAction=HUMAN_HAND_ATTACK_SANITIZE_CACHE.get(clip);
   if(!byAction){byAction=new Map();HUMAN_HAND_ATTACK_SANITIZE_CACHE.set(clip,byAction);}
-  if(byAction.has(actionName)) return byAction.get(actionName);
+  const neutralKey=neutralPositionByNode && neutralPositionByNode.size ? 'neutral' : 'noNeutral';
+  const cacheKey=`${actionName}:${neutralKey}`;
+  if(byAction.has(cacheKey)) return byAction.get(cacheKey);
 
-  // Grounded punch / punchcombo bug source:
-  // these GLB action clips contain Hips.position data that defines the
-  // standing pelvis height for the pose. Removing every .position track
-  // makes the skeleton fall back to bind-pose hips while the outer actor
-  // root remains at the normal ground Y, so a grounded host appears sunk
-  // into the floor. The fix is the same principle used by kick: keep the
-  // pose's local standing height, but remove runtime root motion. We lock
-  // position tracks to their first frame instead of sampling the old 0.18s
-  // contact frame, because that later frame is the low punched-through
-  // height in player_punch/player_punchcombo.
+  // Root cause fix for player_punch.glb / player_punchcombo.glb:
+  // those GLB actions are authored on a differently oriented action rig.
+  // The arm/forearm bone quaternions are usable, but the clip's root / Hips
+  // transforms are not: Hips.quaternion rotates the host rig onto its back,
+  // and Hips.position / root position pulls the visible body below the game
+  // physics root. Treat hand attacks as upper-body pose clips. The host's
+  // world height and standing pelvis offset come from the current human rig
+  // idle clip; the imported hand-attack root and hip transforms are removed.
   let changed=false;
   const dropped=[];
   const locked=[];
   const tracks=[];
   for(const track of clip.tracks){
     const name=track?.name||'';
+    const isPosition=name.endsWith('.position');
+    const isRotation=name.endsWith('.quaternion') || name.endsWith('.rotation');
     if(name.endsWith('.scale')){
-      dropped.push(name);
-      changed=true;
-      continue;
+      dropped.push(name);changed=true;continue;
     }
-    if(name.endsWith('.position') && track?.values && track?.times){
-      tracks.push(lockVectorTrackToTime(track,0));
-      locked.push(name);
-      changed=true;
-      continue;
+    if(isPosition){
+      if(isSceneOrArmatureRootTrackTarget(name)){
+        dropped.push(name);changed=true;continue;
+      }
+      if(isHipsTrackTarget(name)){
+        const neutral=getNeutralPositionSampleForTrack(name,neutralPositionByNode);
+        if(neutral){
+          tracks.push(constantVectorTrackFromSample(track,neutral));
+          locked.push(name);changed=true;continue;
+        }
+      }
+      // Do not let imported GLB translations move the host mesh. Non-hip
+      // position tracks are rare on humanoid animation clips; dropping them
+      // avoids any hidden root-motion channel without affecting arm punches.
+      dropped.push(name);changed=true;continue;
     }
-    if((name.endsWith('.quaternion') || name.endsWith('.rotation')) && isSceneOrArmatureRootTrackTarget(name)){
-      dropped.push(name);
-      changed=true;
-      continue;
+    if(isRotation && (isSceneOrArmatureRootTrackTarget(name) || isHipsTrackTarget(name))){
+      dropped.push(name);changed=true;continue;
     }
     tracks.push(track);
   }
   const out=changed
-    ? new THREE.AnimationClip(`${clip.name||'clip'}__hostHandGroundSafe_${actionName}`,clip.duration,tracks,clip.blendMode)
+    ? new THREE.AnimationClip(`${clip.name||'clip'}__hostHandUpperBody_${actionName}`,clip.duration,tracks,clip.blendMode)
     : clip;
   if(changed){
-    const key=`${actionName}|${clip.name}|${tracks.length}/${clip.tracks.length}`;
+    const key=`${actionName}|${clip.name}|${tracks.length}/${clip.tracks.length}|${neutralKey}`;
     if(!sanitiseHostHandAttackClipForHostRig._logged) sanitiseHostHandAttackClipForHostRig._logged=new Set();
     if(!sanitiseHostHandAttackClipForHostRig._logged.has(key)){
       sanitiseHostHandAttackClipForHostRig._logged.add(key);
-      console.log('[HUMAN ACTION SANITIZE] host hand attack ground-safe clip',{actionName,clip:clip.name,locked:locked.slice(0,10),dropped:dropped.slice(0,10)});
+      console.log('[HUMAN ACTION SANITIZE] host hand attack upper-body clip',{actionName,clip:clip.name,lockedHipsPosition:locked.slice(0,8),droppedRootOrHip:dropped.slice(0,12)});
     }
   }
-  byAction.set(actionName,out);
+  byAction.set(cacheKey,out);
   return out;
 }
 function shouldStripHumanActionRootRotation(actionName){
@@ -4411,7 +4468,10 @@ function addTempleWallImagePatch(parent,{u=0,y=3,coord=0,w=2,h=1.5,side='front',
 function makeTempleWallCollageTexture(face,uSpan,ySpan){
   if(!TEMPLE_WALL_TEX.length) return null;
   const aspect=Math.max(0.15,ySpan/Math.max(0.1,uSpan));
-  const maxSide=IS_MOBILE_DEVICE?768:1024;
+  // Low-resolution source images are intentionally baked into compact
+  // collage textures. This keeps the temple fully covered without adding
+  // many heavy PNG planes or large GPU textures on mobile.
+  const maxSide=IS_MOBILE_DEVICE?384:512;
   const canvas=document.createElement('canvas');
   if(aspect>=1){
     canvas.height=maxSide;
@@ -4498,6 +4558,46 @@ function coverTempleWallSurfaceWithImageTiles(parent,face){
     tex,
     tilt:0
   });
+}
+function coverTempleBoxWallMeshWithImages(parent,mesh){
+  if(!TEMPLE_WALL_TEX.length || !parent || !mesh?.geometry?.parameters) return;
+  if(mesh.parent!==parent) return;
+  const p=mesh.geometry.parameters;
+  const w=Number(p.width)||0;
+  const h=Number(p.height)||0;
+  const d=Number(p.depth)||0;
+  if(h<1.35 || Math.max(w,d)<2.0) return;
+  // Only real vertical wall bodies. Floors, altars and low props sit below
+  // this range; roofs and decorative trim usually have low box height.
+  const y0=(mesh.position.y||0)-h*0.5;
+  const y1=(mesh.position.y||0)+h*0.5;
+  if(y1<2.4 || y0>9.4) return;
+  const eps=0.085;
+  const x=mesh.position.x||0;
+  const z=mesh.position.z||0;
+  const yMin=Math.max(0.02,y0-0.03);
+  const yMax=y1+0.04;
+  if(w>0.18){
+    coverTempleWallSurfaceWithImageTiles(parent,{side:'front',coord:z+d*0.5+eps,uMin:x-w*0.5-eps,uMax:x+w*0.5+eps,yMin,yMax});
+    coverTempleWallSurfaceWithImageTiles(parent,{side:'back',coord:z-d*0.5-eps,uMin:x-w*0.5-eps,uMax:x+w*0.5+eps,yMin,yMax});
+  }
+  if(d>0.18){
+    coverTempleWallSurfaceWithImageTiles(parent,{side:'left',coord:x-w*0.5-eps,uMin:z-d*0.5-eps,uMax:z+d*0.5+eps,yMin,yMax});
+    coverTempleWallSurfaceWithImageTiles(parent,{side:'right',coord:x+w*0.5+eps,uMin:z-d*0.5-eps,uMax:z+d*0.5+eps,yMin,yMax});
+  }
+}
+function coverTempleAllBoxWallsWithImages(temple){
+  if(!TEMPLE_WALL_TEX.length || !temple) return;
+  const wallMeshes=[];
+  for(const child of temple.children){
+    if(!child?.isMesh || !child.geometry?.parameters) continue;
+    const p=child.geometry.parameters;
+    const w=Number(p.width)||0,h=Number(p.height)||0,d=Number(p.depth)||0;
+    if(h>=1.35 && Math.max(w,d)>=2.0 && child.position.y+h*0.5>=2.4){
+      wallMeshes.push(child);
+    }
+  }
+  for(const mesh of wallMeshes) coverTempleBoxWallMeshWithImages(temple,mesh);
 }
 function coverTempleFacadeWithWallImages(temple){
   if(!TEMPLE_WALL_TEX.length || !temple) return;
@@ -5219,6 +5319,7 @@ function buildTempleComplex(xBase,opts={}){
   const dragonLeft=new THREE.Mesh(new THREE.BoxGeometry(2.4,0.38,0.22),goldMat);
   dragonLeft.position.set(-4.2,8.94,4.92);dragonLeft.rotation.z=-0.22;temple.add(dragonLeft);
   const dragonRight=dragonLeft.clone();dragonRight.position.x=4.2;dragonRight.rotation.z=0.22;temple.add(dragonRight);
+  coverTempleAllBoxWallsWithImages(temple);
   coverTempleFacadeWithWallImages(temple);
   addChunkObject(temple);
   registerBlocker(steps,0.8,{supportOnly:true});
@@ -6297,13 +6398,16 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
   }
   const mixer=new THREE.AnimationMixer(root);
   const actions={};
+  const neutralHumanPositionByNode=(lockHumanClipPositions && clips?.idle)
+    ? collectNeutralHumanPositionSamples(getCloneRootCompatibleClip(root,clips.idle,'actor:neutral-idle'))
+    : null;
   if(clips){
     for(const [name,srcClip] of Object.entries(clips)){
       if(!srcClip) continue;
       let safeClip=getCloneRootCompatibleClip(root,srcClip,`actor:${name}`);
       if(lockHumanClipPositions){
         if(isHostHandAttackName(name)){
-          safeClip=sanitiseHostHandAttackClipForHostRig(safeClip,name);
+          safeClip=sanitiseHostHandAttackClipForHostRig(safeClip,name,neutralHumanPositionByNode);
         }else{
           safeClip=lockHumanActionPositionTracks(safeClip,name);
         }
