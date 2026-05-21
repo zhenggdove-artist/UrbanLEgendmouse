@@ -2605,15 +2605,12 @@ function getCloneRootCompatibleClip(root,srcClip,label=''){
 const HUMAN_ACTION_POSITION_LOCK_TIME=0.18;
 const HUMAN_POSITION_LOCK_CACHE=new WeakMap();
 const HUMAN_ROOT_ROTATION_STRIP_CACHE=new WeakMap();
+const HUMAN_HAND_ATTACK_SANITIZE_CACHE=new WeakMap();
+function isHostHandAttackName(name){
+  return name==='punch' || name==='punchcombo';
+}
 function getHumanActionPositionLockTime(clip,actionName=''){
   const duration=Math.max(0.02,clip?.duration||0.02);
-  // Punch / combo GLB clips were authored with a low crouched hip/root
-  // translation around the early contact frames. The old generic lock
-  // sampled at 0.18s, froze that low translation for the whole one-shot,
-  // and made the possessed host visibly drop half a body underground.
-  // For hand attacks we lock at the neutral opening pose instead; kick
-  // keeps a small early sample, other human clips keep the previous value.
-  if(actionName==='punch' || actionName==='punchcombo') return Math.min(0.025,Math.max(0,duration-0.01));
   if(actionName==='kick') return Math.min(0.065,Math.max(0,duration-0.01));
   return Math.min(Math.max(HUMAN_ACTION_POSITION_LOCK_TIME,0.02),Math.max(0.02,duration-0.02));
 }
@@ -2643,15 +2640,13 @@ function lockHumanActionPositionTracks(clip,actionName=''){
   const cacheKey=actionName||'human';
   if(byAction.has(cacheKey)) return byAction.get(cacheKey);
   let changed=false;
-  const duration=Math.max(0.02,clip.duration||0.02);
   const lockTime=getHumanActionPositionLockTime(clip,actionName);
   const tracks=clip.tracks.map(track=>{
     const name=track?.name||'';
     if(!name.endsWith('.position') || !track?.values || !track?.times) return track;
-    // Human world movement is controlled by root physics. FBX Hips/root
-    // position tracks are retained only as a constant local offset; letting
-    // them animate during walk<->idle switches causes the visible rig to
-    // lurch downward/sideways even when the outer root is stable.
+    // World movement is controlled by root physics. For normal human
+    // locomotion / kick clips, keep the local position offset constant so
+    // exported root motion cannot drift the mesh through the world.
     const v=sampleVectorTrackAt(track,lockTime);
     const vals=new Float32Array(track.values.length);
     for(let i=0;i<vals.length;i+=3){vals[i]=v[0];vals[i+1]=v[1];vals[i+2]=v[2];}
@@ -2662,6 +2657,58 @@ function lockHumanActionPositionTracks(clip,actionName=''){
   });
   const out=changed?new THREE.AnimationClip(`${clip.name||'clip'}__rootPositionLocked_${cacheKey}`,clip.duration,tracks,clip.blendMode):clip;
   byAction.set(cacheKey,out);
+  return out;
+}
+function isRootOrHipTrackTarget(trackName){
+  const nodeName=(getTrackTargetNodeName(trackName)||'').toLowerCase();
+  if(!nodeName) return false;
+  const tail=nodeName.split(/[|/:_]/).filter(Boolean).pop()||nodeName;
+  return nodeName==='armature' || nodeName==='scene' || nodeName==='root' ||
+    tail==='armature' || tail==='scene' || tail==='root' || tail==='hips' ||
+    nodeName.includes('hips');
+}
+function sanitiseHostHandAttackClipForHostRig(clip,actionName=''){
+  if(!clip || !Array.isArray(clip.tracks) || !isHostHandAttackName(actionName)) return clip;
+  let byAction=HUMAN_HAND_ATTACK_SANITIZE_CACHE.get(clip);
+  if(!byAction){byAction=new Map();HUMAN_HAND_ATTACK_SANITIZE_CACHE.set(clip,byAction);}
+  if(byAction.has(actionName)) return byAction.get(actionName);
+
+  // Real cause of punch / punchcombo sinking:
+  // player_punch.glb and player_punchcombo.glb carry translation tracks
+  // authored for the action file's own rig height. The game already keeps
+  // the possessed host in the air / on the ground through ent.root.y and
+  // velocity physics. When those imported .position tracks are also bound
+  // to the host skeleton, the visible rig is pulled down to the GLB clip's
+  // baked contact height. The old generic lockHumanActionPositionTracks()
+  // made this worse by freezing punch at the low 0.18s sample.
+  // Therefore hand attacks are sanitised like pure pose clips: keep limb
+  // rotations, remove imported translation and scale. Kick remains on its
+  // own FBX path and is not touched by this branch.
+  const dropped=[];
+  const tracks=clip.tracks.filter(track=>{
+    const name=track?.name||'';
+    if(name.endsWith('.position') || name.endsWith('.scale')){
+      dropped.push(name);
+      return false;
+    }
+    if((name.endsWith('.quaternion') || name.endsWith('.rotation')) && isRootOrHipTrackTarget(name)){
+      dropped.push(name);
+      return false;
+    }
+    return true;
+  });
+  const out=(tracks.length===clip.tracks.length)
+    ? clip
+    : new THREE.AnimationClip(`${clip.name||'clip'}__hostHandPoseOnly_${actionName}`,clip.duration,tracks,clip.blendMode);
+  if(dropped.length){
+    const key=`${actionName}|${clip.name}|${dropped.length}`;
+    if(!sanitiseHostHandAttackClipForHostRig._logged) sanitiseHostHandAttackClipForHostRig._logged=new Set();
+    if(!sanitiseHostHandAttackClipForHostRig._logged.has(key)){
+      sanitiseHostHandAttackClipForHostRig._logged.add(key);
+      console.log('[HUMAN ACTION SANITIZE] host hand attack pose-only clip',{actionName,clip:clip.name,dropped:dropped.length,sample:dropped.slice(0,10)});
+    }
+  }
+  byAction.set(actionName,out);
   return out;
 }
 function shouldStripHumanActionRootRotation(actionName){
@@ -2675,8 +2722,7 @@ function stripHumanActionRootRotationTracks(clip,actionName=''){
   const tracks=clip.tracks.filter(track=>{
     const name=track?.name||'';
     if(!name.endsWith('.quaternion') && !name.endsWith('.rotation')) return true;
-    const nodeName=getTrackTargetNodeName(name).toLowerCase();
-    return !(nodeName.includes('hips') || nodeName==='armature');
+    return !isRootOrHipTrackTarget(name);
   });
   const out=(tracks.length===clip.tracks.length)
     ? clip
@@ -4303,88 +4349,148 @@ function makeTempleWallImageMaterial(tex){
     side:THREE.DoubleSide,
     depthWrite:false,
     polygonOffset:true,
-    polygonOffsetFactor:-1,
-    polygonOffsetUnits:-1
+    polygonOffsetFactor:-2,
+    polygonOffsetUnits:-2
   });
 }
-function addTempleWallImagePatch(parent,{x=0,y=3,z=0,w=2,h=1.5,face='front',tex=null}={}){
-  const map=tex || pick(TEMPLE_WALL_TEX);
+function templeWallTextureAspect(tex){
+  const img=tex?.image;
+  return (img && img.width && img.height) ? (img.height/img.width) : 0.72;
+}
+let templeWallTileCursor=0;
+function nextTempleWallTexture(){
+  if(!TEMPLE_WALL_TEX.length) return null;
+  const tex=TEMPLE_WALL_TEX[templeWallTileCursor % TEMPLE_WALL_TEX.length];
+  templeWallTileCursor++;
+  return tex;
+}
+function addTempleWallImagePatch(parent,{u=0,y=3,coord=0,w=2,h=1.5,side='front',tex=null,tilt=0}={}){
+  const map=tex || nextTempleWallTexture();
   if(!map) return null;
-  const img=map.image;
-  const aspect=(img && img.width && img.height) ? (img.height/img.width) : 0.72;
-  const height=h || Math.max(0.8,w*aspect);
   const panel=new THREE.Mesh(
-    new THREE.PlaneGeometry(w,height),
+    new THREE.PlaneGeometry(w,h),
     makeTempleWallImageMaterial(map)
   );
-  panel.position.set(x,y,z);
-  if(face==='back') panel.rotation.y=Math.PI;
-  else if(face==='left') panel.rotation.y=-Math.PI/2;
-  else if(face==='right') panel.rotation.y=Math.PI/2;
-  panel.renderOrder=14;
+  if(side==='front'){
+    panel.position.set(u,y,coord);
+    panel.rotation.y=0;
+  }else if(side==='back'){
+    panel.position.set(u,y,coord);
+    panel.rotation.y=Math.PI;
+  }else if(side==='left'){
+    panel.position.set(coord,y,u);
+    panel.rotation.y=-Math.PI/2;
+  }else if(side==='right'){
+    panel.position.set(coord,y,u);
+    panel.rotation.y=Math.PI/2;
+  }
+  panel.rotation.z=tilt;
+  panel.renderOrder=18;
   parent.add(panel);
   return panel;
 }
-function coverTempleWallWithImages(parent,face){
+function coverTempleWallSurfaceWithImageTiles(parent,face){
   if(!TEMPLE_WALL_TEX.length || !parent) return;
-  const span=face.xMax-face.xMin;
-  const vertical=face.yMax-face.yMin;
-  const baseCount=Math.ceil((span*vertical)/5.8);
-  const count=Math.max(8,Math.min(42,baseCount+Math.floor(rand(2,8))));
-  for(let i=0;i<count;i++){
-    const tex=pick(TEMPLE_WALL_TEX);
-    const img=tex?.image;
-    const aspect=(img && img.width && img.height) ? (img.height/img.width) : rand(0.58,0.92);
-    const mural=Math.random()<0.22;
-    const w=Math.min(span*0.82,mural?rand(3.1,5.8):rand(1.55,3.45));
-    const h=Math.min(vertical*0.72,Math.max(1.05,w*aspect*rand(0.84,1.12)));
-    const x=rand(face.xMin+w*0.50,face.xMax-w*0.50);
-    const y=rand(face.yMin+h*0.50,face.yMax-h*0.50);
-    addTempleWallImagePatch(parent,{x,y,z:face.z,w,h,face:face.side,tex});
+  const uMin=Math.min(face.uMin,face.uMax);
+  const uMax=Math.max(face.uMin,face.uMax);
+  const yMin=Math.min(face.yMin,face.yMax);
+  const yMax=Math.max(face.yMin,face.yMax);
+  const uSpan=uMax-uMin;
+  const ySpan=yMax-yMin;
+  if(uSpan<=0.1 || ySpan<=0.1) return;
+  const overlap=0.12;
+  let rowY=yMin;
+  let row=0;
+  while(rowY<yMax-0.04){
+    const rowH=Math.min(yMax-rowY+overlap,rand(1.18,1.82));
+    let u=uMin;
+    let col=0;
+    while(u<uMax-0.04){
+      const tex=nextTempleWallTexture();
+      if(!tex) return;
+      const aspect=templeWallTextureAspect(tex);
+      let w=clamp((rowH/Math.max(0.35,aspect))*rand(0.84,1.18),1.12,2.85);
+      if(u+w>uMax+overlap) w=(uMax-u)+overlap;
+      const h=Math.min(rowH+overlap,yMax-rowY+overlap);
+      const centerU=u+w*0.5-overlap*0.35+rand(-0.04,0.04);
+      const centerY=rowY+h*0.5-overlap*0.35+rand(-0.035,0.035);
+      addTempleWallImagePatch(parent,{
+        u:centerU,
+        y:centerY,
+        coord:face.coord,
+        w:Math.max(0.32,w),
+        h:Math.max(0.32,h),
+        side:face.side,
+        tex,
+        tilt:rand(-0.018,0.018)
+      });
+      u+=Math.max(0.42,w-overlap);
+      col++;
+      if(col>96) break;
+    }
+    rowY+=Math.max(0.42,rowH-overlap);
+    row++;
+    if(row>32) break;
   }
-  // Add one or two large mural anchors so the temple reads as actively covered,
-  // not only sprinkled with tiny posters.
-  for(let i=0;i<face.largeSlots;i++){
-    const tex=pick(TEMPLE_WALL_TEX);
-    const img=tex?.image;
-    const aspect=(img && img.width && img.height) ? (img.height/img.width) : 0.72;
-    const w=Math.min(span*0.70,rand(4.2,7.8));
-    const h=Math.min(vertical*0.62,Math.max(1.6,w*aspect));
+  // Second layer: larger irregular posters, so the wall reads as an
+  // overgrown collage rather than a clean grid. These do not replace the
+  // tile layer; they sit over it and keep all seven supplied images in use.
+  const overlayCount=Math.max(3,Math.min(18,Math.round((uSpan*ySpan)/28)));
+  for(let i=0;i<overlayCount;i++){
+    const tex=nextTempleWallTexture();
+    const aspect=templeWallTextureAspect(tex);
+    const w=Math.min(uSpan*0.42,rand(2.2,4.9));
+    const h=Math.min(ySpan*0.38,Math.max(1.25,w*aspect*rand(0.78,1.05)));
     addTempleWallImagePatch(parent,{
-      x:rand(face.xMin+w*0.50,face.xMax-w*0.50),
-      y:rand(face.yMin+h*0.50,face.yMax-h*0.50),
-      z:face.z,
-      w,h,face:face.side,tex
+      u:rand(uMin+w*0.5,uMax-w*0.5),
+      y:rand(yMin+h*0.5,yMax-h*0.5),
+      coord:face.coord,
+      w,h,
+      side:face.side,
+      tex,
+      tilt:rand(-0.035,0.035)
     });
   }
 }
 function coverTempleFacadeWithWallImages(temple){
-  if(!TEMPLE_WALL_TEX.length) return;
-  const faces=[
-    {side:'front',xMin:-15.2,xMax:-4.2,yMin:1.25,yMax:7.3,z:8.73,largeSlots:1},
-    {side:'front',xMin:4.2,xMax:15.2,yMin:1.25,yMax:7.3,z:8.73,largeSlots:1},
-    {side:'back',xMin:-15.2,xMax:-4.2,yMin:1.25,yMax:7.3,z:-20.33,largeSlots:1},
-    {side:'back',xMin:4.2,xMax:15.2,yMin:1.25,yMax:7.3,z:-20.33,largeSlots:1},
-    {side:'right',xMin:-24.4,xMax:12.8,yMin:1.1,yMax:8.6,z:16.88,largeSlots:2},
-    {side:'left',xMin:-24.4,xMax:12.8,yMin:1.1,yMax:8.6,z:-16.88,largeSlots:2}
+  if(!TEMPLE_WALL_TEX.length || !temple) return;
+  templeWallTileCursor=Math.floor(rand(0,TEMPLE_WALL_TEX.length));
+  const frontOuterZ=8.74;
+  const frontInnerZ=7.94;
+  const backOuterZ=-20.34;
+  const backInnerZ=-19.54;
+  const leftOuterX=-16.88;
+  const leftInnerX=-16.00;
+  const rightOuterX=16.88;
+  const rightInnerX=16.00;
+  const wallSurfaces=[
+    // Front façade: outer + interior wall surfaces, avoiding the doorway gap.
+    {side:'front',coord:frontOuterZ,uMin:-16.85,uMax:-4.15,yMin:0.72,yMax:8.55},
+    {side:'front',coord:frontOuterZ,uMin:4.15,uMax:16.85,yMin:0.72,yMax:8.55},
+    {side:'front',coord:frontOuterZ,uMin:-5.25,uMax:5.25,yMin:5.72,yMax:8.32},
+    {side:'back',coord:frontInnerZ,uMin:-16.85,uMax:-4.15,yMin:0.72,yMax:8.55},
+    {side:'back',coord:frontInnerZ,uMin:4.15,uMax:16.85,yMin:0.72,yMax:8.55},
+    {side:'back',coord:frontInnerZ,uMin:-5.25,uMax:5.25,yMin:5.72,yMax:8.32},
+    // Back façade: outer + interior wall surfaces.
+    {side:'back',coord:backOuterZ,uMin:-16.85,uMax:-4.15,yMin:0.72,yMax:8.55},
+    {side:'back',coord:backOuterZ,uMin:4.15,uMax:16.85,yMin:0.72,yMax:8.55},
+    {side:'back',coord:backOuterZ,uMin:-5.25,uMax:5.25,yMin:5.72,yMax:8.32},
+    {side:'front',coord:backInnerZ,uMin:-16.85,uMax:-4.15,yMin:0.72,yMax:8.55},
+    {side:'front',coord:backInnerZ,uMin:4.15,uMax:16.85,yMin:0.72,yMax:8.55},
+    {side:'front',coord:backInnerZ,uMin:-5.25,uMax:5.25,yMin:5.72,yMax:8.32},
+    // Long side walls: both outside and inside faces.
+    {side:'left',coord:leftOuterX,uMin:-25.95,uMax:14.75,yMin:0.76,yMax:10.95},
+    {side:'right',coord:leftInnerX,uMin:-25.95,uMax:14.75,yMin:0.76,yMax:10.95},
+    {side:'right',coord:rightOuterX,uMin:-25.95,uMax:14.75,yMin:0.76,yMax:10.95},
+    {side:'left',coord:rightInnerX,uMin:-25.95,uMax:14.75,yMin:0.76,yMax:10.95},
+    // Smaller interior side blocks near the shrine body.
+    {side:'right',coord:-9.66,uMin:-4.0,uMax:4.2,yMin:0.82,yMax:7.78},
+    {side:'left',coord:-14.14,uMin:-4.0,uMax:4.2,yMin:0.82,yMax:7.78},
+    {side:'left',coord:14.14,uMin:-4.0,uMax:4.2,yMin:0.82,yMax:7.78},
+    {side:'right',coord:9.66,uMin:-4.0,uMax:4.2,yMin:0.82,yMax:7.78}
   ];
-  // For side faces, the helper interprets x as the local Z coordinate by
-  // rotating the plane onto the X-facing wall and then swapping coordinates.
-  for(const face of faces){
-    if(face.side==='front' || face.side==='back'){
-      coverTempleWallWithImages(temple,face);
-    }else{
-      const proxy={
-        add(panel){
-          const localX=face.z;
-          const localZ=panel.position.x;
-          panel.position.x=localX;
-          panel.position.z=localZ;
-          temple.add(panel);
-        }
-      };
-      coverTempleWallWithImages(proxy,{...face,z:0});
-    }
+  for(const face of wallSurfaces){
+    coverTempleWallSurfaceWithImageTiles(temple,face);
   }
 }
 function makeTemplePlaqueTexture(text,bg='#5f2816',fg='#f5d07a'){
@@ -6149,7 +6255,11 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
       if(!srcClip) continue;
       let safeClip=getCloneRootCompatibleClip(root,srcClip,`actor:${name}`);
       if(lockHumanClipPositions){
-        safeClip=lockHumanActionPositionTracks(safeClip,name);
+        if(isHostHandAttackName(name)){
+          safeClip=sanitiseHostHandAttackClipForHostRig(safeClip,name);
+        }else{
+          safeClip=lockHumanActionPositionTracks(safeClip,name);
+        }
         safeClip=stripHumanActionRootRotationTracks(safeClip,name);
       }
       if(!isUsableClip(safeClip)) continue;
@@ -6445,42 +6555,6 @@ function hardClampHumanToGround(h){
   h.root.position.y=groundY;
   h.vy=0;
   h.isAir=false;
-}
-const HUMAN_ATTACK_GROUND_BOX=new THREE.Box3();
-function isHostHandAttackName(name){
-  return name==='punch' || name==='punchcombo';
-}
-function stabiliseHumanAttackGrounding(ent,actionName){
-  if(!ent || ent.kind!=='human' || !isHostHandAttackName(actionName)) return;
-  if(!ent.inst?.root || !ent.root || ent.dead || ent.transformedToIdol || ent.idolWanderer) return;
-  if(!(ent.actionTimer>0)) return;
-  const desiredGroundY=getHumanGroundY(ent);
-  ent.root.position.y=desiredGroundY;
-  ent.vy=0;
-  ent.isAir=false;
-  ent.root.updateMatrixWorld(true);
-  HUMAN_ATTACK_GROUND_BOX.setFromObject(ent.inst.root);
-  const minY=HUMAN_ATTACK_GROUND_BOX.min.y;
-  if(!Number.isFinite(minY)) return;
-  const delta=desiredGroundY-minY;
-  if(!Number.isFinite(delta) || Math.abs(delta)<0.012 || Math.abs(delta)>2.4) return;
-  ent.inst.root.position.y+=delta;
-  ent.inst._attackGroundAdjusted=true;
-  ent.inst.outer?.updateMatrixWorld?.(true);
-  ent.root.updateMatrixWorld(true);
-}
-function restoreHumanAttackGrounding(ent){
-  if(!ent?.inst?.root || !ent.inst._attackGroundAdjusted) return;
-  const baseY=Number.isFinite(ent.inst.groundedRootLocalY)
-    ? ent.inst.groundedRootLocalY
-    : (Number.isFinite(ent.inst.root.position.y)?ent.inst.root.position.y:0);
-  if(Math.abs(ent.inst.root.position.y-baseY)>0.01){
-    ent.inst.root.position.y=lerp(ent.inst.root.position.y,baseY,0.42);
-    ent.inst.outer?.updateMatrixWorld?.(true);
-  }else{
-    ent.inst.root.position.y=baseY;
-    ent.inst._attackGroundAdjusted=false;
-  }
 }
 function nudgeLoopActionOffBindPose(action){
   if(!action?.getClip) return;
@@ -6833,13 +6907,10 @@ function tickActor(ent,dt){
     ent.inst.mixer.update(mixerDt);
     if(ent.kind==='human') syncRetargetPose(ent.inst);
   }
-  if(ent.kind==='human'){
-    const groundingAction=(ent.actionTimer>0 && isHostHandAttackName(ent.actionName))
-      ? ent.actionName
-      : ((ent.actionTimer>0 && isHostHandAttackName(selectedActionName)) ? selectedActionName : null);
-    if(groundingAction) stabiliseHumanAttackGrounding(ent,groundingAction);
-    else restoreHumanAttackGrounding(ent);
-  }
+  // Hand-attack sinking is fixed at the animation-clip level by stripping
+  // imported translation tracks from punch / punchcombo. Do not apply any
+  // per-frame visual mesh height correction here, or the model will fight
+  // the normal grounding system during blends.
   if(ent.transformedToIdol && typeof ent._lockedFeetY==='number'){
     ent.root.position.y=ent._lockedFeetY;
     if(typeof ent._lockedMeshOffsetY==='number' && ent.inst.root){
