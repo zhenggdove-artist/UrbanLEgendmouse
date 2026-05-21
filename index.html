@@ -606,6 +606,46 @@
     .intro-copy{font-size:11px}
     .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
   }
+
+  /* v8: actual ending screen is the Rat City score card; keep it editable and readable. */
+  #rat-city-save,#rat-city-close,#rat-city-min{
+    background:linear-gradient(180deg,#e5e5e5,#a9a9a9) !important;
+    color:#151515 !important;
+    border:1px solid rgba(255,255,255,0.46) !important;
+    box-shadow:0 2px 8px rgba(0,0,0,0.18) !important;
+  }
+  #rat-city-panel{
+    padding:clamp(34px,4.2vw,58px) clamp(44px,5.4vw,76px) clamp(32px,4.0vw,54px) !important;
+    min-height:0;
+    overflow:hidden;
+  }
+  #rat-city-panel::before{width:112% !important;height:122% !important;}
+  #rat-city-panel h3{
+    margin:0 148px 18px 0 !important;
+    font-size:clamp(20px,2.0vw,30px) !important;
+    line-height:1.05 !important;
+    letter-spacing:0.20em !important;
+  }
+  #rat-city-panel p{
+    margin:0 0 22px !important;
+    max-width:calc(100% - 12px);
+    font-size:clamp(10px,0.9vw,13px) !important;
+    line-height:1.72 !important;
+    letter-spacing:0.055em !important;
+  }
+  #rat-city-panel .rat-city-row{gap:16px;margin:0 0 18px;}
+  #rat-city-name{height:42px;box-sizing:border-box;}
+  #rat-city-score{margin:20px 0 16px !important;font-size:clamp(13px,1.1vw,16px) !important;line-height:1.45 !important;}
+  #rat-city-list{max-height:min(38vh,260px);overflow:auto;padding-right:6px !important;}
+  #rat-city-list li{padding:10px 12px !important;line-height:1.45 !important;}
+  body.game-won.rat-city-mode #rat-city-btn,
+  body.game-won.rat-city-mode #rat-city-panel.show{display:block !important;}
+  body.game-won.rat-city-mode #rats-win{display:none !important;}
+  body.admin-stage-active.scene-ending #rat-city-btn,
+  body.admin-stage-active.scene-ending #rat-city-panel{display:block !important;}
+  body.admin-stage-active.scene-ending #rat-city-panel{pointer-events:auto;}
+  body.admin-stage-active.scene-ending #rats-win{display:none !important;}
+
 </style>
 </head>
 <body class="intro-active">
@@ -1121,7 +1161,7 @@ const HOST_ATTACK_HOLD_MS=280;
 const HOST_ATTACK_COMBO_WINDOW=0.46;
 const HOST_ATTACK_TAP_BUFFER_MS=150;
 const HOST_PUNCH_TIME_SCALE=2.25;
-const HOST_PUNCHCOMBO_TIME_SCALE=2.05;
+const HOST_PUNCHCOMBO_TIME_SCALE=1.64;
 const HOST_PUNCH_START_TIME=0.030;
 const HOST_PUNCHCOMBO_START_TIME=0.025;
 const HOST_PICKUP_RADIUS=1.65;
@@ -6962,7 +7002,7 @@ function tickActor(ent,dt){
       if(nextAct){
         nextAct.enabled=true;
         nextAct.paused=false;
-        if(shouldRestartAction) nextAct.reset();
+        if(shouldRestartAction || (ent.kind==='human' && next==='death' && prevState!=='death')) nextAct.reset();
         else if(ent.kind==='human' && loopNext) nudgeLoopActionOffBindPose(nextAct);
         if(!nextAct.isRunning?.()) nextAct.play();
       }
@@ -7010,14 +7050,23 @@ function tickActor(ent,dt){
       ent._animBlendFrom=null;
       ent._animBlendTo=next;
       for(const [name,act] of Object.entries(actionsMap)){
+        const active=name===next;
+        const loopAction=(name==='idle'||name==='walk'||name==='run'||name==='clean');
         act.enabled=true;
         act.paused=false;
-        if(!act.isRunning?.()) act.play();
-        act.setEffectiveWeight(name===next?1:0);
+        if(active || loopAction){
+          if(!act.isRunning?.()) act.play();
+        }else{
+          act.stop?.();
+        }
+        act.setEffectiveWeight(active?1:0);
       }
     }else{
       for(const [name,act] of Object.entries(actionsMap)){
-        if(name!==toName && name!==fromName) act.setEffectiveWeight(0);
+        if(name!==toName && name!==fromName){
+          act.setEffectiveWeight(0);
+          if(!(name==='idle'||name==='walk'||name==='run'||name==='clean')) act.stop?.();
+        }
       }
     }
     if(ent===game.templeEvent?.idol || ent.behaviour==='procession'){
@@ -7050,6 +7099,8 @@ function tickActor(ent,dt){
   }else if(ent.kind==='human' && !ent.controllable && ent!==game.parasitisedHost){
     if(ent===game.templeEvent?.idol || ent.behaviour==='procession'){
       scale=selectedActionName==='idle'?0.96:1.12;
+    }else if(selectedActionName==='death'){
+      scale=0.88;
     }else if(selectedActionName==='idle'){
       scale=1.08;
     }else if(selectedActionName==='run'){
@@ -8489,6 +8540,40 @@ function spawnImpactDebris(pos,count=14,color='#d6c2a4'){
     });
   }
 }
+
+function startHumanDeathAnimation(host){
+  if(!host?.inst?.actions) return;
+  const deathAct=host.inst.actions.death;
+  for(const [name,act] of Object.entries(host.inst.actions)){
+    act.stopFading?.();
+    act.stopWarping?.();
+    if(act===deathAct){
+      act.enabled=true;
+      act.paused=false;
+      act.setLoop?.(THREE.LoopOnce,1);
+      act.clampWhenFinished=true;
+      act.stop?.();
+      act.reset?.();
+      act.time=0;
+      act.setEffectiveWeight?.(1);
+      act.setEffectiveTimeScale?.(0.88);
+      act.play?.();
+    }else if(name==='idle'||name==='walk'||name==='run'||name==='clean'){
+      act.setEffectiveWeight?.(0);
+    }else{
+      act.setEffectiveWeight?.(0);
+      act.stop?.();
+    }
+  }
+  host.animState='death';
+  host.actionName=null;
+  host.actionTimer=0;
+  host._animBlendFrom=null;
+  host._animBlendTo='death';
+  host._animBlendT=0;
+  host._animBlendDur=0.12;
+  host.curSpeed=0;
+}
 function killHost(host){
   if(!host||host.dead)return;
   if(host.heldProp) throwHeldProp(host,0.15);
@@ -8506,6 +8591,7 @@ function killHost(host){
   host.root.rotation.z=0;
   host.root.rotation.x=0;
   host.root.position.y=host.baseY||0;
+  startHumanDeathAnimation(host);
   if(host.bloodPool){
     const bloodPos=new THREE.Vector3();
     host.root.getWorldPosition(bloodPos);
@@ -9836,7 +9922,8 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'intro-copy',label:'Loading Description',isText:true,multiline:true,scene:'loading'},
   {id:'intro-progress-text',label:'Loading Progress Text',isText:true,scene:'loading'},
   {id:'intro-progress-track',label:'Loading Progress Bar',scene:'loading'},
-  {id:'rats-win',label:'Ending Card',scene:'ending'},
+  {id:'rat-city-panel',label:'Ending Card',scene:'ending'},
+  {id:'rats-win',label:'Legacy Ending Card',scene:'ending'},
   {id:'rw-text',label:'Ending Title',isText:true,scene:'ending'},
   {id:'rw-sub',label:'Ending Subtitle',isText:true,scene:'ending'},
   {id:'rw-replay',label:'Ending Replay Button',isText:true,scene:'ending'}
@@ -9859,7 +9946,7 @@ const UI_LAYOUT_TEXT_DEFAULTS={
   'intro-title':'URBAN LEGEND RAT',
   'rw-text':'RATS WIN',
   'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
-  'rw-replay':'PLAY AGAIN',
+  'rw-replay':'BACK TO THE STREET',
   'intro-copy':`This is an ancient prophecy.
 
 Under the call of the Rat King, vast hordes of rats march toward the city.
@@ -9953,6 +10040,20 @@ function applyAdminSceneClass(){
   body.classList.toggle('scene-game',uiLayoutState.active && getActiveLayoutScene()==='game');
   body.classList.toggle('scene-loading',uiLayoutState.active && getActiveLayoutScene()==='loading');
   body.classList.toggle('scene-ending',uiLayoutState.active && getActiveLayoutScene()==='ending');
+  syncUILayoutScenePreviewState();
+}
+function syncUILayoutScenePreviewState(){
+  const panel=document.getElementById('rat-city-panel');
+  const btn=document.getElementById('rat-city-btn');
+  const inEnding=uiLayoutState.active && getActiveLayoutScene()==='ending';
+  if(inEnding){
+    panel?.classList?.add('show');
+    panel?.classList?.remove('min');
+    if(btn) setUIArtHostLabel(btn,'BACK TO\nTHE STREET');
+  }else if(uiLayoutState.active){
+    if(typeof game!=='undefined' && !game.ratCityMode) panel?.classList?.remove('show','min');
+    if(btn && typeof game!=='undefined' && !game.ratCityMode) setUIArtHostLabel(btn,'RAT CITY');
+  }
 }
 const layoutMobileQuery=window.matchMedia('(any-pointer: coarse), (max-width: 900px)');
 function cloneUILayoutConfig(v){ return JSON.parse(JSON.stringify(v)); }
@@ -10064,6 +10165,15 @@ function ensureUILayoutBuiltins(config){
         }
       }
       store.__endingTextDefaultsRestored=true;
+    }
+    if(!store.__actualRatCityEndingV8){
+      const actualEndingDefault=mode==='mobile'
+        ? {x:50,y:48,w:84,h:48,z:46,hidden:false,locked:false,rot:0}
+        : {x:50,y:47,w:52,h:40,z:46,hidden:false,locked:false,rot:0};
+      store['rat-city-panel']={...(store['rat-city-panel']||{}),...actualEndingDefault};
+      store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
+      store['rw-replay']={...(store['rw-replay']||{}),text:'BACK TO THE STREET'};
+      store.__actualRatCityEndingV8=true;
     }
     if(!store.__endingCardLayoutApplied){
       for(const id of ['rats-win','rw-text','rw-sub','rw-replay']){
@@ -10492,7 +10602,9 @@ function ensureUILayoutMetrics(def){
     };
     return store[def.id];
   }
-  const fallback=UI_LAYOUT_DEFAULTS[getUILayoutMode()][def.id]||UI_LAYOUT_INTRO_FALLBACK[def.id]||{x:50,y:50,w:10,h:10};
+  const fallback=def.id==='rat-city-panel'
+    ? (UI_LAYOUT_DEFAULTS[getUILayoutMode()]['rat-city-panel']||UI_LAYOUT_DEFAULTS[getUILayoutMode()]['rats-win']||{x:50,y:50,w:58,h:48})
+    : (UI_LAYOUT_DEFAULTS[getUILayoutMode()][def.id]||UI_LAYOUT_INTRO_FALLBACK[def.id]||{x:50,y:50,w:10,h:10});
   const current=store[def.id]||{};
   store[def.id]={
     ...fallback,
@@ -10654,7 +10766,7 @@ function escapeHTMLForLayout(s){
 function applyRuntimeUILayoutTextOverrides(){
   const ratCity=document.getElementById('rat-city-btn');
   if(ratCity && document.body.classList.contains('rat-city-mode')){
-    setUIArtHostLabel(ratCity,'BACK TO\nCHAOS');
+    setUIArtHostLabel(ratCity,'BACK TO\nTHE STREET');
   }
 }
 function applyEndingLayoutToRatCityPanel(){
@@ -10681,6 +10793,7 @@ function applyUILayoutConfig(){
   syncUILayoutCustomFrames();
   for(const def of getUILayoutDefs()) applyUILayoutMetrics(def,ensureUILayoutMetrics(def));
   applyRuntimeUILayoutTextOverrides();
+  syncUILayoutScenePreviewState();
   if(uiLayoutState.active) refreshUILayoutEditor();
 }
 function showUILayoutToast(message){
@@ -11744,7 +11857,7 @@ function refreshLoadingTextPanel(){
     const metrics=ensureUILayoutMetrics(def);
     const fallback=document.getElementById(def.id);
     const fallbackText=fallback?(def.multiline?fallback.innerText:(fallback.textContent||'')):'';
-    const layoutOnly=def.id==='rats-win';
+    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel';
     const text=(typeof metrics.text==='string')?metrics.text:fallbackText;
     const fontSize=metrics.fontSize||'';
     const fontFamily=metrics.fontFamily||'';
@@ -12854,7 +12967,7 @@ function setRatCityMode(enabled){
   document.body.classList.toggle('rat-city-mode',enabled);
   ratCityPanel.classList.toggle('show',enabled);
   if(!enabled) ratCityPanel.classList.remove('min');
-  setUIArtHostLabel(ratCityBtn,enabled?'BACK TO\nCHAOS':'RAT CITY');
+  setUIArtHostLabel(ratCityBtn,enabled?'BACK TO\nTHE STREET':'RAT CITY');
   if(enabled){
     game.ratCityAngle=camYaw;
     ratCityPitch=0.58;
@@ -12887,6 +13000,7 @@ modeBadge.addEventListener('pointerdown',e=>{
 });
 ratCityBtn.addEventListener('pointerdown',e=>{
   e.preventDefault();
+  if(gameState==='won'){ location.reload(); return; }
   if(gameState!=='playing')return;
   setRatCityMode(!game.ratCityMode);
 });
@@ -13059,7 +13173,7 @@ function doHostAttack(requested='kick',opts={}){
   host.attackQueued=false;
   if(actionName==='punch') host._lastPunchStartedAt=performance.now();
   const attackAct=host.inst?.actions?.[actionName];
-  const fallbackDuration=actionName==='kick'?0.72:(actionName==='punchcombo'?0.46:0.26);
+  const fallbackDuration=actionName==='kick'?0.72:(actionName==='punchcombo'?0.58:0.26);
   const clipDuration=attackAct?.getClip?.().duration||fallbackDuration;
   host.actionTimer=Math.max(0.18,Math.min(fallbackDuration,clipDuration/Math.max(0.001,timeScale)));
   if(attackAct){
@@ -13144,7 +13258,7 @@ function tickControllableHostState(dt){
       if(host.attackQueued && host.controllable && !host.dead){
         const queued=host.attackQueued;
         host.attackQueued=false;
-        doHostAttack(typeof queued==='string'?queued:'punch');
+        doHostAttack(typeof queued==='string'?queued:'punchcombo');
       }
     }
   }
@@ -16097,7 +16211,7 @@ function applyEndingScreenLayoutText(){
   const rwReplay=document.getElementById('rw-replay');
   if(rwText) rwText.textContent=getUILayoutConfiguredText('rw-text','RATS WIN');
   if(rwSub) rwSub.textContent=getUILayoutConfiguredText('rw-sub','THE ALLEY BELONGS TO THE SWARM');
-  if(rwReplay) rwReplay.textContent=getUILayoutConfiguredText('rw-replay','PLAY AGAIN');
+  if(rwReplay) rwReplay.textContent=getUILayoutConfiguredText('rw-replay','BACK TO THE STREET');
 }
 function triggerRatsWin(){
   if(!ratsWinEl) return;
@@ -16105,15 +16219,14 @@ function triggerRatsWin(){
   cancelHostAttackHold();
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
-  setRatCityMode(false);
-  ratCityPanel?.classList?.remove('show','min');
-  document.body.classList.remove('rat-city-mode');
   introEl.style.display='none';
   document.body.classList.remove('intro-active');
   document.body.classList.add('game-won');
   applyEndingScreenLayoutText();
-  ratsWinEl.style.display='flex';
-  ratsWinEl.classList.add('show');
+  ratsWinEl.style.display='none';
+  ratsWinEl.classList.remove('show');
+  setRatCityMode(true);
+  ratCityPanel?.classList?.remove('min');
   applyUILayoutConfig();
 }
 ratsWinReplay.addEventListener('click',()=>location.reload());
