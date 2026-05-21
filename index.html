@@ -40,8 +40,8 @@
   #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block;
     image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges}
   /* The CSS mobile VHS overlay is no longer needed. Mobile now runs
-     the same WebGL VHS shader pass that desktop uses (scene → 480×270
-     lowResRT → VHS fragment shader → canvas). The overlay is force-
+     a lighter WebGL VHS shader pass (scene → lowResRT → shader → canvas).
+     The overlay is force-
      hidden in case any DOM element still references it. */
   #mobile-vhs-overlay{display:none !important}
   #viewport-frame{position:fixed;inset:0;pointer-events:none;z-index:11;filter:none;display:none}
@@ -297,6 +297,12 @@
   #ring-seam-veil::after{content:'';position:absolute;inset:0;
     background:radial-gradient(circle at 50% 50%,rgba(255,255,255,0.00) 0%,rgba(20,10,30,0.15) 72%,rgba(10,6,16,0.52) 100%);
     opacity:0.78}
+  #perf-audio-debug{position:fixed;left:8px;bottom:8px;z-index:120;display:none;
+    max-width:min(520px,calc(100vw - 16px));max-height:48vh;overflow:hidden;
+    padding:8px 10px;border:1px solid rgba(170,240,255,0.35);border-radius:8px;
+    background:rgba(5,8,14,0.78);color:#dffaff;font:10px/1.35 "Courier New",monospace;
+    white-space:pre;pointer-events:none;text-shadow:0 1px 2px #000}
+  body.debug-audio #perf-audio-debug{display:block}
 
 
   body.ui-layout-admin *{cursor:default}
@@ -571,6 +577,7 @@
 </div>
 <div id="hint"></div>
 <div id="bite-lock"><span>BITE!</span></div>
+<div id="perf-audio-debug" aria-hidden="true"></div>
 
 <div id="intro">
   <div class="intro-card" id="intro-card">
@@ -797,13 +804,14 @@ renderer.setPixelRatio(1);          // ignore device pixel ratio — PS1 is fixe
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.NoToneMapping;
 renderer.shadowMap.enabled=false;    // no real-time shadows
+renderer.info.autoReset=false;
 renderer.setClearColor('#ff4fa8');
 
 /* Low-resolution back-buffer. Each frame we render the scene to this
    target, then draw the target onto the canvas at full size through a
    point-sampled fullscreen quad. PS1 ran at ~320×240; we follow suit
    on mobile and bump up to ~480×270 on desktop. */
-const LOW_W=480,LOW_H=270;
+const LOW_W=IS_MOBILE_DEVICE?426:480,LOW_H=IS_MOBILE_DEVICE?240:270;
 const lowResRT=new THREE.WebGLRenderTarget(LOW_W,LOW_H,{
   minFilter:THREE.NearestFilter,
   magFilter:THREE.NearestFilter,
@@ -822,6 +830,7 @@ const screenQuad=new THREE.Mesh(
   new THREE.PlaneGeometry(2,2),
   new THREE.ShaderMaterial({
     uniforms:vhsUniforms,
+    defines:{MOBILE_VHS:IS_MOBILE_DEVICE?1:0},
     depthTest:false,depthWrite:false,
     vertexShader:`
       varying vec2 vUv;
@@ -840,6 +849,12 @@ const screenQuad=new THREE.Mesh(
       }
       void main(){
         vec2 uv=vUv;
+        #if MOBILE_VHS
+        vec3 colour=texture2D(map,uv).rgb;
+        float scanline=sin(uv.y*resolution.y*0.85)*0.012;
+        float noise=(hash(vec2(floor(uv.y*resolution.y*0.25),floor(time*24.0)))-0.5)*0.012;
+        colour+=noise-scanline;
+        #else
         float wobble=sin(uv.y*18.0+time*3.6)*0.00115;
         float glitch=step(0.94,sin(time*0.8+uv.y*14.0))*0.0012;
         vec2 shift=vec2(wobble+glitch,0.0);
@@ -853,6 +868,7 @@ const screenQuad=new THREE.Mesh(
         colour-=scanline;
         colour+=noise;
         colour=colour*(1.0-band);
+        #endif
         gl_FragColor=vec4(colour,1.0);
       }
     `
@@ -1369,14 +1385,46 @@ const SFX_PRIORITY={
   playerMove:38,
   ratFootstep:22
 };
+function getSFXPolyphony(key){
+  if(key==='playerMove' || key==='ratFootstep') return 4;
+  if(key==='playerJump' || key==='parasiteComplete' || key==='binFall' || key==='vehicleBreak' || key==='stallBreak' || key==='glassBreak' || key==='stallFire') return 3;
+  if(HUMAN_BITE_SCREAM_PATHS[key]) return 2;
+  return 2;
+}
+function getSFXPriority(key,override=null){
+  if(Number.isFinite(override)) return override;
+  if(HUMAN_BITE_SCREAM_PATHS[key]) return 72;
+  return SFX_PRIORITY[key] ?? 50;
+}
+function getAudioGroupForKey(key){
+  if(key==='streetAmbience') return 'ambient';
+  if(key==='ritualSwarm' || key==='idolStep') return 'temple';
+  if(key==='ratFootstep' || key==='ratSwarmLoop') return 'rats';
+  if(key==='playerBiteLoop' || key==='playerMove' || key==='playerJump' || key==='parasiteComplete') return 'player';
+  if(key==='humanDeath' || HUMAN_BITE_SCREAM_PATHS[key]) return 'humans';
+  if(key==='binFall' || key==='stallFire' || key==='stallBreak' || key==='vehicleBreak' || key==='glassBreak') return 'props';
+  return 'ui';
+}
+const AUDIO_MANIFEST=[
+  ...Object.entries(SOUND_PATHS).map(([name,url])=>({
+    name,url,group:getAudioGroupForKey(name),preload:true,loop:SFX_LOOP_KEYS.has(name),priority:getSFXPriority(name)
+  })),
+  ...Object.entries(HUMAN_BITE_SCREAM_PATHS).map(([name,url])=>({
+    name,url,group:'humans',preload:true,loop:false,priority:getSFXPriority(name)
+  }))
+];
 const sfxState={
   unlocked:false,
   unlockPromise:null,
   masterVolume:0.78,
   players:new Map(),
   loops:new Map(),
+  cooldowns:new Map(),
+  streetAmbienceGain:0,
   streetAmbienceOffsetPrimed:false,
-  streetAmbienceGain:0
+  ratSwarmGain:0,
+  ratSfxProbeTimer:0,
+  cachedMovingFollowers:0
 };
 let sfxSourceSeq=0;
 function getSFXSourceId(source){
@@ -1390,227 +1438,368 @@ function getSFXSourceId(source){
   if(!source._sfxSourceId) source._sfxSourceId=`src-${++sfxSourceSeq}`;
   return source._sfxSourceId;
 }
-function createSFXAudio(path,{loop=false}={}){
-  const audio=new Audio(path);
-  audio.preload='auto';
-  audio.loop=loop;
-  audio.playsInline=true;
-  audio.load();
-  return audio;
+class AudioManager{
+  constructor(manifest){
+    this.manifest=manifest;
+    this.items=new Map();
+    this.buffers=new Map();
+    this.failed=new Map();
+    this.loading=new Set();
+    this.activeSources=new Set();
+    this.loops=new Map();
+    this.groupVolumes={ui:1,player:1,props:1,humans:1,rats:1,temple:1,ambient:1};
+    this.groupGains=new Map();
+    this.masterVolume=sfxState.masterVolume;
+    this.masterGain=null;
+    this.ctx=null;
+    this.unlockBuffer=null;
+    this.unlockAttempts=0;
+    this.unlocked=false;
+    this.ready=false;
+    this.muted=false;
+    this.lastError='';
+    this.queued=[];
+    this.frameDedupe=new Set();
+    this._urlPreloadPromises=new Map();
+    this._debugWarnedLocked=false;
+    for(const item of manifest){
+      this.items.set(item.name,item);
+      sfxState.players.set(item.name,{path:item.url,group:item.group,loop:!!item.loop,preload:!!item.preload});
+    }
+  }
+  getContext(){
+    if(this.ctx) return this.ctx;
+    const Ctx=window.AudioContext||window.webkitAudioContext;
+    if(!Ctx){
+      this.lastError='Web Audio API unavailable';
+      return null;
+    }
+    try{
+      this.ctx=new Ctx({latencyHint:IS_MOBILE_DEVICE?'interactive':'balanced'});
+      this.masterGain=this.ctx.createGain();
+      this.masterGain.gain.value=this.masterVolume;
+      this.masterGain.connect(this.ctx.destination);
+      for(const group of Object.keys(this.groupVolumes)){
+        const gain=this.ctx.createGain();
+        gain.gain.value=this.groupVolumes[group];
+        gain.connect(this.masterGain);
+        this.groupGains.set(group,gain);
+      }
+      this.unlockBuffer=this.ctx.createBuffer(1,1,this.ctx.sampleRate||44100);
+    }catch(err){
+      this.lastError=`AudioContext create failed: ${err?.message||err}`;
+      console.warn('[audio] AudioContext create failed',err);
+    }
+    return this.ctx;
+  }
+  getItem(name){return this.items.get(name)||null;}
+  getGroupGain(group){
+    const ctx=this.getContext();
+    if(!ctx) return null;
+    if(!this.groupGains.has(group)){
+      const gain=ctx.createGain();
+      gain.gain.value=1;
+      gain.connect(this.masterGain);
+      this.groupGains.set(group,gain);
+    }
+    return this.groupGains.get(group);
+  }
+  setMasterVolume(v){
+    this.masterVolume=clamp(v,0,1);
+    sfxState.masterVolume=this.masterVolume;
+    if(this.masterGain && this.ctx) this.masterGain.gain.setTargetAtTime(this.masterVolume,this.ctx.currentTime,0.02);
+  }
+  setGroupVolume(group,v){
+    this.groupVolumes[group]=clamp(v,0,1);
+    const gain=this.groupGains.get(group);
+    if(gain && this.ctx) gain.gain.setTargetAtTime(this.groupVolumes[group],this.ctx.currentTime,0.02);
+  }
+  async decodeArrayBuffer(arrayBuffer){
+    const ctx=this.getContext();
+    if(!ctx) throw new Error('AudioContext unavailable');
+    return await new Promise((resolve,reject)=>{
+      try{
+        const ret=ctx.decodeAudioData(arrayBuffer.slice(0),resolve,reject);
+        if(ret && typeof ret.then==='function') ret.then(resolve,reject);
+      }catch(err){
+        reject(err);
+      }
+    });
+  }
+  async preloadKeys(keys=ALL_SFX_KEYS,{onProgress=null}={}){
+    const selected=(Array.isArray(keys)&&keys.length?keys:ALL_SFX_KEYS)
+      .map(k=>this.getItem(k))
+      .filter(Boolean);
+    const total=selected.length;
+    let done=0;
+    const report=()=>{ if(onProgress) onProgress(done,total,this.failed.size); };
+    this.getContext();
+    report();
+    const tasks=selected.map(async item=>{
+      if(this.buffers.has(item.name) || this.failed.has(item.name)){
+        done++;report();return;
+      }
+      try{
+        let urlPromise=this._urlPreloadPromises.get(item.url);
+        if(!urlPromise){
+          this.loading.add(item.name);
+          urlPromise=fetch(item.url,{cache:'force-cache',credentials:'same-origin'})
+            .then(resp=>{
+              if(!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+              return resp.arrayBuffer();
+            })
+            .then(buf=>this.decodeArrayBuffer(buf));
+          this._urlPreloadPromises.set(item.url,urlPromise);
+        }
+        const decoded=await urlPromise;
+        this.buffers.set(item.name,decoded);
+      }catch(err){
+        this.failed.set(item.name,item.url);
+        this.lastError=`preload failed: ${item.name} ${item.url} ${err?.message||err}`;
+        console.warn('[audio] preload/decode failed',item.name,item.url,err);
+      }finally{
+        this.loading.delete(item.name);
+        done++;
+        report();
+      }
+    });
+    await Promise.allSettled(tasks);
+    this.ready=true;
+    report();
+  }
+  async unlock(source='user'){
+    if(this.unlocked && this.ctx?.state==='running') return true;
+    this.unlockAttempts++;
+    const ctx=this.getContext();
+    if(!ctx) return false;
+    try{
+      if(ctx.state==='suspended') await ctx.resume();
+      if(this.unlockBuffer){
+        const src=ctx.createBufferSource();
+        const gain=ctx.createGain();
+        gain.gain.value=0.00001;
+        src.buffer=this.unlockBuffer;
+        src.connect(gain).connect(this.masterGain||ctx.destination);
+        src.start(0);
+      }
+      this.unlocked=ctx.state==='running' || ctx.state==='interrupted';
+      sfxState.unlocked=this.unlocked;
+      this._debugWarnedLocked=false;
+      if(this.unlocked) this.flushQueued();
+      return this.unlocked;
+    }catch(err){
+      this.lastError=`unlock failed (${source}): ${err?.message||err}`;
+      console.warn('[audio] unlock failed',source,err);
+      return false;
+    }
+  }
+  enqueue(name,opts){
+    if(this.queued.length<40){
+      this.queued.push({name,opts,time:performance.now()});
+    }else{
+      this.lastError=`audio queue full before unlock; dropped ${name}`;
+    }
+    if(!this._debugWarnedLocked){
+      this._debugWarnedLocked=true;
+      console.warn('[audio] play requested before unlock; queueing until user gesture');
+    }
+  }
+  flushQueued(){
+    if(!this.queued.length) return;
+    const queued=this.queued.splice(0,this.queued.length);
+    for(const q of queued){
+      if(performance.now()-q.time>8000) continue;
+      this.play(q.name,q.opts);
+    }
+  }
+  beginFrame(){
+    this.frameDedupe.clear();
+  }
+  play(name,{volume=1,playbackRate=1,priority=null,sourceId='global',dedupe=true}={}){
+    const item=this.getItem(name);
+    if(!item){
+      this.lastError=`unknown audio key: ${name}`;
+      return null;
+    }
+    if(!this.unlocked || this.ctx?.state!=='running'){
+      this.enqueue(name,{volume,playbackRate,priority,sourceId,dedupe});
+      return null;
+    }
+    const buffer=this.buffers.get(name);
+    if(!buffer){
+      this.lastError=this.failed.has(name)
+        ? `audio failed earlier: ${name}`
+        : `audio not decoded yet: ${name}`;
+      return null;
+    }
+    const frameKey=`${name}:${sourceId}`;
+    if(dedupe && this.frameDedupe.has(frameKey)) return null;
+    if(dedupe) this.frameDedupe.add(frameKey);
+    const ctx=this.getContext();
+    if(!ctx) return null;
+    try{
+      const src=ctx.createBufferSource();
+      const gain=ctx.createGain();
+      src.buffer=buffer;
+      src.playbackRate.value=playbackRate;
+      gain.gain.value=clamp(volume,0,1);
+      src.connect(gain).connect(this.getGroupGain(item.group)||this.masterGain);
+      const handle={source:src,gain,key:name,_sfxKey:name,_sfxPriority:getSFXPriority(name,priority),paused:false,ended:false,startedAt:ctx.currentTime};
+      src.onended=()=>{
+        handle.ended=true;
+        this.activeSources.delete(handle);
+        try{src.disconnect();gain.disconnect();}catch(_){}
+      };
+      this.activeSources.add(handle);
+      src.start(0);
+      return handle;
+    }catch(err){
+      this.lastError=`play failed ${name}: ${err?.message||err}`;
+      console.warn('[audio] play failed',name,err);
+      return null;
+    }
+  }
+  startLoop(name,{loopId=name,volume=1,playbackRate=1,priority=null,offset=0,fadeRate=7}={}){
+    const item=this.getItem(name);
+    if(!item){
+      this.lastError=`unknown loop key: ${name}`;
+      return null;
+    }
+    if(!this.unlocked || this.ctx?.state!=='running'){
+      return null;
+    }
+    const buffer=this.buffers.get(name);
+    if(!buffer){
+      this.lastError=this.failed.has(name)
+        ? `loop audio failed earlier: ${name}`
+        : `loop audio not decoded yet: ${name}`;
+      return null;
+    }
+    const ctx=this.getContext();
+    if(!ctx) return null;
+    let loop=this.loops.get(loopId);
+    if(loop && !loop.stopped){
+      loop.targetVolume=clamp(volume,0,1);
+      loop.playbackRate=playbackRate;
+      loop.priority=getSFXPriority(name,priority);
+      loop.stopRequested=false;
+      loop.fadeRate=fadeRate;
+      try{loop.source.playbackRate.setTargetAtTime(playbackRate,ctx.currentTime,0.03);}catch(_){}
+      return loop;
+    }
+    try{
+      const src=ctx.createBufferSource();
+      const gain=ctx.createGain();
+      src.buffer=buffer;
+      src.loop=true;
+      src.playbackRate.value=playbackRate;
+      gain.gain.value=0;
+      src.connect(gain).connect(this.getGroupGain(item.group)||this.masterGain);
+      loop={
+        source:src,gain,key:name,loopId,
+        _sfxKey:name,_sfxPriority:getSFXPriority(name,priority),
+        paused:false,ended:false,stopped:false,stopRequested:false,
+        volume:0,targetVolume:clamp(volume,0,1),playbackRate,fadeRate
+      };
+      src.onended=()=>{
+        loop.ended=true;
+        loop.stopped=true;
+        loop.paused=true;
+        try{src.disconnect();gain.disconnect();}catch(_){}
+      };
+      this.loops.set(loopId,loop);
+      sfxState.loops.set(loopId,loop);
+      src.start(0,Math.max(0,offset%Math.max(0.001,buffer.duration||1)));
+      return loop;
+    }catch(err){
+      this.lastError=`loop start failed ${name}: ${err?.message||err}`;
+      console.warn('[audio] loop start failed',name,err);
+      return null;
+    }
+  }
+  stopLoop(loopId,{fadeRate=10}={}){
+    const loop=this.loops.get(loopId);
+    if(!loop || loop.stopped) return;
+    loop.targetVolume=0;
+    loop.stopRequested=true;
+    loop.fadeRate=fadeRate;
+  }
+  stopLoopsByKey(key,opts={}){
+    for(const [loopId,loop] of this.loops.entries()){
+      if(loop.key===key || loopId===key) this.stopLoop(loopId,opts);
+    }
+  }
+  getBufferDuration(name){
+    return this.buffers.get(name)?.duration||0;
+  }
+  update(dt){
+    const ctx=this.ctx;
+    if(!ctx) return;
+    for(const [loopId,loop] of this.loops.entries()){
+      if(loop.stopped) continue;
+      const rate=Math.max(1,loop.fadeRate||7);
+      loop.volume=lerp(loop.volume,loop.targetVolume,Math.min(1,dt*rate));
+      try{loop.gain.gain.setValueAtTime(clamp(loop.volume,0,1),ctx.currentTime);}catch(_){}
+      if(loop.stopRequested && loop.volume<0.001){
+        try{loop.source.stop(0);}catch(_){}
+        loop.stopped=true;
+        loop.paused=true;
+        loop.ended=true;
+        this.loops.delete(loopId);
+        sfxState.loops.delete(loopId);
+      }
+    }
+  }
+  getDebugState(){
+    return {
+      contextState:this.ctx?.state||'none',
+      unlocked:this.unlocked,
+      ready:this.ready,
+      loadedBuffers:this.buffers.size,
+      failedBuffers:this.failed.size,
+      activeOneShots:this.activeSources.size,
+      activeLoops:[...this.loops.values()].filter(l=>!l.stopped).length,
+      muted:this.muted,
+      masterVolume:+this.masterVolume.toFixed(2),
+      groupVolumes:{...this.groupVolumes},
+      unlockAttempts:this.unlockAttempts,
+      lastError:this.lastError,
+      mobileAudioMode:IS_MOBILE_DEVICE,
+      queued:this.queued.length
+    };
+  }
 }
-function getSFXPolyphony(key){
-  if(key==='playerMove' || key==='ratFootstep') return 4;
-  if(key==='playerJump' || key==='parasiteComplete' || key==='binFall' || key==='vehicleBreak' || key==='stallBreak' || key==='glassBreak' || key==='stallFire') return 3;
-  if(HUMAN_BITE_SCREAM_PATHS[key]) return 2;
-  return 2;
-}
-function getSFXPriority(key,override=null){
-  if(Number.isFinite(override)) return override;
-  if(HUMAN_BITE_SCREAM_PATHS[key]) return 72;
-  return SFX_PRIORITY[key] ?? 50;
-}
+const audioManager=new AudioManager(AUDIO_MANIFEST);
 function getActiveOneShotSFX(){
-  const active=[];
-  for(const player of sfxState.players.values()){
-    for(const audio of player.pool||[]){
-      if(!audio || audio.paused || audio.ended) continue;
-      active.push(audio);
-    }
-  }
-  return active;
-}
-function releaseLowerPrioritySFX(priority){
-  let victim=null;
-  let victimPriority=Infinity;
-  for(const audio of getActiveOneShotSFX()){
-    const p=audio._sfxPriority ?? 50;
-    if(p<priority && p<victimPriority){
-      victim=audio;
-      victimPriority=p;
-    }
-  }
-  if(!victim) return false;
-  try{
-    victim.pause();
-    victim.currentTime=0;
-  }catch(_){}
-  return true;
-}
-function releaseLowestOneShotSFX(){
-  let victim=null;
-  let victimPriority=Infinity;
-  for(const audio of getActiveOneShotSFX()){
-    const p=audio._sfxPriority ?? 50;
-    if(p<victimPriority){
-      victim=audio;
-      victimPriority=p;
-    }
-  }
-  if(!victim) return false;
-  try{
-    victim.pause();
-    victim.currentTime=0;
-  }catch(_){}
-  return true;
-}
-function canStartOneShotSFX(priority){
-  if(!IS_MOBILE_DEVICE) return true;
-  const active=getActiveOneShotSFX();
-  if(active.length<SFX_MOBILE_ONE_SHOT_LIMIT) return true;
-  if(releaseLowerPrioritySFX(priority)) return true;
-  if(priority>=90) return releaseLowestOneShotSFX() || active.length<SFX_MOBILE_ONE_SHOT_LIMIT+4;
-  return false;
-}
-function requestAudioPlay(audio,{retry=true}={}){
-  if(!audio) return null;
-  try{
-    const p=audio.play();
-    if(p && typeof p.catch==='function'){
-      p.catch(()=>{
-        if(!retry || audio._sfxRetryQueued) return;
-        audio._sfxRetryQueued=true;
-        window.setTimeout(()=>{
-          audio._sfxRetryQueued=false;
-          if(audio.paused && sfxState.unlocked){
-            try{ audio.play().catch(()=>{}); }catch(_){}
-          }
-        },220);
-      });
-    }
-    return p;
-  }catch(_){
-    return null;
-  }
-}
-function warmSFXAudioElement(audio){
-  // Cross-browser audio unlock. The earlier load()-only path made
-  // start-up silent, but on browsers that gate HTML5 audio behind a
-  // user gesture (iOS Safari, some Android Chrome configurations)
-  // the subsequent playSFX() calls during gameplay produced delayed
-  // / missing sound until the user happened to interact again.
-  //
-  // The correct play+immediate-pause pattern:
-  // 1. muted=true + volume=0 *before* play() so the audio pipeline
-  //    is silent no matter what the browser does next.
-  // 2. play() is fire-and-forget inside the user-gesture handler.
-  //    This unlocks the audio element for subsequent programmatic
-  //    play() calls.
-  // 3. pause() is called immediately, in the same synchronous block,
-  //    before the audio decoder has actually produced output samples.
-  //    Combined with the silencing in step 1, the user hears nothing.
-  // 4. Restore muted=false / volume=1 so playSFX() can pick a real
-  //    volume later.
-  if(!audio) return Promise.resolve(true);
-  try{
-    audio.muted=true;
-    audio.volume=0;
-    const p=requestAudioPlay(audio,{retry:false});
-    audio.pause();
-    audio.currentTime=0;
-    audio.muted=false;
-    audio.volume=1;
-  }catch(_){
-    try{audio.muted=false;audio.volume=1;}catch(__){}
-  }
-  return Promise.resolve(true);
-}
-function ensureSFXPlayer(key){
-  let player=sfxState.players.get(key);
-  if(player) return player;
-  const path=SOUND_PATHS[key]||HUMAN_BITE_SCREAM_PATHS[key];
-  if(!path) return null;
-  const audio=createSFXAudio(path);
-  const pool=[audio];
-  const loopAudio=SFX_LOOP_KEYS.has(key)?createSFXAudio(path,{loop:true}):null;
-  const crossfadeAudio=key==='streetAmbience'?createSFXAudio(path,{loop:true}):null;
-  player={path,audio,pool,loopAudio,crossfadeAudio,lastTime:-Infinity,nextIndex:0,warmed:false,cooldowns:new Map()};
-  sfxState.players.set(key,player);
-  return player;
+  return [...audioManager.activeSources].filter(a=>!a.ended);
 }
 function primeSFXPlayers(keys=null){
-  const sourceKeys=Array.isArray(keys) && keys.length
-    ? keys
-    : ALL_SFX_KEYS;
+  const sourceKeys=Array.isArray(keys)&&keys.length?keys:ALL_SFX_KEYS;
   for(const key of sourceKeys){
-    ensureSFXPlayer(key);
-  }
-}
-function waitSFXAudioReady(audio,timeoutMs=15000){
-  return new Promise(resolve=>{
-    if(!audio || audio.readyState>=2){resolve(true);return;}
-    let done=false;
-    const finish=ok=>{
-      if(done) return;
-      done=true;
-      window.clearTimeout(timer);
-      audio.removeEventListener('canplaythrough',onReady);
-      audio.removeEventListener('canplay',onReady);
-      audio.removeEventListener('loadeddata',onReady);
-      audio.removeEventListener('error',onError);
-      resolve(ok);
-    };
-    const onReady=()=>finish(true);
-    const onError=()=>finish(false);
-    const timer=window.setTimeout(()=>finish(false),timeoutMs);
-    audio.addEventListener('canplaythrough',onReady,{once:true});
-    audio.addEventListener('canplay',onReady,{once:true});
-    audio.addEventListener('loadeddata',onReady,{once:true});
-    audio.addEventListener('error',onError,{once:true});
-    try{audio.load();}catch(_){finish(false);}
-  });
-}
-async function preloadSFXPlayers(keys=ALL_SFX_KEYS){
-  primeSFXPlayers(keys);
-  const waits=[];
-  for(const key of keys){
-    const player=sfxState.players.get(key);
-    if(!player) continue;
-    waits.push(waitSFXAudioReady(player.audio));
-    if(player.loopAudio) waits.push(waitSFXAudioReady(player.loopAudio));
-    if(player.crossfadeAudio) waits.push(waitSFXAudioReady(player.crossfadeAudio));
-  }
-  const results=await Promise.allSettled(waits);
-  const failed=results.filter(r=>r.status==='fulfilled' && !r.value).length + results.filter(r=>r.status==='rejected').length;
-  if(failed) console.warn('[sfx] some audio files did not report ready before timeout; continuing after preload window',failed);
-}
-function warmSFXKey(key,{fullPool=false}={}){
-  const player=ensureSFXPlayer(key);
-  if(!player) return [];
-  const warms=[warmSFXAudioElement(player.audio)];
-  if(player.loopAudio) warms.push(warmSFXAudioElement(player.loopAudio));
-  if(player.crossfadeAudio) warms.push(warmSFXAudioElement(player.crossfadeAudio));
-  if(fullPool){
-    const targetPool=Math.max(1,getSFXPolyphony(key));
-    while(player.pool.length<targetPool) player.pool.push(createSFXAudio(player.path));
-    for(const extra of player.pool.slice(1)) warms.push(warmSFXAudioElement(extra));
-  }
-  return warms;
-}
-function unlockSFX(keys=ALL_SFX_KEYS){
-  if(sfxState.unlockPromise) return sfxState.unlockPromise;
-  sfxState.unlocked=true;
-  const warms=[];
-  const critical=new Set(SFX_CRITICAL_UNLOCK_KEYS);
-  for(const key of keys){
-    const player=ensureSFXPlayer(key);
-    if(!player || player.warmed) continue;
-    player.warmed=true;
-    warms.push(...warmSFXKey(key,{fullPool:critical.has(key)}));
-  }
-  const quickUnlock=Promise.race([
-    Promise.allSettled(warms).then(()=>true),
-    new Promise(resolve=>window.setTimeout(()=>resolve(true),450))
-  ]);
-  sfxState.unlockPromise=quickUnlock;
-  window.setTimeout(()=>{
-    for(const key of [...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)]){
-      const player=ensureSFXPlayer(key);
-      if(!player) continue;
-      if(player.warmed && !SFX_CRITICAL_UNLOCK_KEYS.includes(key)) continue;
-      player.warmed=true;
-      warmSFXKey(key,{fullPool:true});
+    const item=audioManager.getItem(key);
+    if(item && !sfxState.players.has(key)){
+      sfxState.players.set(key,{path:item.url,group:item.group,loop:!!item.loop,preload:!!item.preload});
     }
-  },0);
+  }
+}
+async function preloadSFXPlayers(keys=ALL_SFX_KEYS,opts={}){
+  primeSFXPlayers(keys);
+  await audioManager.preloadKeys(keys,opts);
+}
+function unlockSFX(source='user-gesture'){
+  if(audioManager.unlocked && audioManager.ctx?.state==='running') return Promise.resolve(true);
+  if(sfxState.unlockPromise) return sfxState.unlockPromise;
+  sfxState.unlockPromise=audioManager.unlock(source).then(ok=>{
+    sfxState.unlocked=ok;
+    if(!ok) sfxState.unlockPromise=null;
+    return ok;
+  }).catch(err=>{
+    audioManager.lastError=`unlock promise failed: ${err?.message||err}`;
+    console.warn('[audio] unlock promise failed',err);
+    sfxState.unlocked=false;
+    sfxState.unlockPromise=null;
+    return false;
+  });
   return sfxState.unlockPromise;
 }
 function resolveSFXEmitterPosition(source){
@@ -1641,72 +1830,39 @@ function getSFXDistanceGain(source){
   return Math.pow(1-t,1.6);
 }
 function playSFX(key,{volume=1,playbackRate=1,cooldown=0,reset=true,source=null,reuseBase=false,priority=null}={}){
-  if(!sfxState.unlocked) return null;
-  const player=ensureSFXPlayer(key);
-  if(!player) return null;
+  if(!audioManager.getItem(key)) return null;
   const cooldownId=getSFXSourceId(source);
   const cooldownKey=`${key}:${cooldownId}`;
-  const lastTime=(cooldown>0 ? (player.cooldowns.get(cooldownKey)??-Infinity) : player.lastTime);
+  const lastTime=sfxState.cooldowns.get(cooldownKey)??-Infinity;
   if(cooldown>0 && gameTime-lastTime<cooldown) return null;
   const gain=getSFXDistanceGain(source);
   if(gain<=0.001) return null;
   const sfxPriority=getSFXPriority(key,priority);
-  if(!SFX_LOOP_KEYS.has(key) && !canStartOneShotSFX(sfxPriority)) return null;
-  if(cooldown>0) player.cooldowns.set(cooldownKey,gameTime);
-  player.lastTime=gameTime;
-  let audio=null;
-  if(reuseBase && player.audio.paused){
-    audio=player.audio;
-  }else{
-    const maxPool=getSFXPolyphony(key);
-    if(player.pool.every(a=>!a.paused && !a.ended) && player.pool.length<maxPool){
-      player.pool.push(createSFXAudio(player.path));
-    }
-    audio=player.pool.find(a=>a.paused || a.ended) || player.pool[player.nextIndex++%player.pool.length];
-  }
-  if(!audio) return null;
-  audio.pause();
-  audio.volume=clamp(volume*gain*sfxState.masterVolume,0,1);
-  audio.playbackRate=playbackRate;
-  audio.muted=false;
-  audio._sfxPriority=sfxPriority;
-  audio._sfxKey=key;
-  if(reset) audio.currentTime=0;
-  requestAudioPlay(audio);
-  return audio;
+  if(cooldown>0) sfxState.cooldowns.set(cooldownKey,gameTime);
+  return audioManager.play(key,{
+    volume:clamp(volume*gain,0,1),
+    playbackRate,
+    priority:sfxPriority,
+    sourceId:cooldownId,
+    dedupe:true
+  });
 }
 function startLoopSFX(key,{volume=1,playbackRate=1,source=null,priority=null}={}){
-  if(!sfxState.unlocked) return null;
-  let audio=sfxState.loops.get(key);
-  if(!audio){
-    const player=ensureSFXPlayer(key);
-    if(!player) return null;
-    if(!player.loopAudio) player.loopAudio=createSFXAudio(player.path,{loop:true});
-    audio=player.loopAudio;
-    sfxState.loops.set(key,audio);
-  }
-  audio.volume=clamp(volume*getSFXDistanceGain(source)*sfxState.masterVolume,0,1);
-  audio.playbackRate=playbackRate;
-  audio.muted=false;
-  audio._sfxPriority=getSFXPriority(key,priority);
-  audio._sfxKey=key;
-  if(audio.paused) requestAudioPlay(audio);
-  return audio;
+  return audioManager.startLoop(key,{
+    loopId:key,
+    volume:clamp(volume*getSFXDistanceGain(source),0,1),
+    playbackRate,
+    priority
+  });
 }
 function stopLoopSFX(key,{reset=true}={}){
   if(key==='streetAmbience'){
-    const player=sfxState.players.get('streetAmbience');
-    for(const layer of [player?.loopAudio,player?.crossfadeAudio]){
-      if(!layer) continue;
-      layer.pause();
-      if(reset) layer.currentTime=0;
-    }
+    audioManager.stopLoop('streetAmbience',{fadeRate:8});
+    audioManager.stopLoop('streetAmbienceB',{fadeRate:8});
     sfxState.streetAmbienceOffsetPrimed=false;
+    return;
   }
-  const audio=sfxState.loops.get(key);
-  if(!audio) return;
-  audio.pause();
-  if(reset) audio.currentTime=0;
+  audioManager.stopLoop(key,{fadeRate:10});
 }
 function tickFootstepSFX(ent,dt,key,{minSpeed=0.18,baseInterval=0.44,volume=1,cooldown=0.05,rateScale=0.12,activeOverride=null}={}){
   if(!ent) return;
@@ -1736,25 +1892,29 @@ function syncFollowerRatMovementSFX(dt){
   // each plays its own footstep so the player can localise individuals.
   // 4+ rats → switch entirely to a single layered swarm loop, whose
   // volume + playback rate scale with the crowd size. We never pay
-  // the iOS Safari `HTMLAudio.play()` cost for more than three rats
+  // the mobile one-shot scheduling cost for more than three rats
   // at once, but the listener always hears the swarm thicken.
-  if(!sfxState.unlocked || !player?.root){
+  if(!audioManager.unlocked || !player?.root){
     for(const rat of game.rats) if(rat) rat._footstepTimer=0;
     return;
   }
   if(IS_MOBILE_DEVICE){
     const listener=getSFXListenerPosition();
     let movingFollowers=(player.curSpeed || 0)>0.12 ? Math.min(getTotalRatCount(),80) : 0;
-    if(listener && game.templeEvent.awakened){
+    sfxState.ratSfxProbeTimer=(sfxState.ratSfxProbeTimer||0)-dt;
+    if(listener && game.templeEvent.awakened && sfxState.ratSfxProbeTimer<=0){
+      sfxState.ratSfxProbeTimer=0.22;
       let escortMoving=0;
-      for(const rat of game.rats){
+      const nearbyRats=gridQuery(ratsGrid,listener.x,listener.z,34,syncFollowerRatMovementSFX._scratch||(syncFollowerRatMovementSFX._scratch=[]));
+      for(const rat of nearbyRats){
         if(!rat?.root || !rat.followStatue || (rat.curSpeed||0)<=0.08) continue;
-        const dx=rat.root.position.x-listener.x;
+        const dx=nearestRingDelta(rat.root.position.x,listener.x);
         const dz=rat.root.position.z-listener.z;
         if(dx*dx+dz*dz<34*34) escortMoving++;
       }
-      movingFollowers=Math.max(movingFollowers,Math.min(80,escortMoving));
+      sfxState.cachedMovingFollowers=Math.min(80,escortMoving);
     }
+    movingFollowers=Math.max(movingFollowers,sfxState.cachedMovingFollowers||0);
     const count=movingFollowers;
     if(count>3){
       startLoopSFX('ratSwarmLoop',{
@@ -1782,7 +1942,7 @@ function syncFollowerRatMovementSFX(dt){
       rat._footstepTimer=0;
       continue;
     }
-    const dx=rat.root.position.x-listener.x;
+    const dx=nearestRingDelta(rat.root.position.x,listener.x);
     const dz=rat.root.position.z-listener.z;
     const d2=dx*dx+dz*dz;
     if(d2<=SWARM_R2) nearby.push({rat,d2});
@@ -1815,7 +1975,6 @@ function syncFollowerRatMovementSFX(dt){
   }
 }
 function playLayeredRatSwarmBurst(source=null,{volume=0.72,stagger=0.16,priority=86}={}){
-  if(!sfxState.unlocked) return null;
   const first=playSFX('ratSwarmLoop',{
     volume,
     playbackRate:0.96+Math.random()*0.04,
@@ -1880,52 +2039,25 @@ function syncPlayerBiteLoop(){
   }
 }
 function syncStreetAmbienceLayered(volume,source=null){
-  const playerSFX=ensureSFXPlayer('streetAmbience');
-  if(!playerSFX) return null;
-  if(!playerSFX.loopAudio) playerSFX.loopAudio=createSFXAudio(playerSFX.path,{loop:true});
-  if(!playerSFX.crossfadeAudio) playerSFX.crossfadeAudio=createSFXAudio(playerSFX.path,{loop:true});
-  const layerA=playerSFX.loopAudio;
-  const layerB=playerSFX.crossfadeAudio;
-  sfxState.loops.set('streetAmbience',layerA);
-  sfxState.loops.set('streetAmbienceB',layerB);
-  const gain=clamp(volume*getSFXDistanceGain(source)*sfxState.masterVolume,0,1);
+  const gain=clamp(volume*getSFXDistanceGain(source),0,1);
   if(gain<=0.004){
-    for(const layer of [layerA,layerB]){
-      layer.volume=0;
-      if(!layer.paused) layer.pause();
-    }
+    audioManager.stopLoop('streetAmbience',{fadeRate:5});
+    audioManager.stopLoop('streetAmbienceB',{fadeRate:5});
     sfxState.streetAmbienceOffsetPrimed=false;
     return null;
-  }
-  if(!sfxState.streetAmbienceOffsetPrimed){
-    const primeOffset=()=>{
-      try{
-        if(Number.isFinite(layerB.duration) && layerB.duration>3){
-          layerB.currentTime=Math.min(layerB.duration-0.25,Math.max(1.2,layerB.duration*0.48));
-        }else{
-          layerB.currentTime=0.65;
-        }
-      }catch(_){}
-      sfxState.streetAmbienceOffsetPrimed=true;
-    };
-    if(layerB.readyState>=1) primeOffset();
-    else layerB.addEventListener('loadedmetadata',primeOffset,{once:true});
   }
   const phase=gameTime*0.28;
   const weightA=0.66+Math.sin(phase)*0.18;
   const weightB=0.66+Math.sin(phase+Math.PI)*0.18;
-  for(const [layer,weight] of [[layerA,weightA],[layerB,weightB]]){
-    layer.volume=clamp(gain*weight,0,1);
-    layer.playbackRate=1;
-    layer.muted=false;
-    layer._sfxPriority=getSFXPriority('streetAmbience',92);
-    layer._sfxKey='streetAmbience';
-    if(layer.paused) requestAudioPlay(layer);
-  }
+  const dur=audioManager.getBufferDuration('streetAmbience');
+  const offsetB=dur>3?Math.min(dur-0.25,Math.max(1.2,dur*0.48)):0.65;
+  const layerA=audioManager.startLoop('streetAmbience',{loopId:'streetAmbience',volume:gain*weightA,playbackRate:1,priority:92,offset:0,fadeRate:4});
+  audioManager.startLoop('streetAmbience',{loopId:'streetAmbienceB',volume:gain*weightB,playbackRate:1,priority:92,offset:offsetB,fadeRate:4});
+  sfxState.streetAmbienceOffsetPrimed=!!layerA;
   return layerA;
 }
 function syncStreetAmbience(dt){
-  if(!sfxState.unlocked) return;
+  if(!audioManager.unlocked) return;
   const activeScene=(gameState==='playing') && !isPlayerInsideEventTemple();
   const target=activeScene?0.5:0;
   sfxState.streetAmbienceGain=lerp(sfxState.streetAmbienceGain||0,target,Math.min(1,dt*2.2));
@@ -11323,6 +11455,7 @@ document.addEventListener('touchend',(e)=>{
   __lastTouchEnd=now;
 },{passive:false});
 document.addEventListener('dblclick',blockZoomEvent,{passive:false});
+document.addEventListener('touchstart',()=>{ unlockSFX(); },{passive:true,capture:true});
 
 let joyX=0,joyY=0;
 const keys={w:false,a:false,s:false,d:false,up:false,down:false,left:false,right:false};
@@ -11337,6 +11470,7 @@ const exitHostBtn=document.getElementById('exit-host-btn');
   const STICK_MAX=38;
   let ptrId=null,cx=0,cy=0;
   zone.addEventListener('pointerdown',e=>{
+    unlockSFX();
     if(ptrId!==null)return;e.preventDefault();
     ptrId=e.pointerId;zone.setPointerCapture(ptrId);
     const r=zone.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;
@@ -11353,13 +11487,15 @@ const exitHostBtn=document.getElementById('exit-host-btn');
   const end=e=>{if(e.pointerId!==ptrId)return;ptrId=null;joyX=0;joyY=0;stick.style.transform='translate(0,0)'};
   zone.addEventListener('pointerup',end);zone.addEventListener('pointercancel',end);
 }
-jumpBtn.addEventListener('pointerdown',e=>{e.preventDefault();inputFlags.jump=true});
+jumpBtn.addEventListener('pointerdown',e=>{unlockSFX();e.preventDefault();inputFlags.jump=true});
 biteBtn.addEventListener('pointerdown',e=>{
+  unlockSFX();
   e.preventDefault();
   if(game.controlMode==='host') doHostAttack();
   else inputFlags.action=true;
 });
 pickupBtn.addEventListener('pointerdown',e=>{
+  unlockSFX();
   e.preventDefault();
   if(game.controlMode==='host') doHostPickupPress();
 });
@@ -11371,6 +11507,7 @@ pickupBtn.addEventListener('pointerup',releasePickup);
 pickupBtn.addEventListener('pointercancel',releasePickup);
 pickupBtn.addEventListener('pointerleave',releasePickup);
 exitHostBtn.addEventListener('pointerdown',e=>{
+  unlockSFX();
   e.preventDefault();
   if(game.controlMode==='host') abandonHost();
 });
@@ -11488,6 +11625,7 @@ let ratCityPitch=0.58,ratCityZoom=26,ratCityAutoRotate=true;
 let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
 canvas.addEventListener('pointerdown',e=>{
   if(e.target!==canvas)return;
+  unlockSFX();
   e.preventDefault();
   canvas.setPointerCapture?.(e.pointerId);
   dragging=true;dragPId=e.pointerId;
@@ -14887,6 +15025,7 @@ function setIntroProgress(p,label){
   renderIntroProgress();
 }
 startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
+startBtn.addEventListener('touchstart',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
 startBtn.addEventListener('click',()=>{
   if(gameState!=='intro')return;
   unlockSFX();
@@ -14903,7 +15042,7 @@ function startGame(){
   stopLoopSFX('ritualSwarm');
   game.chaos=0;game.chaosDisplay=0;
   sfxState.streetAmbienceGain=0.08;
-  if(sfxState.unlocked) syncStreetAmbienceLayered(sfxState.streetAmbienceGain,player);
+  if(audioManager.unlocked) syncStreetAmbienceLayered(sfxState.streetAmbienceGain,player);
   setRatCityMode(false);
   seedVisibleHumansAroundFocus(true);
   updateActionButtons();
@@ -14987,10 +15126,18 @@ window.__debugHooks={
   playLayeredRatSwarmBurst,
   syncStreetAmbienceLayered,
   getSFXState:()=>({
-    unlocked:sfxState.unlocked,
-    activeOneShots:getActiveOneShotSFX().map(a=>({key:a._sfxKey||'',priority:a._sfxPriority??0,paused:a.paused,ended:a.ended})),
-    loops:[...sfxState.loops.entries()].map(([key,a])=>({key,paused:a.paused,volume:a.volume,priority:a._sfxPriority??0}))
+    ...audioManager.getDebugState(),
+    activeOneShotsDetail:getActiveOneShotSFX().map(a=>({key:a._sfxKey||'',priority:a._sfxPriority??0,paused:a.paused,ended:a.ended})),
+    loopsDetail:[...sfxState.loops.entries()].map(([key,a])=>({
+      key,
+      paused:a.paused,
+      volume:+(a.volume||0).toFixed(3),
+      target:+(a.targetVolume||0).toFixed(3),
+      priority:a._sfxPriority??0
+    }))
   }),
+  getAudioDebug:()=>audioManager.getDebugState(),
+  setAudioDebugOverlayEnabled,
   getRingPreviewState:()=>({
     minVisible:!!ringSeamPreviewMinGroup?.visible,
     maxVisible:!!ringSeamPreviewMaxGroup?.visible,
@@ -15000,9 +15147,63 @@ window.__debugHooks={
   getRats:()=>game.rats
 };
 
+const perfDebugState={
+  enabled:/[?&](debugAudio|debugPerf)=1\b/.test(location.search),
+  fps:0,frameMs:0,updateMs:0,renderMs:0,audioMs:0,
+  frames:0,accumTime:0,overlayTimer:0
+};
+function setAudioDebugOverlayEnabled(v){
+  perfDebugState.enabled=!!v;
+  document.body.classList.toggle('debug-audio',perfDebugState.enabled);
+  localStorage.setItem('urbanLegendAudioDebug',perfDebugState.enabled?'1':'0');
+}
+if(localStorage.getItem('urbanLegendAudioDebug')==='1') perfDebugState.enabled=true;
+document.body.classList.toggle('debug-audio',perfDebugState.enabled);
+function updateAudioPerfDebugOverlay(dt){
+  perfDebugState.frames++;
+  perfDebugState.accumTime+=dt;
+  perfDebugState.overlayTimer-=dt;
+  if(perfDebugState.accumTime>=1){
+    perfDebugState.fps=perfDebugState.frames/perfDebugState.accumTime;
+    perfDebugState.frames=0;
+    perfDebugState.accumTime=0;
+  }
+  if(!perfDebugState.enabled || perfDebugState.overlayTimer>0) return;
+  perfDebugState.overlayTimer=1;
+  const el=document.getElementById('perf-audio-debug');
+  if(!el) return;
+  const a=audioManager.getDebugState();
+  const visibleRats=game.rats.filter(r=>r?.root?.visible!==false).length;
+  const visibleHumans=game.humans.filter(h=>h?.root?.visible!==false && !h.dead).length;
+  const swarmVisuals=game.templeEvent.swarmSprites.filter(r=>r?.root?.visible!==false).length;
+  const info=renderer.info;
+  el.textContent=[
+    `AudioContext: ${a.contextState}`,
+    `unlocked:${a.unlocked} ready:${a.ready} queued:${a.queued}`,
+    `buffers:${a.loadedBuffers} failed:${a.failedBuffers}`,
+    `oneShots:${a.activeOneShots} loops:${a.activeLoops}`,
+    `muted:${a.muted} master:${a.masterVolume} mobile:${a.mobileAudioMode}`,
+    `groups:${Object.entries(a.groupVolumes).map(([k,v])=>`${k}:${v}`).join(' ')}`,
+    `unlockAttempts:${a.unlockAttempts}`,
+    `lastAudioError:${a.lastError||'-'}`,
+    `FPS:${perfDebugState.fps.toFixed(1)} frame:${perfDebugState.frameMs.toFixed(2)}ms`,
+    `update:${perfDebugState.updateMs.toFixed(2)}ms render:${perfDebugState.renderMs.toFixed(2)}ms audio:${perfDebugState.audioMs.toFixed(2)}ms`,
+    `rats:${visibleRats}/${game.rats.length} swarmVisual:${swarmVisuals}`,
+    `humans:${visibleHumans}/${game.humans.length} activeProps:${activeProps.size}`,
+    `drawCalls:${info.render.calls} triangles:${info.render.triangles}`
+  ].join('\n');
+}
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey && e.code==='KeyP' && !isEditableElement(document.activeElement)){
+    e.preventDefault();
+    setAudioDebugOverlayEnabled(!perfDebugState.enabled);
+  }
+});
+
 // ===== Main loop =====
 let last=performance.now();
 function stepFrame(dt){
+  audioManager.beginFrame();
   if(gameState==='playing'){
     gameTime+=dt;
     // Rebuild the rats spatial grid once per tick so countNearbyGroundRats
@@ -15075,6 +15276,10 @@ function stepFrame(dt){
     updateResidentChunkVisibility(dt);
     syncRingSeamDynamicMirrors();
   }
+  const audioStart=performance.now();
+  audioManager.update(dt);
+  perfDebugState.audioMs=performance.now()-audioStart;
+  updateAudioPerfDebugOverlay(dt);
   updateCam();
 }
 window.advanceTime=(ms=16)=>{
@@ -15090,15 +15295,22 @@ function tick(){
   const dt=Math.min(0.05,(now-last)/1000);
   last=now;
   try{
+    const frameStart=performance.now();
+    const updateStart=frameStart;
     stepFrame(dt);
+    perfDebugState.updateMs=performance.now()-updateStart;
     vhsUniforms.time.value=now*0.001;
-    // Same render path on mobile and desktop now — scene to low-res RT,
-    // then VHS shader pass to the canvas. Mobile gets the same look as
-    // desktop, and the heaviest pass runs at 480×270 on both.
+    // Same render path on mobile and desktop now: scene to low-res RT,
+    // then VHS shader pass to the canvas. Mobile uses a cheaper shader
+    // and smaller 16:9 RT to reduce fill-rate without removing content.
+    const renderStart=performance.now();
+    renderer.info.reset();
     renderer.setRenderTarget(lowResRT);
     renderer.render(scene,camera);
     renderer.setRenderTarget(null);
     renderer.render(screenScene,screenCam);
+    perfDebugState.renderMs=performance.now()-renderStart;
+    perfDebugState.frameMs=performance.now()-frameStart;
   }catch(e){console.error('[tick] update failed:',e)}
 }
 
@@ -15106,7 +15318,9 @@ function tick(){
 async function init(){
   setIntroProgress(2,'BOOT');
   primeSFXPlayers(ALL_SFX_KEYS);
-  const sfxPreloadPromise=preloadSFXPlayers(ALL_SFX_KEYS);
+  const sfxPreloadPromise=preloadSFXPlayers(ALL_SFX_KEYS,{
+    onProgress:(done,total)=>setIntroProgress(8+(total?done/total:0)*10,'AUDIO')
+  });
   loadRatCityLeaderboard();
   initSharedTextures();
   buildTaipeiSkyline();
@@ -15127,9 +15341,8 @@ async function init(){
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.right).then(frames=>{PLAYER_RAT_FRAMES.right=frames}),
     loadTextureSequence(PLAYER_RAT_FRAME_PATHS.back).then(frames=>{PLAYER_RAT_FRAMES.back=frames})
   ]);
-  setIntroProgress(10,'AUDIO');
   await sfxPreloadPromise;
-  setIntroProgress(12,'TEXTURES');
+  setIntroProgress(18,'TEXTURES');
 
   // Start the render loop immediately so the intro card sits over a
   // live scene rather than a black square. Players still see progress
@@ -15144,7 +15357,7 @@ async function init(){
   const refreshDownloadProgress=()=>{
     const total=crawlTotal+runTotal;
     const got=crawlLoaded+runLoaded;
-    const pct=8+(got/total)*72;   // 8% → 80% of the progress bar
+    const pct=18+(got/total)*62;   // 18% -> 80% of the progress bar
     setIntroProgress(pct,'ANIM');
   };
   const onCrawlProgress=e=>{if(e.lengthComputable){crawlLoaded=e.loaded;crawlTotal=e.total||crawlTotal;refreshDownloadProgress()}};
