@@ -104,10 +104,11 @@
     color:#3b1420;font:700 18px/1 var(--ui-display-font);letter-spacing:0.28em;
     text-transform:uppercase;box-shadow:none}
   #rat-city-btn .ui-art-label{
-    color:#f8fbff;
-    text-shadow:0 0 2px #fff,0 0 8px #7cf8ff,0 0 16px #ff5af7,0 0 30px rgba(124,248,255,0.75);
-    filter:drop-shadow(0 0 4px rgba(255,90,247,0.75)) drop-shadow(0 0 12px rgba(124,248,255,0.55));
-    animation:ratCityNeonFlicker 2.9s infinite steps(1,end)
+    color:#ffffaa;
+    white-space:pre-wrap;
+    text-shadow:0 0 3px #fff,0 0 8px #fff36a,0 0 18px #7cf8ff,0 0 34px #ff5af7,0 0 54px rgba(124,248,255,0.95);
+    filter:drop-shadow(0 0 6px rgba(255,243,106,0.95)) drop-shadow(0 0 16px rgba(124,248,255,0.78)) drop-shadow(0 0 24px rgba(255,90,247,0.55));
+    animation:ratCityNeonFlicker 1.72s infinite steps(1,end)
   }
   #rat-city-btn::before{
     content:'';position:absolute;left:50%;top:50%;width:calc(100% + 30px);height:calc(100% + 18px);
@@ -117,10 +118,11 @@
     animation:ratCityHaloPulse 3.7s infinite ease-in-out
   }
   @keyframes ratCityNeonFlicker{
-    0%,14%,18%,22%,100%{opacity:1;text-shadow:0 0 2px #fff,0 0 8px #7cf8ff,0 0 16px #ff5af7,0 0 30px rgba(124,248,255,0.75)}
-    15%,20%{opacity:.62;text-shadow:0 0 1px #fff,0 0 5px #7cf8ff,0 0 10px rgba(255,90,247,0.52)}
-    46%{opacity:.86;text-shadow:0 0 2px #fff,0 0 12px #7cf8ff,0 0 24px #ff5af7,0 0 42px rgba(124,248,255,0.9)}
-    47%{opacity:.48;text-shadow:0 0 1px #fff,0 0 4px rgba(124,248,255,0.6)}
+    0%,9%,12%,18%,31%,100%{opacity:1;color:#ffffaa;text-shadow:0 0 3px #fff,0 0 8px #fff36a,0 0 18px #7cf8ff,0 0 34px #ff5af7,0 0 54px rgba(124,248,255,0.95)}
+    10%,17%{opacity:.42;color:#fff0c2;text-shadow:0 0 2px #fff,0 0 7px rgba(255,243,106,0.72),0 0 12px rgba(124,248,255,0.55)}
+    42%{opacity:1;color:#ffffff;text-shadow:0 0 4px #fff,0 0 16px #fff36a,0 0 34px #7cf8ff,0 0 62px rgba(255,90,247,0.95)}
+    43%{opacity:.24;color:#d6f8ff;text-shadow:0 0 2px #fff,0 0 5px rgba(124,248,255,0.65)}
+    59%{opacity:.74;color:#fff7d6;text-shadow:0 0 2px #fff,0 0 10px #7cf8ff,0 0 18px rgba(255,90,247,0.72)}
   }
   @keyframes ratCityHaloPulse{
     0%,100%{opacity:.72;filter:brightness(1)}
@@ -213,7 +215,7 @@
   #rat-city-btn.is-pressed .ui-art-label,#rat-city-btn:active .ui-art-label{color:#fff2a8}
   .action-btn.is-pressed .ui-art-label,.action-btn:active .ui-art-label{color:#2b1020;text-shadow:0 0 8px rgba(255,255,255,0.8)}
   #start-btn-label{font:700 14px/1 var(--ui-display-font);letter-spacing:0.22em;color:#ffe7f4;
-    text-transform:uppercase;text-shadow:0 3px 10px rgba(0,0,0,0.45);pointer-events:none}
+    text-transform:uppercase;text-shadow:0 3px 10px rgba(0,0,0,0.45);pointer-events:none;white-space:pre-wrap}
   #intro-progress{margin-top:12px}
   #intro-progress-text{font:700 14px/1 var(--ui-display-font);letter-spacing:0.12em;color:#fff4d7;text-align:center}
   #intro-progress-track{height:3px;margin-top:5px;background:#000;overflow:hidden;border-radius:2px}
@@ -323,7 +325,11 @@
   body.intro-active:not(.admin-stage-active) .ui-layout-custom-frame[data-scene="game"]{display:none !important}
   body.game-won .ui-layout-custom-frame[data-scene="game"],
   body.game-won #ui-layout-custom-frame-builtin-frame-gameplay{display:none !important}
-  body.rat-city-mode #game-controls{display:none !important}
+  body.rat-city-mode #game-controls,
+  body.rat-city-mode #hud,
+  body.rat-city-mode #minimap{display:none !important}
+  body.rat-city-mode .ui-layout-custom-frame[data-scene="game"],
+  body.rat-city-mode #ui-layout-custom-frame-builtin-frame-gameplay{display:none !important}
 
   #rats-win{position:fixed;inset:0;display:none;flex-direction:column;
     align-items:center;justify-content:center;background:rgba(8,5,14,0.78);z-index:50;
@@ -338,6 +344,7 @@
   #rats-win .rw-btn{appearance:none;border:none;border-radius:4px;padding:11px 22px;
     background:var(--accent);color:#1a0917;font:700 12px/1 "Courier New",monospace;
     letter-spacing:0.16em;cursor:pointer}
+  #rw-text,#rw-sub,#rw-replay,#intro-title,#intro-tag,#intro-progress-text{white-space:pre-wrap}
   #temple-flash{position:fixed;inset:0;background:#fff;pointer-events:none;opacity:0;z-index:45;transition:opacity .08s linear}
   #ring-seam-veil{display:none !important;position:fixed;inset:0;pointer-events:none;opacity:0;z-index:44;transition:none;
     background:
@@ -879,7 +886,7 @@ const VISUAL_FILTER_MODES=[
   {id:'dreamcore',label:'DREAMCORE'},
   {id:'vhs-dreamcore',label:'VHS + DREAMCORE'}
 ];
-const visualFilterState={mode:0,strength:1};
+const visualFilterState={mode:2,strength:2};
 const vhsUniforms={
   map:{value:lowResRT.texture},
   time:{value:0},
@@ -2597,6 +2604,7 @@ function getCloneRootCompatibleClip(root,srcClip,label=''){
 
 const HUMAN_ACTION_POSITION_LOCK_TIME=0.18;
 const HUMAN_POSITION_LOCK_CACHE=new WeakMap();
+const HUMAN_ROOT_ROTATION_STRIP_CACHE=new WeakMap();
 function sampleVectorTrackAt(track,time){
   const times=track?.times, values=track?.values;
   if(!times||!values||times.length<=0||values.length<3) return [0,0,0];
@@ -2642,6 +2650,26 @@ function lockHumanActionPositionTracks(clip,actionName=''){
   });
   const out=changed?new THREE.AnimationClip(`${clip.name||'clip'}__rootPositionLocked_${cacheKey}`,clip.duration,tracks,clip.blendMode):clip;
   byAction.set(cacheKey,out);
+  return out;
+}
+function shouldStripHumanActionRootRotation(actionName){
+  return actionName==='punch' || actionName==='punchcombo';
+}
+function stripHumanActionRootRotationTracks(clip,actionName=''){
+  if(!shouldStripHumanActionRootRotation(actionName) || !clip || !Array.isArray(clip.tracks)) return clip;
+  let byAction=HUMAN_ROOT_ROTATION_STRIP_CACHE.get(clip);
+  if(!byAction){byAction=new Map();HUMAN_ROOT_ROTATION_STRIP_CACHE.set(clip,byAction);}
+  if(byAction.has(actionName)) return byAction.get(actionName);
+  const tracks=clip.tracks.filter(track=>{
+    const name=track?.name||'';
+    if(!name.endsWith('.quaternion') && !name.endsWith('.rotation')) return true;
+    const nodeName=getTrackTargetNodeName(name).toLowerCase();
+    return !(nodeName.includes('hips') || nodeName==='armature');
+  });
+  const out=(tracks.length===clip.tracks.length)
+    ? clip
+    : new THREE.AnimationClip(`${clip.name||'clip'}__upright_${actionName}`,clip.duration,tracks,clip.blendMode);
+  byAction.set(actionName,out);
   return out;
 }
 
@@ -5986,7 +6014,10 @@ function buildSkinnedActor({clip,targetHeight,tint=null,clips=null,source=charac
     for(const [name,srcClip] of Object.entries(clips)){
       if(!srcClip) continue;
       let safeClip=getCloneRootCompatibleClip(root,srcClip,`actor:${name}`);
-      if(lockHumanClipPositions) safeClip=lockHumanActionPositionTracks(safeClip,name);
+      if(lockHumanClipPositions){
+        safeClip=lockHumanActionPositionTracks(safeClip,name);
+        safeClip=stripHumanActionRootRotationTracks(safeClip,name);
+      }
       if(!isUsableClip(safeClip)) continue;
       const act=mixer.clipAction(safeClip);
       act.enabled=true;
@@ -10026,13 +10057,14 @@ function applyUILayoutTextStyleForTarget(def,metrics){
     return;
   }
   if(def.id==='rat-city-btn'){
-    const label=document.querySelector('#rat-city-btn .ui-art-label');
+    const label=ensureUIArtHostLabel(document.getElementById('rat-city-btn'));
     if(!label) return;
     label.style.color=metrics.color||'';
     label.style.fontFamily=metrics.fontFamily?`"${metrics.fontFamily}",sans-serif`:'';
     label.style.fontSize=metrics.fontSize?`${metrics.fontSize}px`:'';
     label.style.letterSpacing=metrics.letterSpacing?`${metrics.letterSpacing}px`:'';
     label.style.lineHeight=metrics.lineHeight||'';
+    label.style.whiteSpace='pre-wrap';
   }
 }
 function applyUILayoutMetrics(def,metrics){
@@ -10075,13 +10107,10 @@ function applyUILayoutMetrics(def,metrics){
   if(UI_LAYOUT_TEXT_TARGETS.has(def.id)){
     if(typeof metrics.text==='string'){
       if(def.id==='rat-city-btn'){
-        const label=el.querySelector('.ui-art-label');
+        const label=ensureUIArtHostLabel(el);
         if(label) label.textContent=metrics.text;
       }else if(def.multiline){
-        // Preserve paragraph breaks for the description block — each line
-        // becomes a <p> so the original layout styling still applies.
-        const lines=metrics.text.split(/\n+/).map(s=>s.trim()).filter(Boolean);
-        el.innerHTML=lines.length?lines.map(t=>`<p>${escapeHTMLForLayout(t)}</p>`).join(''):'';
+        el.textContent=metrics.text;
       }else{
         el.textContent=metrics.text;
       }
@@ -10092,21 +10121,43 @@ function applyUILayoutMetrics(def,metrics){
     el.style.textAlign=metrics.align||'';
     el.style.letterSpacing=metrics.letterSpacing?`${metrics.letterSpacing}px`:'';
     el.style.lineHeight=metrics.lineHeight||'';
-    // Some text containers use display:flex/grid for layout — apply text
-    // align via the children too so multi-paragraph copy aligns.
-    if(def.multiline){
-      el.querySelectorAll('p').forEach(p=>{p.style.textAlign=metrics.align||''});
-    }
+    el.style.whiteSpace='pre-wrap';
   }
 }
 function escapeHTMLForLayout(s){
   return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function applyRuntimeUILayoutTextOverrides(){
+  const ratCity=document.getElementById('rat-city-btn');
+  if(ratCity && document.body.classList.contains('rat-city-mode')){
+    setUIArtHostLabel(ratCity,'BACK TO\nCHAOS');
+  }
+  applyEndingLayoutToRatCityPanel();
+}
+function applyEndingLayoutToRatCityPanel(){
+  if(!document.body.classList.contains('rat-city-mode')) return;
+  const panel=document.getElementById('rat-city-panel');
+  const def=getUILayoutDef('rats-win');
+  if(!panel || !def) return;
+  const metrics=ensureUILayoutMetrics(def);
+  if(!metrics) return;
+  panel.style.position='fixed';
+  panel.style.left=`${metrics.x}%`;
+  panel.style.top=`${metrics.y}%`;
+  panel.style.width=`${metrics.w}%`;
+  panel.style.height=`${metrics.h}%`;
+  panel.style.right='auto';
+  panel.style.bottom='auto';
+  panel.style.transform=getUILayoutTransform(metrics);
+  panel.style.zIndex=String(Math.max(46,getUILayoutLayer(def,metrics)));
+  panel.style.boxSizing='border-box';
 }
 function applyUILayoutConfig(){
   if(!uiLayoutState.config) uiLayoutState.config=loadUILayoutConfig();
   ensureUILayoutBuiltins(uiLayoutState.config);
   syncUILayoutCustomFrames();
   for(const def of getUILayoutDefs()) applyUILayoutMetrics(def,ensureUILayoutMetrics(def));
+  applyRuntimeUILayoutTextOverrides();
   if(uiLayoutState.active) refreshUILayoutEditor();
 }
 function showUILayoutToast(message){
@@ -11179,9 +11230,7 @@ function refreshLoadingTextPanel(){
     grp.dataset.defId=def.id;
     grp.innerHTML=`
       <label>${def.label}</label>
-      ${def.multiline
-        ? `<textarea data-field="text" rows="4">${escapeHTMLForLayout(text)}</textarea>`
-        : `<input type="text" data-field="text" value="${escapeHTMLForLayout(text)}"/>`}
+      <textarea data-field="text" rows="${def.multiline?4:2}">${escapeHTMLForLayout(text)}</textarea>
       <div class="row three">
         <div><div class="micro">X %</div><input type="number" step="0.1" data-field="x" value="${metrics.x??50}"></div>
         <div><div class="micro">Y %</div><input type="number" step="0.1" data-field="y" value="${metrics.y??50}"></div>
@@ -12106,8 +12155,19 @@ const hintEl=document.getElementById('hint');
 const biteLockEl=document.getElementById('bite-lock');
 let hintTimer=0;
 function showHint(t,sec=2.2){return;}
+function ensureUIArtHostLabel(el){
+  if(!el) return null;
+  let label=el.querySelector?.('.ui-art-label')||null;
+  if(label) return label;
+  label=document.createElement('span');
+  label.className='ui-art-label';
+  const firstArt=el.querySelector?.('.ui-art-layer')||null;
+  if(firstArt) el.insertBefore(label,firstArt);
+  else el.prepend(label);
+  return label;
+}
 function setUIArtHostLabel(el,text){
-  el?.querySelector('.ui-art-label')?.replaceChildren(document.createTextNode(text));
+  ensureUIArtHostLabel(el)?.replaceChildren(document.createTextNode(text));
 }
 function updateActionButtons(){
   const isHost=game.controlMode==='host';
@@ -12248,7 +12308,8 @@ function setRatCityMode(enabled){
   document.body.classList.toggle('rat-city-mode',enabled);
   ratCityPanel.classList.toggle('show',enabled);
   if(!enabled) ratCityPanel.classList.remove('min');
-  ratCityBtn.textContent=enabled?'BACK TO CHAOS':'RAT CITY';
+  setUIArtHostLabel(ratCityBtn,enabled?'BACK TO\nCHAOS':'RAT CITY');
+  if(enabled) applyEndingLayoutToRatCityPanel();
   if(enabled){
     game.ratCityAngle=camYaw;
     ratCityPitch=0.58;
@@ -15363,7 +15424,7 @@ function bindButtonPressFeedback(el){
 function getUILayoutConfiguredText(id,fallback=''){
   const mode=typeof getUILayoutMode==='function'?getUILayoutMode():getUILayoutAutoMode();
   const text=uiLayoutState.config?.[mode]?.[id]?.text;
-  return (typeof text==='string' && text.trim())?text:fallback;
+  return typeof text==='string'?text:fallback;
 }
 function applyStartButtonLayoutText(fallback='BEGIN'){
   if(startBtnLabel) startBtnLabel.textContent=getUILayoutConfiguredText('start-btn-label',fallback);
@@ -15437,6 +15498,7 @@ function triggerRatsWin(){
   cancelHostAttackHold();
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
+  if(game.ratCityMode) setRatCityMode(false);
   introEl.style.display='none';
   document.body.classList.remove('intro-active');
   document.body.classList.add('game-won');
