@@ -3,8 +3,15 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover"/>
-<title>Urban Legend Mouse — PS1</title>
-<meta name="description" content="Retro PS1-style 3D action: parasitise the alley as a human-headed rat."/>
+<title>URBAN LEGEND RAT</title>
+<meta name="description" content="URBAN LEGEND RAT - Retro PS1-style 3D action: parasitise the alley as a human-headed rat."/>
+<meta property="og:title" content="URBAN LEGEND RAT"/>
+<meta property="og:site_name" content="URBAN LEGEND RAT"/>
+<meta property="og:description" content="Retro PS1-style 3D action: parasitise the alley as a human-headed rat."/>
+<meta property="og:type" content="website"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="URBAN LEGEND RAT"/>
+<meta name="twitter:description" content="Retro PS1-style 3D action: parasitise the alley as a human-headed rat."/>
 <style>
   @font-face{
     font-family:"HydrogenWhiskey";
@@ -96,6 +103,17 @@
     background:transparent;
     color:#3b1420;font:700 18px/1 var(--ui-display-font);letter-spacing:0.28em;
     text-transform:uppercase;box-shadow:none}
+  #rat-city-btn .ui-art-label{
+    color:#f8fbff;
+    text-shadow:0 0 2px #fff,0 0 8px #7cf8ff,0 0 16px #ff5af7,0 0 30px rgba(124,248,255,0.75);
+    filter:drop-shadow(0 0 4px rgba(255,90,247,0.75)) drop-shadow(0 0 12px rgba(124,248,255,0.55))
+  }
+  #rat-city-btn::before{
+    content:'';position:absolute;left:50%;top:50%;width:calc(100% + 30px);height:calc(100% + 18px);
+    transform:translate(-50%,-50%);border-radius:999px;pointer-events:none;z-index:0;
+    border:1px solid rgba(124,248,255,0.52);
+    box-shadow:0 0 8px rgba(255,255,255,0.45) inset,0 0 18px rgba(124,248,255,0.5),0 0 34px rgba(255,90,247,0.35)
+  }
   #rat-city-panel{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:46;
     width:min(520px,calc(100vw - 28px));padding:44px 42px 38px;border-radius:22px;display:none;
     border:none;background:transparent;box-shadow:none;box-sizing:border-box}
@@ -162,6 +180,11 @@
   #start-btn{appearance:none;border:none;border-radius:999px;background:linear-gradient(90deg,#ffb9d6,#f06ea8);
     color:#4b1330;font:700 13px/1 var(--ui-display-font);letter-spacing:0.20em;
     padding:12px 22px;cursor:pointer;width:100%;text-transform:uppercase;margin-top:auto}
+  #start-btn[data-ui-button-style="default"]{background:linear-gradient(90deg,#ffb9d6,#f06ea8);box-shadow:0 10px 24px rgba(240,110,168,0.28)}
+  #start-btn[data-ui-button-style="neon"]{background:radial-gradient(circle at 30% 18%,#fff8ff 0%,#ff6cd0 34%,#3b154e 100%);border:1px solid rgba(124,248,255,0.55);box-shadow:0 0 0 1px rgba(255,255,255,0.35) inset,0 0 18px rgba(255,90,247,0.56),0 0 34px rgba(124,248,255,0.34)}
+  #start-btn[data-ui-button-style="glass"]{background:linear-gradient(180deg,rgba(255,255,255,0.42),rgba(124,248,255,0.18) 48%,rgba(18,8,35,0.62));border:1px solid rgba(255,255,255,0.52);box-shadow:0 12px 28px rgba(0,0,0,0.3),0 0 18px rgba(124,248,255,0.22) inset}
+  #start-btn[data-ui-button-style="sigil"]{background:conic-gradient(from 22deg,#ffe970,#ff5a8a,#7cf8ff,#ffe970);border:1px solid rgba(255,247,211,0.72);box-shadow:0 0 22px rgba(255,233,112,0.42),0 0 0 5px rgba(18,8,30,0.72) inset}
+  #start-btn[data-ui-button-style="slab"]{background:linear-gradient(180deg,#ffe5a1,#d56b35 48%,#551722 100%);border:2px solid rgba(255,245,208,0.65);border-radius:10px;box-shadow:0 9px 0 rgba(56,13,29,0.85),0 0 18px rgba(255,151,76,0.34)}
   #start-btn:disabled{filter:grayscale(0.4);opacity:0.7;cursor:wait}
   #start-btn-label{font:700 14px/1 var(--ui-display-font);letter-spacing:0.22em;color:#ffe7f4;
     text-transform:uppercase;text-shadow:0 3px 10px rgba(0,0,0,0.45);pointer-events:none}
@@ -307,7 +330,7 @@
 
   body.ui-layout-admin *{cursor:default}
   #admin-stage{position:fixed;left:50%;top:50%;
-    width:min(calc(100vw - 96px),1600px);height:min(calc(100vh - 96px),920px);
+    width:100vw;height:100vh;
     transform-origin:center center;transform:translate(-50%,-50%) scale(var(--admin-zoom,1));
     background:#000;outline:1px solid rgba(255,233,112,0.18);
     box-shadow:0 24px 70px rgba(0,0,0,0.58),0 0 0 9999px rgba(0,0,0,0.52)}
@@ -471,6 +494,9 @@
   .ui-layout-object-panel-tools input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
   .ui-layout-object-panel-tools input[type="color"]::-webkit-color-swatch{border:none;border-radius:999px}
   .ui-layout-object-panel-tools input[type="color"]::-moz-color-swatch{border:none;border-radius:999px}
+  .ui-layout-object-panel-tools select{appearance:none;border:none;border-radius:999px;padding:7px 26px 7px 10px;
+    background:rgba(255,255,255,0.08);color:#f8efc0;font:700 10px/1 "Courier New",monospace;letter-spacing:0.06em;cursor:pointer}
+  .ui-layout-object-panel-tools select:disabled{opacity:0.38;cursor:not-allowed}
   .ui-layout-object-panel-tools button,.ui-layout-object-row button{appearance:none;border:none;border-radius:999px;padding:7px 10px;
     background:rgba(255,255,255,0.08);color:#f8efc0;font:700 10px/1 "Courier New",monospace;letter-spacing:0.06em;cursor:pointer}
   .ui-layout-object-panel-tools button:hover,.ui-layout-object-row button:hover{background:rgba(255,255,255,0.16)}
@@ -487,7 +513,7 @@
   .ui-layout-object-name{display:block;color:#fff7c9;font:12px/1.3 "Courier New",monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ui-layout-object-state{display:block;color:#d7cfff;font:10px/1.25 "Courier New",monospace;opacity:0.88}
   .ui-layout-object-actions,.ui-layout-object-order{display:flex;gap:4px;align-items:center}
-  .ui-layout-box{position:fixed;border:2px solid transparent;box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset,0 0 16px rgba(255,233,112,0.24);
+  .ui-layout-box{position:fixed;box-sizing:border-box;border:2px solid transparent;box-shadow:0 0 0 1px rgba(0,0,0,0.35) inset,0 0 16px rgba(255,233,112,0.24);
     background:transparent;touch-action:none;user-select:none}
   .ui-layout-box.panel-only{pointer-events:none}
   .ui-layout-box.panel-only.selected,.ui-layout-box.panel-only.active{pointer-events:auto}
@@ -517,7 +543,7 @@
     z-index:2100002}
 
   @media (any-pointer: coarse), (max-width:900px){
-    #admin-stage{width:calc(100vw - 32px);height:calc(100vh - 32px);border-radius:16px}
+    #admin-stage{width:100vw;height:100vh;border-radius:16px}
     .ui-layout-toolbar{top:10px;left:10px;right:10px;max-width:none}
     .ui-layout-object-panel{top:86px;left:10px;right:10px;width:auto;max-height:calc(100vh - 98px)}
     #minimap{left:12px;top:calc(env(safe-area-inset-top,0px) + 12px);width:104px;height:104px}
@@ -581,7 +607,7 @@
 
 <div id="intro">
   <div class="intro-card" id="intro-card">
-    <h1 id="intro-title">URBAN LEGEND MOUSE</h1>
+    <h1 id="intro-title">URBAN LEGEND RAT</h1>
     <div class="tag" id="intro-tag">©GGDOVEgame</div>
     <div class="intro-copy" id="intro-copy">
       <p>This is an ancient prophecy.</p>
@@ -640,7 +666,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 /* ============================================================
-   Urban Legend Mouse — PS1-style prototype
+   Urban Legend Rat — PS1-style prototype
    Performance & visual conventions (strict):
      1. NearestFilter on every texture, no mipmaps, low resolution.
      2. MeshBasicMaterial for all static scene geometry (unlit).
@@ -8646,11 +8672,12 @@ const UI_LAYOUT_DEFAULTS={
       "h": 4.286,
       "z": 13,
       "hidden": false,
-      "locked": true,
+      "locked": false,
       "text": "BEGIN",
       "rot": 0,
       "letterSpacing": 3,
-      "lineHeight": "0.2"
+      "lineHeight": "0.2",
+      "buttonStyle": "default"
     },
     "__endingTextDefaultsRestored": true,
     "__endingCardLayoutApplied": true,
@@ -9119,7 +9146,8 @@ const UI_LAYOUT_DEFAULTS={
       "fontSize": 10,
       "letterSpacing": 2,
       "lineHeight": "0",
-      "color": ""
+      "color": "",
+      "buttonStyle": "default"
     },
     "__endingTextDefaultsRestored": true,
     "__endingCardLayoutApplied": true,
@@ -9198,6 +9226,7 @@ const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn-label','intro-ti
 const UI_LAYOUT_TEXT_DEFAULTS={
   'rat-city-btn':'RAT CITY',
   'start-btn-label':'BEGIN',
+  'intro-title':'URBAN LEGEND RAT',
   'rw-text':'RATS WIN',
   'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
   'rw-replay':'PLAY AGAIN',
@@ -9218,6 +9247,8 @@ const UI_LAYOUT_DEFAULT_ART_SRCS={
   'chaos-box-art':'./asset/ART/CAHOS.png',
   'rats-box-art':'./asset/ART/RAT.png'
 };
+const UI_LAYOUT_BUTTON_STYLE_TARGETS=new Set(['start-btn']);
+const UI_LAYOUT_BUTTON_STYLE_OPTIONS=['default','neon','glass','sigil','slab'];
 const UI_LAYOUT_BUILTIN_FRAMES={
   desktop:[
     {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E9%9B%BB%E8%85%A6%E7%89%88%E9%81%8A%E6%88%B2%E7%95%AB%E9%9D%A2%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
@@ -9243,7 +9274,7 @@ const UI_LAYOUT_REMOVED_FRAME_IDS=new Set([
 const UI_LAYOUT_INTRO_FALLBACK={
   'intro-card':{x:50,y:55,w:42,h:56,z:30,hidden:false,locked:false},
   'start-btn-label':{x:50,y:81.7,w:28,h:3.2,z:32,hidden:false,locked:false,text:'BEGIN'},
-  'start-btn':{x:50,y:86,w:20,h:5,z:31,hidden:false,locked:false},
+  'start-btn':{x:50,y:86,w:20,h:5,z:31,hidden:false,locked:false,buttonStyle:'default'},
   'intro-title':{x:50,y:30.5,w:26,h:4.8,z:31,hidden:false,locked:false},
   'intro-tag':{x:50,y:36.6,w:20,h:1.8,z:31,hidden:false,locked:false},
   'intro-copy':{x:50,y:53,w:45,h:30,z:31,hidden:false,locked:false},
@@ -9260,7 +9291,7 @@ const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-left':'viewport-frame-right',
   'viewport-frame-right':'viewport-frame-left'
 };
-const UI_LAYOUT_SNAP_PX=8;
+const UI_LAYOUT_SNAP_PX=4;
 const ADMIN_STAGE_MOBILE_WIDTH=390;
 const ADMIN_STAGE_MOBILE_HEIGHT=844;
 function isLiveMobileDevice(){
@@ -9358,6 +9389,20 @@ function ensureUILayoutBuiltins(config){
       if(typeof current.text!=='string' || !current.text.trim()){
         store[id]={...current,text};
       }
+    }
+    if(store['intro-title']?.text && /URBAN\s+LEGEND\s+MOUSE/i.test(store['intro-title'].text)){
+      store['intro-title']={...store['intro-title'],text:'URBAN LEGEND RAT'};
+    }
+    if(!store.__beginButtonEditableApplied){
+      const current=store['start-btn']||{};
+      store['start-btn']={
+        ...current,
+        locked:false,
+        buttonStyle:normalizeUILayoutButtonStyle(current.buttonStyle)
+      };
+      store.__beginButtonEditableApplied=true;
+    }else if(store['start-btn'] && !store['start-btn'].buttonStyle){
+      store['start-btn'].buttonStyle='default';
     }
     if(!store.__endingTextDefaultsRestored){
       for(const id of ['rw-text','rw-sub','rw-replay']){
@@ -9656,13 +9701,20 @@ function getUILayoutCustomFrameOpaqueBounds(def){
   const el=document.getElementById(getUILayoutCustomFrameElementId(def.id));
   return el?computeImageOpaqueBounds(el):null;
 }
+function getUILayoutMinBoxSize(def){
+  if(def?.id==='start-btn') return {width:4,height:4};
+  if(def?.id==='start-btn-label') return {width:2,height:2};
+  if(def?.id==='intro-progress-track') return {width:4,height:2};
+  if(def?.isSkinArt) return {width:4,height:4};
+  return {width:6,height:6};
+}
 function getUILayoutRawBoxRect(def,metrics){
   const bounds=getUILayoutBoundsForDef(def);
   return {
     left:bounds.left+(metrics.x-metrics.w*0.5)*0.01*bounds.width,
     top:bounds.top+(metrics.y-metrics.h*0.5)*0.01*bounds.height,
-    width:Math.max(18,metrics.w*0.01*bounds.width),
-    height:Math.max(18,metrics.h*0.01*bounds.height)
+    width:Math.max(0.1,metrics.w*0.01*bounds.width),
+    height:Math.max(0.1,metrics.h*0.01*bounds.height)
   };
 }
 function getUILayoutVisibleRectFromRaw(def,rawRect){
@@ -9674,8 +9726,8 @@ function getUILayoutVisibleRectFromRaw(def,rawRect){
   return {
     left:rawRect.left+rawRect.width*opaque.minX,
     top:rawRect.top+rawRect.height*opaque.minY,
-    width:Math.max(18,rawRect.width*visW),
-    height:Math.max(18,rawRect.height*visH)
+    width:Math.max(0.1,rawRect.width*visW),
+    height:Math.max(0.1,rawRect.height*visH)
   };
 }
 function expandUILayoutVisibleRectToRaw(def,rect){
@@ -9684,8 +9736,8 @@ function expandUILayoutVisibleRectToRaw(def,rect){
   if(!opaque) return rect;
   const visW=Math.max(0.001,opaque.maxX-opaque.minX);
   const visH=Math.max(0.001,opaque.maxY-opaque.minY);
-  const rawW=Math.max(18,rect.width/visW);
-  const rawH=Math.max(18,rect.height/visH);
+  const rawW=Math.max(0.1,rect.width/visW);
+  const rawH=Math.max(0.1,rect.height/visH);
   return {
     left:rect.left-rawW*opaque.minX,
     top:rect.top-rawH*opaque.minY,
@@ -9697,13 +9749,15 @@ function getUILayoutBoundsForDef(def){
   if(def?.isSkinArt){
     const parentDef=getUILayoutDef(def.parentId);
     const parentMetrics=parentDef?ensureUILayoutMetrics(parentDef):null;
-    if(uiLayoutState.active && parentDef && parentMetrics){
-      return getUILayoutBoxRect(parentDef,parentMetrics);
-    }
     const parent=document.getElementById(def.parentId);
     if(parent){
       const r=parent.getBoundingClientRect();
-      return {left:r.left,top:r.top,width:Math.max(r.width,1),height:Math.max(r.height,1)};
+      if(r.width>0 && r.height>0){
+        return {left:r.left,top:r.top,width:Math.max(r.width,1),height:Math.max(r.height,1)};
+      }
+    }
+    if(uiLayoutState.active && parentDef && parentMetrics){
+      return getUILayoutBoxRect(parentDef,parentMetrics);
     }
   }
   return getUILayoutViewportBounds();
@@ -9718,6 +9772,12 @@ function getUILayoutParentTargetId(id){
 }
 function isUILayoutStylableTargetId(id){
   return UI_LAYOUT_STYLABLE_TARGETS.has(getUILayoutParentTargetId(id));
+}
+function isUILayoutButtonStyleTargetId(id){
+  return UI_LAYOUT_BUTTON_STYLE_TARGETS.has(getUILayoutParentTargetId(id));
+}
+function normalizeUILayoutButtonStyle(style){
+  return UI_LAYOUT_BUTTON_STYLE_OPTIONS.includes(style)?style:'default';
 }
 function syncUILayoutCustomFrames(){
   const stage=document.getElementById('admin-stage')||document.body;
@@ -9828,6 +9888,13 @@ function applyUILayoutVisual(def,metrics,el){
     el.style.boxShadow=color?'0 16px 30px rgba(0,0,0,0.24)':'none';
     return;
   }
+  if(def.id==='start-btn'){
+    const style=normalizeUILayoutButtonStyle(metrics.buttonStyle);
+    el.dataset.uiButtonStyle=style;
+    el.style.background=color||'';
+    el.style.boxShadow=color?'0 10px 24px rgba(240,110,168,0.28)':'';
+    return;
+  }
   if(def.id==='joystick-zone'){
     const stick=document.getElementById('joystick-stick');
     if(stick){
@@ -9891,6 +9958,7 @@ function applyUILayoutMetrics(def,metrics){
     el.style.display='';
   }
   el.style.position='fixed';
+  el.style.boxSizing='border-box';
   if(uiLayoutState.active){
     el.style.left=`${metrics.x}%`;
     el.style.top=`${metrics.y}%`;
@@ -9963,9 +10031,7 @@ function getUILayoutViewportBounds(){
   const stage=document.getElementById('admin-stage');
   if(uiLayoutState.active && stage){
     const r=stage.getBoundingClientRect();
-    const baseWidth=stage.clientWidth||stage.offsetWidth||r.width;
-    const baseHeight=stage.clientHeight||stage.offsetHeight||r.height;
-    return {left:r.left,top:r.top,width:baseWidth,height:baseHeight};
+    return {left:r.left,top:r.top,width:Math.max(r.width,1),height:Math.max(r.height,1)};
   }
   return {left:0,top:0,width:window.innerWidth,height:window.innerHeight};
 }
@@ -10157,10 +10223,11 @@ function refreshUILayoutOverlayBox(def){
   const hideEmptyArt=def.isSkinArt && !metrics.src && !isSelected && !isActive;
   const wrongScene=!defBelongsToScene(def);
   const r=measureUILayoutRect(def,metrics);
+  const minBox=getUILayoutMinBoxSize(def);
   box.style.left=`${r.left}px`;
   box.style.top=`${r.top}px`;
-  box.style.width=`${Math.max(r.width,18)}px`;
-  box.style.height=`${Math.max(r.height,18)}px`;
+  box.style.width=`${Math.max(r.width,minBox.width)}px`;
+  box.style.height=`${Math.max(r.height,minBox.height)}px`;
   box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
   box.style.display=(wrongScene || metrics.hidden || hideEmptyArt || (panelOnly && !isSelected && !isActive))?'none':'block';
   box.style.pointerEvents=metrics.locked?'none':'auto';
@@ -10266,10 +10333,11 @@ function refreshUILayoutEditor(){
     const hideEmptyArt=def.isSkinArt && !metrics.src && !isSelected && !isActive;
     const wrongScene=!defBelongsToScene(def);
     const r=measureUILayoutRect(def,metrics);
+    const minBox=getUILayoutMinBoxSize(def);
     box.style.left=`${r.left}px`;
     box.style.top=`${r.top}px`;
-    box.style.width=`${Math.max(r.width,18)}px`;
-    box.style.height=`${Math.max(r.height,18)}px`;
+    box.style.width=`${Math.max(r.width,minBox.width)}px`;
+    box.style.height=`${Math.max(r.height,minBox.height)}px`;
     box.style.zIndex=String(getUILayoutLayer(def,metrics)+1400);
     box.style.display=(wrongScene || metrics.hidden || hideEmptyArt || (panelOnly && !isSelected && !isActive))?'none':'block';
     box.style.pointerEvents=metrics.locked?'none':'auto';
@@ -10291,6 +10359,7 @@ function refreshUILayoutEditor(){
   refreshUILayoutObjectPanel();
   refreshUILayoutGuides();
   syncUILayoutColorInput();
+  syncUILayoutButtonStyleInput();
   syncUILayoutTextInput();
   const livePanel=getUILayoutObjectPanelScrollTarget();
   if(livePanel){
@@ -10456,6 +10525,7 @@ function setUILayoutSelection(id,{additive=false}={}){
   syncUILayoutSelectionStyles();
   refreshUILayoutGuides();
   syncUILayoutColorInput();
+  syncUILayoutButtonStyleInput();
   syncUILayoutTextInput();
   if(scrollTarget){
     scrollTarget.scrollTop=savedScroll;
@@ -10469,15 +10539,16 @@ function setUILayoutSelection(id,{additive=false}={}){
   }
   uiLayoutState.objectPanelScrollTop=savedScroll;
 }
-function clampUILayoutRect(rect,bounds){
+function clampUILayoutRect(rect,bounds,def=null){
   // Position clamping is intentionally extremely loose: elements can be
   // dragged anywhere on the visible page (including the black workspace
   // surrounding the simulated game viewport) on both desktop and mobile
   // preview. The only real constraint is that the element retains a
-  // minimum size of 18px and its centre cannot leave the browser window
+  // small minimum size and its centre cannot leave the browser window
   // entirely. Width/height are clamped to a sensible page-size ceiling.
-  const width=Math.max(18,Math.min(rect.width,Math.max(bounds.width*2,window.innerWidth)));
-  const height=Math.max(18,Math.min(rect.height,Math.max(bounds.height*2,window.innerHeight)));
+  const minBox=getUILayoutMinBoxSize(def);
+  const width=Math.max(minBox.width,Math.min(rect.width,Math.max(bounds.width*2,window.innerWidth)));
+  const height=Math.max(minBox.height,Math.min(rect.height,Math.max(bounds.height*2,window.innerHeight)));
   const minLeft=-width*0.85;
   const maxLeft=window.innerWidth-width*0.15;
   const minTop=-height*0.85;
@@ -10488,9 +10559,10 @@ function clampUILayoutRect(rect,bounds){
     width,height
   };
 }
-function snapUILayoutRect(rect,def){
+function snapUILayoutRect(rect,def,{snap=true}={}){
   const bounds=getUILayoutBoundsForDef(def);
-  const next=clampUILayoutRect({...rect},bounds);
+  const next=clampUILayoutRect({...rect},bounds,def);
+  if(!snap) return next;
   const selectedCx=next.left+next.width*0.5;
   const selectedCy=next.top+next.height*0.5;
   const targetXs=[bounds.left,bounds.left+bounds.width*0.5-next.width*0.5,bounds.left+bounds.width-next.width];
@@ -10510,7 +10582,7 @@ function snapUILayoutRect(rect,def){
     if(Math.abs(next.top-pairRect.top)<=UI_LAYOUT_SNAP_PX) next.top=pairRect.top;
     if(Math.abs((next.top+next.height)-(pairRect.top+pairRect.height))<=UI_LAYOUT_SNAP_PX) next.top=pairRect.top+pairRect.height-next.height;
   }
-  return clampUILayoutRect(next,bounds);
+  return clampUILayoutRect(next,bounds,def);
 }
 function updateUILayoutMetricsFromRect(def,rect){
   const metrics=ensureUILayoutMetrics(def);
@@ -10549,6 +10621,7 @@ function handleUILayoutPointerMove(e){
   const dx=e.clientX-drag.startX;
   const dy=e.clientY-drag.startY;
   let next={...drag.startRect};
+  const minBox=getUILayoutMinBoxSize(def);
   if(drag.mode==='move'){
     next.left+=dx;
     next.top+=dy;
@@ -10559,33 +10632,33 @@ function handleUILayoutPointerMove(e){
       const aspect=drag.startRect.width/Math.max(1,drag.startRect.height);
       let width=drag.startRect.width;
       let height=drag.startRect.height;
-      if(drag.corner.includes('e')) width=Math.max(18,drag.startRect.width+dx);
-      if(drag.corner.includes('w')) width=Math.max(18,drag.startRect.width-dx);
-      if(drag.corner.includes('s')) height=Math.max(18,drag.startRect.height+dy);
-      if(drag.corner.includes('n')) height=Math.max(18,drag.startRect.height-dy);
+      if(drag.corner.includes('e')) width=Math.max(minBox.width,drag.startRect.width+dx);
+      if(drag.corner.includes('w')) width=Math.max(minBox.width,drag.startRect.width-dx);
+      if(drag.corner.includes('s')) height=Math.max(minBox.height,drag.startRect.height+dy);
+      if(drag.corner.includes('n')) height=Math.max(minBox.height,drag.startRect.height-dy);
       const widthScale=width/Math.max(1,drag.startRect.width);
       const heightScale=height/Math.max(1,drag.startRect.height);
       const scaleFactor=Math.max(widthScale,heightScale);
-      width=Math.max(18,drag.startRect.width*scaleFactor);
-      height=Math.max(18,width/aspect);
+      width=Math.max(minBox.width,drag.startRect.width*scaleFactor);
+      height=Math.max(minBox.height,width/aspect);
       if(drag.corner.includes('w')) next.left=drag.startRect.left+(drag.startRect.width-width);
       if(drag.corner.includes('n')) next.top=drag.startRect.top+(drag.startRect.height-height);
       next.width=width;
       next.height=height;
     }else{
-      if(drag.corner.includes('e')) next.width=Math.max(18,drag.startRect.width+dx);
-      if(drag.corner.includes('s')) next.height=Math.max(18,drag.startRect.height+dy);
+      if(drag.corner.includes('e')) next.width=Math.max(minBox.width,drag.startRect.width+dx);
+      if(drag.corner.includes('s')) next.height=Math.max(minBox.height,drag.startRect.height+dy);
       if(drag.corner.includes('w')){
         next.left=drag.startRect.left+dx;
-        next.width=Math.max(18,drag.startRect.width-dx);
+        next.width=Math.max(minBox.width,drag.startRect.width-dx);
       }
       if(drag.corner.includes('n')){
         next.top=drag.startRect.top+dy;
-        next.height=Math.max(18,drag.startRect.height-dy);
+        next.height=Math.max(minBox.height,drag.startRect.height-dy);
       }
     }
   }
-  next=snapUILayoutRect(next,def);
+  next=snapUILayoutRect(next,def,{snap:e.ctrlKey||e.metaKey});
   updateUILayoutMetricsFromRect(def,next);
   refreshUILayoutOverlayBox(def);
   refreshUILayoutGuides();
@@ -10828,6 +10901,27 @@ function syncUILayoutColorInput(){
   const color=(metrics?.bgColor && /^#(?:[0-9a-fA-F]{6})$/.test(metrics.bgColor))?metrics.bgColor:'#ffffff';
   input.value=color;
   input.disabled=!def || !isUILayoutStylableTargetId(def.id);
+}
+function setSelectedUILayoutButtonStyle(style){
+  const targetId=getUILayoutParentTargetId(uiLayoutState.selectedId);
+  const def=getUILayoutDef(targetId);
+  if(!def || !isUILayoutButtonStyleTargetId(targetId)) return false;
+  pushUILayoutHistory('set button style');
+  const metrics={...ensureUILayoutMetrics(def),buttonStyle:normalizeUILayoutButtonStyle(style)};
+  setUILayoutMetrics(def,metrics);
+  applyUILayoutMetrics(def,metrics);
+  saveUILayoutConfig();
+  refreshUILayoutEditor();
+  return true;
+}
+function syncUILayoutButtonStyleInput(){
+  const input=uiLayoutState.editor?.querySelector('[data-layout-button-style]');
+  if(!input) return;
+  const targetId=getUILayoutParentTargetId(uiLayoutState.selectedId);
+  const def=getUILayoutDef(targetId);
+  const enabled=!!def && isUILayoutButtonStyleTargetId(targetId);
+  input.disabled=!enabled;
+  input.value=enabled?normalizeUILayoutButtonStyle(ensureUILayoutMetrics(def)?.buttonStyle):'default';
 }
 function setSelectedUILayoutText(text){
   const targetId=uiLayoutState.selectedId;
@@ -11222,7 +11316,7 @@ function buildUILayoutEditor(){
       <div class="ui-layout-object-panel-header">
         <div class="ui-layout-object-panel-title">
           <h3>Layout Objects</h3>
-          <p>Desktop / mobile bucket separated. Wheel or +/- zoom mobile preview. Shift+click multi-select. Ctrl+C / Ctrl+V copies layout. Delete hides. L locks. H toggles show/hide.</p>
+          <p>Desktop / mobile bucket separated. Wheel or +/- zoom mobile preview. Drag is freeform; hold Ctrl/Cmd while dragging to snap. Arrow nudges 1px, Alt+Arrow 0.5px, Shift+Arrow 10px.</p>
         </div>
         <div class="ui-layout-object-panel-chrome">
           <button type="button" data-layout-action="collapse">_</button>
@@ -11242,6 +11336,13 @@ function buildUILayoutEditor(){
           <button type="button" data-layout-action="clear-art">Clear Art</button>
           <input type="color" value="#ffffff" data-layout-bg-color title="Background colour">
           <button type="button" data-layout-action="clear-color">Clear Color</button>
+          <select data-layout-button-style title="Begin button style">
+            <option value="default">Begin Default</option>
+            <option value="neon">Begin Neon</option>
+            <option value="glass">Begin Glass</option>
+            <option value="sigil">Begin Sigil</option>
+            <option value="slab">Begin Slab</option>
+          </select>
           <button type="button" data-layout-action="import-frame">Import Frame</button>
         </div>
         <div class="ui-layout-text-row" data-layout-text-row style="display:none;flex-direction:column;gap:6px;padding:8px 10px;border-top:1px solid rgba(255,255,255,0.08)">
@@ -11278,6 +11379,9 @@ function buildUILayoutEditor(){
   });
   root.querySelector('[data-layout-bg-color]')?.addEventListener('input',e=>{
     setSelectedUILayoutBgColor(e.target.value);
+  });
+  root.querySelector('[data-layout-button-style]')?.addEventListener('change',e=>{
+    setSelectedUILayoutButtonStyle(e.target.value);
   });
   root.querySelector('[data-layout-text-input]')?.addEventListener('input',e=>{
     setSelectedUILayoutText(e.target.value);
@@ -11395,7 +11499,7 @@ function nudgeUILayoutSelection(dx,dy){
       ...baseRect,
       left:baseRect.left+dx,
       top:baseRect.top+dy
-    },def);
+    },def,{snap:false});
     buildUILayoutMetricsFromRect(def,metrics,rect);
     setUILayoutMetrics(def,metrics);
     applyUILayoutMetrics(def,metrics);
@@ -11639,7 +11743,7 @@ window.addEventListener('keydown',e=>{
     if(e.code==='Minus'){ e.preventDefault(); setAdminStageZoom(getAdminStageZoom()*0.9); return; }
     if(e.code==='Equal'){ e.preventDefault(); setAdminStageZoom(getAdminStageZoom()*1.1); return; }
     if(e.code==='Digit0'){ e.preventDefault(); setAdminStageModeZoom(getUILayoutMode()); return; }
-    const step=e.shiftKey?10:2;
+    const step=e.shiftKey?10:(e.altKey?0.5:1);
     if(e.code==='ArrowUp'&&nudgeUILayoutSelection(0,-step)){ e.preventDefault(); return; }
     if(e.code==='ArrowDown'&&nudgeUILayoutSelection(0,step)){ e.preventDefault(); return; }
     if(e.code==='ArrowLeft'&&nudgeUILayoutSelection(-step,0)){ e.preventDefault(); return; }
