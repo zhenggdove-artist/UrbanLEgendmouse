@@ -1119,6 +1119,11 @@ const CLEANER_CHAOS_RESTORE=0.070;
 const HOST_ATTACK_RADIUS=1.55;
 const HOST_ATTACK_HOLD_MS=280;
 const HOST_ATTACK_COMBO_WINDOW=0.46;
+const HOST_ATTACK_TAP_BUFFER_MS=150;
+const HOST_PUNCH_TIME_SCALE=2.25;
+const HOST_PUNCHCOMBO_TIME_SCALE=2.05;
+const HOST_PUNCH_START_TIME=0.030;
+const HOST_PUNCHCOMBO_START_TIME=0.025;
 const HOST_PICKUP_RADIUS=1.65;
 const HOST_THROW_CHARGE_MAX=1.35;
 const HOST_PARASITE_TIME=30;
@@ -1376,6 +1381,29 @@ function propAABB(p){
     minZ:pz+(p.minZOffset??-(p.halfZ||p.radius||0.45)),
     maxZ:pz+(p.maxZOffset?? (p.halfZ||p.radius||0.45))
   };
+}
+function updatePropWorldAABB(p,minX,maxX,minZ,maxZ,baseY=null,topY=null){
+  if(!p?.root) return p;
+  gridRemove(propsGrid,p);
+  p.minXOffset=minX-p.root.position.x;
+  p.maxXOffset=maxX-p.root.position.x;
+  p.minZOffset=minZ-p.root.position.z;
+  p.maxZOffset=maxZ-p.root.position.z;
+  p.halfX=Math.max(0.08,Math.max(Math.abs(p.minXOffset),Math.abs(p.maxXOffset)));
+  p.halfZ=Math.max(0.08,Math.max(Math.abs(p.minZOffset),Math.abs(p.maxZOffset)));
+  p.radius=Math.max(p.radius||0.45,p.halfX,p.halfZ);
+  if(Number.isFinite(baseY)) p.baseY=baseY;
+  if(Number.isFinite(topY)) p.topY=topY;
+  const a=propAABB(p);
+  gridInsertAABB(propsGrid,p,a.minX,a.maxX,a.minZ,a.maxZ);
+  return p;
+}
+function propFootprintDistanceToPoint(p,x,z,pad=0){
+  if(!p?.root) return Infinity;
+  const a=propAABB(p);
+  const dx=Math.max(a.minX-pad-x,0,x-(a.maxX+pad));
+  const dz=Math.max(a.minZ-pad-z,0,z-(a.maxZ+pad));
+  return Math.hypot(dx,dz);
 }
 function rebuildRatsGrid(){
   ratsGrid.clear();
@@ -5472,6 +5500,7 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   // facing = +1 means the stall opens toward -Z (centre is at -); -1 the other way.
   // We draw a tarp canopy + display table + a couple of soup pots / stools.
   const len=xEnd-xStart;
+  const linkedParts=[];
   // Tarp colour palette — common night-market plastic-sheeting colours.
   const tarpCol=pick(['#c66a3a','#3a7ac6','#c2c2b8','#b04a4a','#3a8a4a','#8a4ac6']);
   if(!STALL_TEX.tarp.has(tarpCol)) STALL_TEX.tarp.set(tarpCol,makeDirtyTarpTexture(tarpCol));
@@ -5483,20 +5512,20 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   );
   canopy.position.set((xStart+xEnd)/2,2.5,(zOuter+zInner)/2);
   canopy.rotation.x=facing*0.12;
-  scene.add(canopy);if(_activeChunk)_activeChunk.meshes.push(canopy);
+  scene.add(canopy);if(_activeChunk)_activeChunk.meshes.push(canopy);linkedParts.push(canopy);
   // Stripe along the front edge — different colour so the tarp reads.
   const stripe=new THREE.Mesh(
     new THREE.BoxGeometry(len*0.9,0.18,0.10),
     new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:'#2b262c'})
   );
   stripe.position.set((xStart+xEnd)/2,2.45,zInner+facing*0.05);
-  scene.add(stripe);if(_activeChunk)_activeChunk.meshes.push(stripe);
+  scene.add(stripe);if(_activeChunk)_activeChunk.meshes.push(stripe);linkedParts.push(stripe);
   // Canopy support posts — thin chrome poles.
   const postMat=new THREE.MeshBasicMaterial({color:'#5a5a5a'});
   for(const xPost of [xStart+0.5,xEnd-0.5]){
     const post=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,2.5,6),postMat);
     post.position.set(xPost,1.25,(zOuter+zInner)/2);
-    scene.add(post);if(_activeChunk)_activeChunk.meshes.push(post);
+    scene.add(post);if(_activeChunk)_activeChunk.meshes.push(post);linkedParts.push(post);
   }
   // Display table running the length of the stall.
   const stallBaseCol=pick(['#d7c2aa','#6c95c8','#d77272','#75a86a','#b78fd1','#d0a64c']);
@@ -5518,6 +5547,16 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
   tableProp.kind='stall';
   tableProp.tipOffset=0.12;
   tableProp.spawnRatsOnTip=2+Math.floor(Math.random()*3);
+  tableProp.linkedStallParts=linkedParts;
+  updatePropWorldAABB(
+    tableProp,
+    Math.min(xStart,xEnd)-0.35,
+    Math.max(xStart,xEnd)+0.35,
+    Math.min(zOuter,zInner)-0.65,
+    Math.max(zOuter,zInner)+0.65,
+    0,
+    2.75
+  );
   // Goods piled on the table — chunky merch boxes in random colours.
   const goodCols=['#d23a3a','#3a8ad2','#d2a83a','#8ad23a','#a83ad2','#3ad28a','#f0e060','#ffffff'];
   const goodCount=Math.max(3,Math.floor(len*1.4));
@@ -5525,7 +5564,7 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
     const w=rand(0.18,0.30),h=rand(0.10,0.30),d=rand(0.18,0.30);
     const box=basicBox(w,h,d,pick(goodCols));
     box.position.set(rand(xStart+0.4,xEnd-0.4),0.85+h/2+rand(0,0.1),zInner+facing*rand(0.3,0.85));
-    scene.add(box);if(_activeChunk)_activeChunk.meshes.push(box);
+    scene.add(box);if(_activeChunk)_activeChunk.meshes.push(box);linkedParts.push(box);
   }
   for(let i=0;i<2;i++){
     const bucket=new THREE.Mesh(
@@ -5533,7 +5572,7 @@ function buildStallRow(xStart,xEnd,zOuter,zInner,facing){
       new THREE.MeshBasicMaterial({map:STALL_TEX.metal,color:pick(['#8b948e','#c96555','#6b88a8'])})
     );
     bucket.position.set(rand(xStart+0.5,xEnd-0.5),0.11,zInner+facing*rand(0.9,1.4));
-    scene.add(bucket);if(_activeChunk)_activeChunk.meshes.push(bucket);
+    scene.add(bucket);if(_activeChunk)_activeChunk.meshes.push(bucket);linkedParts.push(bucket);
   }
 }
 function buildSkyTunnel(xBase,width=CHUNK_SIZE){
@@ -5811,14 +5850,17 @@ function ensureRitualEscortRats(){
 }
 function idolBreakNearbyProps(idol){
   if(!idol?.root) return;
-  const props=getPropsNear(idol.root.position.x,idol.root.position.z,3.1);
+  const ix=idol.root.position.x, iz=idol.root.position.z;
+  const props=getPropsNear(ix,iz,5.6);
   for(const p of props){
     if(!p || p.tipTriggered || p.heldBy || p.throwVel) continue;
-    const dx=p.root.position.x-idol.root.position.x;
-    const dz=p.root.position.z-idol.root.position.z;
-    const d=Math.hypot(dx,dz);
-    if(d>2.65) continue;
-    const angle=Math.atan2(dx,dz);
+    const pad=p.kind==='stall'?0.92:0.38;
+    const hitDist=propFootprintDistanceToPoint(p,ix,iz,pad);
+    if(hitDist>(p.kind==='stall'?1.05:0.42)) continue;
+    const a=propAABB(p);
+    const cx=(a.minX+a.maxX)*0.5;
+    const cz=(a.minZ+a.maxZ)*0.5;
+    const angle=Math.atan2(cx-ix,cz-iz);
     triggerPropTip(p,angle,0,'idol');
   }
 }
@@ -5845,7 +5887,7 @@ function replaceTempleIdolWithWalkRig(idol){
   const idleRot=previousRoot.rotation.clone();
   const walkVariant=makeHumanVariant({
     source:templeIdolWalkSource||templeIdolSource,
-    idle:templeIdolWalkClip,
+    idle:templeIdolIdleClip,
     walk:templeIdolWalkClip,
     run:templeIdolWalkClip,
     jump:null,kick:null,pickup:null,clean:null,
@@ -6979,12 +7021,13 @@ function tickActor(ent,dt){
       }
     }
     if(ent===game.templeEvent?.idol || ent.behaviour==='procession'){
-      const idolWalkName=actionsMap.walk?'walk':(actionsMap.run?'run':'idle');
-      const idolWalkAct=actionsMap[idolWalkName];
-      ent.animState=idolWalkName;
-      ent.actionName=idolWalkName;
+      const idolMoving=ent._idolMoving===true || (ent._idolMoving!==false && (ent._lastMoveDistance||0)>0.006);
+      const idolActionName=(idolMoving && actionsMap.walk) ? 'walk' : (actionsMap.idle?'idle':(actionsMap.walk?'walk':(actionsMap.run?'run':'idle')));
+      const idolAct=actionsMap[idolActionName];
+      ent.animState=idolActionName;
+      ent.actionName=idolActionName;
       ent._animBlendFrom=null;
-      ent._animBlendTo=idolWalkName;
+      ent._animBlendTo=idolActionName;
       ent._animBlendT=0;
       const seenIdolActions=new Set();
       for(const [name,act] of Object.entries(actionsMap)){
@@ -6995,9 +7038,9 @@ function tickActor(ent,dt){
         act.enabled=true;
         act.paused=false;
         if(!act.isRunning?.()) act.play();
-        act.setEffectiveWeight(act===idolWalkAct || name===idolWalkName?1:0);
+        act.setEffectiveWeight(act===idolAct || name===idolActionName?1:0);
       }
-      selectedActionName=idolWalkName;
+      selectedActionName=idolActionName;
     }
   }
   let scale;
@@ -7006,7 +7049,7 @@ function tickActor(ent,dt){
     scale=lerp(0.4,1.6,clamp(ent.curSpeed/PLAYER_MAX_SPEED,0,1));
   }else if(ent.kind==='human' && !ent.controllable && ent!==game.parasitisedHost){
     if(ent===game.templeEvent?.idol || ent.behaviour==='procession'){
-      scale=1.12;
+      scale=selectedActionName==='idle'?0.96:1.12;
     }else if(selectedActionName==='idle'){
       scale=1.08;
     }else if(selectedActionName==='run'){
@@ -7036,7 +7079,7 @@ function tickActor(ent,dt){
     ent.actionName==='kick' || ent.actionName==='punch' || ent.actionName==='punchcombo' ||
     selectedActionName==='kick' || selectedActionName==='punch' || selectedActionName==='punchcombo'
   ) && ent.actionTimer>0){
-    scale=(ent.actionName==='punch' || ent.actionName==='punchcombo' || selectedActionName==='punch' || selectedActionName==='punchcombo')?1.08:1.12;
+    scale=(ent.actionName==='punch' || ent.actionName==='punchcombo' || selectedActionName==='punch' || selectedActionName==='punchcombo')?getHostAttackTimeScale(ent.actionName||selectedActionName):1.12;
   }
   if(ent.inst.actions){
     for(const act of Object.values(ent.inst.actions)) act.setEffectiveTimeScale?.(scale);
@@ -7045,7 +7088,7 @@ function tickActor(ent,dt){
         : ((selectedActionName==='kick' || selectedActionName==='punch' || selectedActionName==='punchcombo') ? selectedActionName : null);
       if(ent.kind==='human' && attackActionName && ent.actionTimer>0 && ent.inst.actions[attackActionName]){
         ent.inst.actions[attackActionName].stopWarping?.();
-        ent.inst.actions[attackActionName].setEffectiveTimeScale?.(attackActionName==='kick'?1.12:1.08);
+        ent.inst.actions[attackActionName].setEffectiveTimeScale?.(getHostAttackTimeScale(attackActionName));
       }
   }
   if(ent.inst.action) ent.inst.action.setEffectiveTimeScale(scale);
@@ -7705,6 +7748,8 @@ function awakenTempleIdol(idol){
   idol.curSpeed=HOST_MAX_SPEED*0.74;
   idol.roamTarget=null;
   idol.roamTimer=0;
+  idol._idolMoving=true;
+  idol._lastMoveDistance=0.02;
   idol.awakenHoldY=typeof idol.root?.position?.y==='number'?idol.root.position.y:resolveIdolGroundY(idol);
   idol.awakenHoldTimer=0.22;
   idol.awakenDropStartDistance=1.4;
@@ -7767,9 +7812,11 @@ function tickTempleIdolProcession(idol,dt){
   if((idol.awakenHoldTimer||0)>0){
     idol.awakenHoldTimer=Math.max(0,idol.awakenHoldTimer-dt);
     idol.root.position.y=idol.awakenHoldY;
+    idol._idolMoving=false;
+    idol._lastMoveDistance=0;
+    idol.actionName='idle';
     tickTempleIdolKills(idol);
     tickActor(idol,dt);
-    tickFootstepSFX(idol,dt,'idolStep',{minSpeed:0.22,baseInterval:0.58,volume:0.82,cooldown:0.08,rateScale:0.04});
     realignActorFeet(idol.inst);
     return;
   }
@@ -7793,13 +7840,20 @@ function tickTempleIdolProcession(idol,dt){
     wrapResidentRingEntity(idol);
   }
   const afterMoveDist=Math.hypot(idol.root.position.x-prevX,idol.root.position.z-prevZ);
+  idol._lastMoveDistance=afterMoveDist;
+  idol._idolMoving=afterMoveDist>0.006;
   if(dist>0.8 && step>0.01 && afterMoveDist<step*0.18){
     idol._processionStuckTimer=(idol._processionStuckTimer||0)+dt;
-    if(idol._processionStuckTimer>0.65 && idol.processIndex<path.length-1){
-      idol.root.position.x+=Math.sin(idol.root.rotation.y)*0.9;
-      idol.root.position.z+=Math.cos(idol.root.rotation.y)*0.9;
-      idol.processIndex++;
+    if(idol._processionStuckTimer>0.42){
+      const forwardYaw=Math.atan2(dx,dz);
+      const side=(idol._processionStuckSide=(idol._processionStuckSide||1)*-1);
+      const sidestepYaw=forwardYaw+side*Math.PI*0.5;
+      idol.root.position.x+=Math.sin(sidestepYaw)*0.72+Math.sin(forwardYaw)*0.42;
+      idol.root.position.z=clamp(idol.root.position.z+Math.cos(sidestepYaw)*0.72+Math.cos(forwardYaw)*0.18,ALLEY_Z_MIN+1.25,ALLEY_Z_MAX-1.25);
       idol._processionStuckTimer=0;
+      if(idol.processIndex<path.length-1 && Math.hypot(path[idol.processIndex].x-idol.root.position.x,path[idol.processIndex].z-idol.root.position.z)<1.0){
+        idol.processIndex++;
+      }
     }
   }else{
     idol._processionStuckTimer=0;
@@ -7825,7 +7879,7 @@ function tickTempleIdolProcession(idol,dt){
   }
   tickTempleIdolKills(idol);
   tickActor(idol,dt);
-  tickFootstepSFX(idol,dt,'idolStep',{minSpeed:0.22,baseInterval:0.58,volume:0.82,cooldown:0.08,rateScale:0.04});
+  if(idol._idolMoving) tickFootstepSFX(idol,dt,'idolStep',{minSpeed:0.22,baseInterval:0.58,volume:0.82,cooldown:0.08,rateScale:0.04});
   // After the mixer advanced this frame, re-anchor the visible mesh so
   // the feet keep landing exactly at outer.y. Without this, the Mixamo
   // walk clip's residual Hips drift slowly pulls the model upward over
@@ -7834,22 +7888,21 @@ function tickTempleIdolProcession(idol,dt){
 }
 function tickTempleIdolRoam(idol,dt){
   idol.behaviour='procession';
-  idol.actionName='walk';
   idol.actionTimer=999999;
   idol.roamTimer=(idol.roamTimer||0)-dt;
+  const forwardSign=idol._roamForwardSign || (idol._roamForwardSign=1);
   const needNewTarget=!idol.roamTarget || idol.roamTimer<=0
     || Math.hypot(idol.roamTarget.x-idol.root.position.x,idol.roamTarget.z-idol.root.position.z)<1.2;
   if(needNewTarget){
-    idol.roamTimer=rand(2.8,5.8);
-    idol.roamTarget=new THREE.Vector3(
-      idol.root.position.x+rand(-18,18),
-      GROUND_Y_OFFSET+0.12,
-      clamp(rand(ALLEY_Z_MIN+2.5,ALLEY_Z_MAX-2.5),ALLEY_Z_MIN+2.5,ALLEY_Z_MAX-2.5)
-    );
+    idol.roamTimer=rand(2.4,4.8);
+    const forwardX=idol.root.position.x+forwardSign*rand(10,24);
+    const driftZ=clamp(idol.root.position.z+rand(-2.4,2.4),ALLEY_Z_MIN+2.2,ALLEY_Z_MAX-2.2);
+    idol.roamTarget=new THREE.Vector3(forwardX,GROUND_Y_OFFSET+0.12,driftZ);
   }
   const dx=idol.roamTarget.x-idol.root.position.x;
   const dz=idol.roamTarget.z-idol.root.position.z;
   const dist=Math.hypot(dx,dz);
+  let moved=0;
   if(dist>0.01){
     const yaw=Math.atan2(dx,dz);
     rotateTowardYaw(idol,yaw,dt,3.6);
@@ -7864,14 +7917,29 @@ function tickTempleIdolRoam(idol,dt){
     }else{
       wrapResidentRingEntity(idol);
     }
+    moved=Math.hypot(idol.root.position.x-prevX,idol.root.position.z-prevZ);
+    if(move>0.01 && moved<move*0.18){
+      idol._roamStuckTimer=(idol._roamStuckTimer||0)+dt;
+      if(idol._roamStuckTimer>0.42){
+        const side=(idol._roamStuckSide=(idol._roamStuckSide||1)*-1);
+        idol.root.position.z=clamp(idol.root.position.z+side*0.95,ALLEY_Z_MIN+2.0,ALLEY_Z_MAX-2.0);
+        idol.roamTarget=null;
+        idol._roamStuckTimer=0;
+      }
+    }else{
+      idol._roamStuckTimer=0;
+    }
   }
+  idol._lastMoveDistance=moved;
+  idol._idolMoving=moved>0.006;
+  idol.actionName=idol._idolMoving?'walk':'idle';
   idol.root.position.y=resolveIdolGroundY(idol);
   softClampZ(idol.root.position);
   softClampTempleX(idol.root.position);
   wrapResidentRingEntity(idol);
   tickTempleIdolKills(idol);
   tickActor(idol,dt);
-  tickFootstepSFX(idol,dt,'idolStep',{minSpeed:0.22,baseInterval:0.58,volume:0.82,cooldown:0.08,rateScale:0.04});
+  if(idol._idolMoving) tickFootstepSFX(idol,dt,'idolStep',{minSpeed:0.22,baseInterval:0.58,volume:0.82,cooldown:0.08,rateScale:0.04});
   realignActorFeet(idol.inst);
 }
 function tickTempleEvent(dt){
@@ -12183,14 +12251,25 @@ var hostAttackHoldState={
 };
 function beginHostAttackHold(kind='pointer'){
   const state=hostAttackHoldState[kind]||hostAttackHoldState.pointer;
-  if(game.controlMode!=='host' || !game.parasitisedHost) return false;
+  const host=game.parasitisedHost;
+  if(game.controlMode!=='host' || !host) return false;
   if(state.timer) window.clearTimeout(state.timer);
+  const now=performance.now();
+  const pendingSameHost=pendingHostTapAttack && pendingHostTapAttack.timer && pendingHostTapAttack.host===host;
+  if(pendingSameHost && (now-pendingHostTapAttack.startedAt)<=HOST_ATTACK_COMBO_WINDOW*1000){
+    cancelPendingHostTapAttack();
+    state.active=true;
+    state.triggered=true;
+    doHostAttack('punchcombo',{interruptHandAttack:true});
+    return true;
+  }
   state.active=true;
   state.triggered=false;
   state.timer=window.setTimeout(()=>{
     state.timer=null;
     if(!state.active || game.controlMode!=='host') return;
     state.triggered=true;
+    if(typeof cancelPendingHostTapAttack==='function') cancelPendingHostTapAttack();
     doHostAttack('kick');
   },HOST_ATTACK_HOLD_MS);
   return true;
@@ -12208,15 +12287,17 @@ function endHostAttackHold(kind='pointer'){
   return true;
 }
 function cancelHostAttackHold(){
-  if(!hostAttackHoldState) return;
-  for(const state of Object.values(hostAttackHoldState)){
-    state.active=false;
-    state.triggered=false;
-    if(state.timer){
-      window.clearTimeout(state.timer);
-      state.timer=null;
+  if(hostAttackHoldState){
+    for(const state of Object.values(hostAttackHoldState)){
+      state.active=false;
+      state.triggered=false;
+      if(state.timer){
+        window.clearTimeout(state.timer);
+        state.timer=null;
+      }
     }
   }
+  if(typeof cancelPendingHostTapAttack==='function') cancelPendingHostTapAttack();
 }
 {
   const zone=document.getElementById('joystick-zone');
@@ -12852,39 +12933,93 @@ function chooseHostAttackAction(host,requested='kick'){
     ? (actions.punch?'punch':'punchcombo')
     : (actions.kick?'kick':null);
 }
-function getHostTapAttackKind(host){
-  const now=gameTime || performance.now()*0.001;
-  const combo=(now-(host._lastAttackTapAt??-999))<=HOST_ATTACK_COMBO_WINDOW;
-  host._lastAttackTapAt=now;
-  return combo?'punchcombo':'punch';
+function getHostAttackTimeScale(actionName){
+  if(actionName==='punch') return HOST_PUNCH_TIME_SCALE;
+  if(actionName==='punchcombo') return HOST_PUNCHCOMBO_TIME_SCALE;
+  if(actionName==='kick') return 1.12;
+  return 1;
+}
+function getHostAttackStartTime(actionName){
+  if(actionName==='punch') return HOST_PUNCH_START_TIME;
+  if(actionName==='punchcombo') return HOST_PUNCHCOMBO_START_TIME;
+  return 0;
+}
+var pendingHostTapAttack={timer:null,host:null,startedAt:0};
+function cancelPendingHostTapAttack(){
+  if(pendingHostTapAttack?.timer){
+    window.clearTimeout(pendingHostTapAttack.timer);
+    pendingHostTapAttack.timer=null;
+  }
+  if(pendingHostTapAttack){
+    pendingHostTapAttack.host=null;
+    pendingHostTapAttack.startedAt=0;
+  }
 }
 function triggerHostTapAttack(){
   const host=game.parasitisedHost;
   if(!host) return;
-  doHostAttack(getHostTapAttackKind(host));
+  const now=performance.now();
+  const pendingSameHost=pendingHostTapAttack.timer && pendingHostTapAttack.host===host;
+  const comboFromPending=pendingSameHost && (now-pendingHostTapAttack.startedAt)<=HOST_ATTACK_COMBO_WINDOW*1000;
+  const comboFromActive=host.actionName==='punch' && host.actionTimer>0 && (now-(host._lastPunchStartedAt||0))<=HOST_ATTACK_COMBO_WINDOW*1000;
+  if(comboFromPending || comboFromActive){
+    cancelPendingHostTapAttack();
+    host._lastAttackTapAt=now*0.001;
+    doHostAttack('punchcombo',{interruptHandAttack:true});
+    return;
+  }
+  cancelPendingHostTapAttack();
+  host._lastAttackTapAt=now*0.001;
+  pendingHostTapAttack.host=host;
+  pendingHostTapAttack.startedAt=now;
+  pendingHostTapAttack.timer=window.setTimeout(()=>{
+    const targetHost=pendingHostTapAttack.host;
+    pendingHostTapAttack.timer=null;
+    pendingHostTapAttack.host=null;
+    pendingHostTapAttack.startedAt=0;
+    if(targetHost && targetHost===game.parasitisedHost && game.controlMode==='host'){
+      doHostAttack('punch');
+    }
+  },HOST_ATTACK_TAP_BUFFER_MS);
 }
-function doHostAttack(requested='kick'){
+function doHostAttack(requested='kick',opts={}){
   const host=game.parasitisedHost;
   if(!host||host.downTimer>0)return;
   const queuedKind=chooseHostAttackAction(host,requested) || 'kick';
-  if((host.actionName==='kick' || host.actionName==='punch' || host.actionName==='punchcombo')&&host.actionTimer>0){
-    host.attackQueued=queuedKind;
-    return;
+  const isRunningAttack=(host.actionName==='kick' || host.actionName==='punch' || host.actionName==='punchcombo')&&host.actionTimer>0;
+  if(isRunningAttack){
+    const canInterruptToCombo=opts?.interruptHandAttack && queuedKind==='punchcombo' && host.actionName==='punch';
+    if(!canInterruptToCombo){
+      host.attackQueued=queuedKind;
+      return;
+    }
+    const oldAct=host.inst?.actions?.[host.actionName];
+    if(oldAct){
+      oldAct.stopFading?.();
+      oldAct.stopWarping?.();
+      oldAct.stop?.();
+      oldAct.setEffectiveWeight?.(0);
+    }
   }
-  if(host.attackCooldown>0)return;
+  if(host.attackCooldown>0 && !(opts?.interruptHandAttack && queuedKind==='punchcombo'))return;
   const actionName=queuedKind;
-  host.attackCooldown=actionName==='kick'?0.16:0.11;
+  const timeScale=getHostAttackTimeScale(actionName);
+  host.attackCooldown=actionName==='kick'?0.16:(actionName==='punchcombo'?0.07:0.09);
   host.actionName=actionName;
   host.actionStamp=(host.actionStamp||0)+1;
   host.attackQueued=false;
+  if(actionName==='punch') host._lastPunchStartedAt=performance.now();
   const attackAct=host.inst?.actions?.[actionName];
-  const fallbackDuration=actionName==='kick'?0.72:(actionName==='punchcombo'?0.86:0.48);
-  host.actionTimer=Math.max(fallbackDuration,attackAct?.getClip?.().duration||fallbackDuration);
+  const fallbackDuration=actionName==='kick'?0.72:(actionName==='punchcombo'?0.46:0.26);
+  const clipDuration=attackAct?.getClip?.().duration||fallbackDuration;
+  host.actionTimer=Math.max(0.18,Math.min(fallbackDuration,clipDuration/Math.max(0.001,timeScale)));
   if(attackAct){
     attackAct.enabled=true;
     attackAct.paused=false;
     attackAct.reset();
+    attackAct.time=Math.min(getHostAttackStartTime(actionName),Math.max(0,(attackAct.getClip?.().duration||0)-0.02));
     attackAct.setEffectiveWeight(1);
+    attackAct.setEffectiveTimeScale?.(timeScale);
     attackAct.stopFading?.();
     attackAct.stopWarping?.();
     attackAct.play();
@@ -13073,7 +13208,8 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
   clone.position.x+=shiftX;
   clone.userData={...(clone.userData||{}),ringSeamSourceUuid:obj.uuid,ringSeamShift:shiftX};
   const sourceProp=obj.userData?.isPropRoot ? game.props.find(p=>p?.root===obj) : null;
-  if(sourceProp?.tipped || sourceProp?.tipTriggered) clone.visible=false;
+  const linkedSourceProp=sourceProp?null:game.props.find(p=>Array.isArray(p?.linkedStallParts) && p.linkedStallParts.includes(obj));
+  if(sourceProp?.tipped || sourceProp?.tipTriggered || linkedSourceProp?.tipped || linkedSourceProp?.tipTriggered) clone.visible=false;
   clone.traverse(n=>{
     n.userData={...(n.userData||{}),ringSeamPreview:true};
     n.raycast=()=>{};
@@ -13090,10 +13226,15 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
 }
 function setRingPreviewPropVisible(prop,visible){
   if(!prop?.root) return;
-  const sourceUuid=prop.root.uuid;
+  const sourceUuids=new Set([prop.root.uuid]);
+  if(Array.isArray(prop.linkedStallParts)){
+    for(const part of prop.linkedStallParts){
+      if(part?.uuid) sourceUuids.add(part.uuid);
+    }
+  }
   for(const group of [ringSeamPreviewMinGroup,ringSeamPreviewMaxGroup]){
     group?.traverse?.(obj=>{
-      if(obj?.userData?.ringSeamSourceUuid===sourceUuid) obj.visible=visible;
+      if(sourceUuids.has(obj?.userData?.ringSeamSourceUuid)) obj.visible=visible;
     });
   }
 }
@@ -13105,7 +13246,7 @@ function resyncActorMixerAfterWarp(ent){
   const actions=ent?.inst?.actions;
   if(!mixer || !actions) return 'no-mixer';
   const preferred=isTempleIdolEntity(ent)
-    ? (actions.walk?'walk':(actions.run?'run':'idle'))
+    ? ((ent.actionName==='idle' && actions.idle)?'idle':(actions.walk?'walk':(actions.run?'run':'idle')))
     : (ent.animState||ent.actionName||'idle');
   mixer.stopAllAction?.();
   const preferredAct=actions[preferred];
@@ -13840,15 +13981,17 @@ function findRingTwinProp(prop){
   const baseZ=prop.basePosition.z;
   let best=null;
   let bestScore=Infinity;
-  const scanCandidates=(candidates,targetX)=>{
+  const looseKindMatch=(cand)=>cand.kind===prop.kind || (cand.kind==='stall' && prop.kind==='stall');
+  const scanCandidates=(candidates,targetX,loose=false)=>{
     for(const cand of candidates){
       if(!cand || cand===prop || !cand.root || !cand.basePosition) continue;
-      if(cand.kind!==prop.kind) continue;
+      if(!looseKindMatch(cand)) continue;
       const dx=Math.abs(cand.basePosition.x-targetX);
       const dz=Math.abs(cand.basePosition.z-baseZ);
-      if(dx>1.65 || dz>1.65) continue;
+      const limit=loose?(prop.kind==='stall'?4.2:2.4):(prop.kind==='stall'?2.8:1.65);
+      if(dx>limit || dz>limit) continue;
       const sizePenalty=Math.abs((cand.halfX||0)-(prop.halfX||0))+Math.abs((cand.halfZ||0)-(prop.halfZ||0));
-      const score=dx*dx+dz*dz+sizePenalty*0.2;
+      const score=dx*dx+dz*dz+sizePenalty*(loose?0.05:0.2);
       if(score<bestScore){
         bestScore=score;
         best=cand;
@@ -13857,11 +14000,16 @@ function findRingTwinProp(prop){
   };
   for(const shift of [-RING_SEAM_LENGTH,RING_SEAM_LENGTH]){
     const targetX=baseX+shift;
-    scanCandidates(getPropsNear(targetX,baseZ,2.2),targetX);
+    scanCandidates(getPropsNear(targetX,baseZ,prop.kind==='stall'?4.6:2.6),targetX,false);
     if(best) return best;
   }
   for(const shift of [-RING_SEAM_LENGTH,RING_SEAM_LENGTH]){
-    scanCandidates(game.props,baseX+shift);
+    scanCandidates(game.props,baseX+shift,false);
+    if(best) return best;
+  }
+  for(const shift of [-RING_SEAM_LENGTH,RING_SEAM_LENGTH]){
+    const targetX=baseX+shift;
+    scanCandidates(getPropsNear(targetX,baseZ,prop.kind==='stall'?5.2:3.0),targetX,true);
     if(best) return best;
   }
   return null;
@@ -13903,6 +14051,11 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   p.tipped=true;
   p.tidyProgress=0;
   setRingPreviewPropVisible(p,false);
+  if(p.kind==='stall' && Array.isArray(p.linkedStallParts)){
+    for(const part of p.linkedStallParts){
+      if(part) part.visible=false;
+    }
+  }
   if(!silentSync){
     spawnHitFlash(p.root.position);
     playSFX(getPropBreakSFXKey(p),{volume:0.84,cooldown:0.08,source:p});
@@ -14054,6 +14207,11 @@ function restorePropFromCleaner(prop,source='cleaner'){
   prop.tipTriggered=false;
   prop.tipAnim=null;
   setRingPreviewPropVisible(prop,true);
+  if(prop.kind==='stall' && Array.isArray(prop.linkedStallParts)){
+    for(const part of prop.linkedStallParts){
+      if(part) part.visible=true;
+    }
+  }
   prop.heldBy=null;
   prop.throwVel=null;
   prop.throwOwner=null;
