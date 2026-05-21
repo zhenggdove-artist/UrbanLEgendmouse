@@ -1019,6 +1019,8 @@ const TEMPLE_LOOP_PORTAL_RADIUS=5.2;
 const TEMPLE_LOOP_PORTAL_COOLDOWN=0.55;
 const TEMPLE_IDOL_SPAWN_Y_OFFSET=0;
 const RITUAL_RAT_VISIBLE_Y_OFFSET=0.20;
+const RITUAL_IDOL_CLIMB_DURATION=10.0;
+const RITUAL_DROP_DURATION=1.25;
 function getRitualRatGroundY(rat=null){return ((rat?.baseY??0)+GROUND_Y_OFFSET+RITUAL_RAT_VISIBLE_Y_OFFSET);}
 function resolveIdolGroundY(idol){
   // The default sampleSupportHeight gates blockers with a tight currentY
@@ -1154,6 +1156,7 @@ const game={
     root:null,arch:null,idol:null,idolActor:null,altarPos:new THREE.Vector3(),
     altarTopPos:new THREE.Vector3(),altarEdgeTopPos:new THREE.Vector3(),altarFrontPos:new THREE.Vector3(),doorwayPos:new THREE.Vector3(),streetPos:new THREE.Vector3(),rearDoorwayPos:new THREE.Vector3(),rearStreetPos:new THREE.Vector3(),processionPath:[],
     gathering:false,started:false,awakened:false,awakeningRequested:false,phase:'idle',phaseTimer:0,swarmProgress:0,swarmSprites:[],
+    ritualElapsed:0,ritualFinishedDispatched:false,
     pendingSwarmCount:0,swarmSpawnCursor:0,swarmSpawnPerFrame:32,pendingSwarmBursts:[],
     glowCooldown:0,flashStrength:0,keyLight:null,rimLight:null,lightTarget:null,
     // Loop portals make the two end-of-street temples conceptually the same
@@ -1347,6 +1350,21 @@ const HUMAN_BITE_SCREAM_PATHS={
 const ALL_SFX_KEYS=[...Object.keys(SOUND_PATHS),...Object.keys(HUMAN_BITE_SCREAM_PATHS)];
 const SFX_DISTANCE_NEAR=2.2;
 const SFX_DISTANCE_FAR=34;
+const SFX_MOBILE_ONE_SHOT_LIMIT=8;
+const SFX_PRIORITY={
+  playerJump:100,
+  playerBiteLoop:100,
+  parasiteComplete:96,
+  humanDeath:88,
+  glassBreak:76,
+  stallBreak:74,
+  vehicleBreak:74,
+  binFall:70,
+  stallFire:66,
+  idolStep:58,
+  playerMove:38,
+  ratFootstep:22
+};
 const sfxState={
   unlocked:false,
   unlockPromise:null,
@@ -1380,6 +1398,45 @@ function getSFXPolyphony(key){
   if(key==='playerJump' || key==='parasiteComplete' || key==='binFall' || key==='vehicleBreak' || key==='stallBreak' || key==='glassBreak' || key==='stallFire') return 3;
   if(HUMAN_BITE_SCREAM_PATHS[key]) return 2;
   return 2;
+}
+function getSFXPriority(key,override=null){
+  if(Number.isFinite(override)) return override;
+  if(HUMAN_BITE_SCREAM_PATHS[key]) return 72;
+  return SFX_PRIORITY[key] ?? 50;
+}
+function getActiveOneShotSFX(){
+  const active=[];
+  for(const player of sfxState.players.values()){
+    for(const audio of player.pool||[]){
+      if(!audio || audio.paused || audio.ended) continue;
+      active.push(audio);
+    }
+  }
+  return active;
+}
+function releaseLowerPrioritySFX(priority){
+  let victim=null;
+  let victimPriority=Infinity;
+  for(const audio of getActiveOneShotSFX()){
+    const p=audio._sfxPriority ?? 50;
+    if(p<priority && p<victimPriority){
+      victim=audio;
+      victimPriority=p;
+    }
+  }
+  if(!victim) return false;
+  try{
+    victim.pause();
+    victim.currentTime=0;
+  }catch(_){}
+  return true;
+}
+function canStartOneShotSFX(priority){
+  if(!IS_MOBILE_DEVICE) return true;
+  const active=getActiveOneShotSFX();
+  if(active.length<SFX_MOBILE_ONE_SHOT_LIMIT) return true;
+  if(releaseLowerPrioritySFX(priority)) return true;
+  return priority>=90 && active.length<SFX_MOBILE_ONE_SHOT_LIMIT+2;
 }
 function warmSFXAudioElement(audio){
   // Cross-browser audio unlock. The earlier load()-only path made
@@ -1535,7 +1592,7 @@ function getSFXDistanceGain(source){
   const t=clamp((dist-SFX_DISTANCE_NEAR)/Math.max(0.001,SFX_DISTANCE_FAR-SFX_DISTANCE_NEAR),0,1);
   return Math.pow(1-t,1.6);
 }
-function playSFX(key,{volume=1,playbackRate=1,cooldown=0,reset=true,source=null,reuseBase=false}={}){
+function playSFX(key,{volume=1,playbackRate=1,cooldown=0,reset=true,source=null,reuseBase=false,priority=null}={}){
   if(!sfxState.unlocked) return null;
   const player=ensureSFXPlayer(key);
   if(!player) return null;
@@ -1543,10 +1600,12 @@ function playSFX(key,{volume=1,playbackRate=1,cooldown=0,reset=true,source=null,
   const cooldownKey=`${key}:${cooldownId}`;
   const lastTime=(cooldown>0 ? (player.cooldowns.get(cooldownKey)??-Infinity) : player.lastTime);
   if(cooldown>0 && gameTime-lastTime<cooldown) return null;
-  if(cooldown>0) player.cooldowns.set(cooldownKey,gameTime);
-  player.lastTime=gameTime;
   const gain=getSFXDistanceGain(source);
   if(gain<=0.001) return null;
+  const sfxPriority=getSFXPriority(key,priority);
+  if(!SFX_LOOP_KEYS.has(key) && !canStartOneShotSFX(sfxPriority)) return null;
+  if(cooldown>0) player.cooldowns.set(cooldownKey,gameTime);
+  player.lastTime=gameTime;
   let audio=null;
   if(reuseBase && player.audio.paused){
     audio=player.audio;
@@ -1562,6 +1621,8 @@ function playSFX(key,{volume=1,playbackRate=1,cooldown=0,reset=true,source=null,
   audio.volume=clamp(volume*gain*sfxState.masterVolume,0,1);
   audio.playbackRate=playbackRate;
   audio.muted=false;
+  audio._sfxPriority=sfxPriority;
+  audio._sfxKey=key;
   if(reset) audio.currentTime=0;
   audio.play().catch(()=>{});
   return audio;
@@ -1695,8 +1756,12 @@ function getHumanBiteScreamKey(human){
 }
 function playHumanBiteScream(human,force=false){
   if(!human) return null;
+  const cooldown=force?0.75:1.85;
+  const last=human._lastBiteScreamTime??-Infinity;
+  if(gameTime-last<cooldown) return null;
+  human._lastBiteScreamTime=gameTime;
   const key=getHumanBiteScreamKey(human);
-  return playSFX(key,{volume:0.58,cooldown:force?0:0.18,source:human});
+  return playSFX(key,{volume:0.58,cooldown:0.08,source:human,priority:72});
 }
 function syncPlayerBiteLoop(){
   const active=!!(player?.ratAnim?.biteTimer>0);
@@ -4837,7 +4902,7 @@ function removeRingSeamPreviewGroups(){
 function ensureRitualEscortRats(){
   const idol=game.templeEvent.idol;
   if(!idol?.root) return;
-  const targetCount=IS_MOBILE_DEVICE?54:96;
+  const targetCount=Math.max(IS_MOBILE_DEVICE?54:96,game.templeEvent.swarmSprites?.length||0);
   let escorts=game.rats.filter(r=>r && r!==player && (r.followStatue || r.templeSwarmVisual || r.templeBound));
   escorts.sort((a,b)=>{
     const adx=(a.root?.position?.x||0)-idol.root.position.x;
@@ -4846,13 +4911,6 @@ function ensureRitualEscortRats(){
     const bdz=(b.root?.position?.z||0)-idol.root.position.z;
     return (adx*adx+adz*adz)-(bdx*bdx+bdz*bdz);
   });
-  if(escorts.length>targetCount){
-    const excess=escorts.slice(targetCount);
-    for(const rat of excess){
-      removeRatEntity(rat,{countAsVirtual:true});
-    }
-    escorts=escorts.slice(0,targetCount);
-  }
   while(escorts.length<targetCount){
     const rat=buildRat({isPlayer:false});
     const a=Math.random()*Math.PI*2;
@@ -5977,7 +6035,10 @@ function tickActor(ent,dt){
       ent._animBlendFrom=(prevAct && prevAct!==nextAct)?prevState:null;
       ent._animBlendTo=next;
       ent._animBlendT=0;
-      ent._animBlendDur=locomotionSwitch?0.18:0.055;
+      ent._animBlendDur=Number.isFinite(ent._forceNextBlendDur)
+        ? ent._forceNextBlendDur
+        : (locomotionSwitch?0.18:0.055);
+      ent._forceNextBlendDur=null;
       ent.animState=next;
       if(shouldRestartAction) ent.lastActionStamp=ent.actionStamp;
     }
@@ -6464,6 +6525,142 @@ function setTempleFlash(strength=0){
   game.templeEvent.flashStrength=clamp(strength,0,1);
   if(templeFlashEl) templeFlashEl.style.opacity=game.templeEvent.flashStrength.toFixed(3);
 }
+function ensureRitualRatPattern(rat,index=rat?.swarmSpawnIndex||0,total=rat?.swarmSpawnTotal||1){
+  if(rat?.ritualPattern) return rat.ritualPattern;
+  const phase=rat?.swarmPhase ?? Math.random()*Math.PI*2;
+  const lane=(index/Math.max(1,total))*Math.PI*2;
+  const pattern={
+    delay:rand(0,0.12),
+    doorX:rand(-1.25,1.25),
+    doorZ:rand(-0.75,0.75),
+    footX:rand(-0.78,0.78),
+    footZ:rand(-0.36,0.36),
+    packX:rand(-1.15,1.15),
+    packZ:rand(-0.52,0.52),
+    topX:rand(-1.45,1.45),
+    topZ:rand(-0.74,0.74),
+    bodyAngle:phase*1.7+lane*0.35+rand(-0.9,0.9),
+    bodyRadius:rand(0.24,1.38),
+    bodyFlat:rand(0.42,0.72),
+    bodyHeight:Math.pow(Math.random(),0.72),
+    jitterA:rand(0,Math.PI*2),
+    jitterSpeed:rand(0.45,1.25),
+    dropX:rand(-1.35,1.35),
+    dropZ:rand(-0.58,0.58),
+    dropDelay:rand(0,0.18)
+  };
+  if(rat) rat.ritualPattern=pattern;
+  return pattern;
+}
+function getRitualRatClimbTarget(rat,swarmSnapshot,swarmIdol,progress){
+  const pat=ensureRitualRatPattern(rat);
+  const snapshot=swarmSnapshot||game.templeEvent;
+  const altarFront=snapshot.altarFrontPos||game.templeEvent.altarFrontPos;
+  const altarEdgeTop=snapshot.altarEdgeTopPos||game.templeEvent.altarEdgeTopPos;
+  const altarTop=snapshot.altarTopPos||game.templeEvent.altarTopPos;
+  const doorway=snapshot.doorwayPos||game.templeEvent.doorwayPos;
+  const altarPos=snapshot.altarPos||game.templeEvent.altarPos;
+  const idolPos=swarmIdol?.root?.position||altarPos;
+  const idolBaseY=swarmIdol?.root?.position?.y ?? game.templeEvent.idol?.root?.position?.y ?? altarTop.y;
+  const local=clamp((progress-pat.delay)/Math.max(0.001,1-pat.delay),0,1);
+  const climb=local*local*(3-2*local);
+  const phase=rat?.swarmPhase ?? 0;
+  const groundY=getRitualRatGroundY(rat);
+  const wobbleX=Math.sin(gameTime*pat.jitterSpeed+pat.jitterA)*0.08;
+  const wobbleZ=Math.cos(gameTime*(pat.jitterSpeed*0.87)+pat.jitterA)*0.06;
+  let targetX,targetZ,targetY,lerpRate;
+  const spawnX=(rat?.spawnX!==undefined)?rat.spawnX:rat?.root?.position?.x ?? doorway.x;
+  const spawnZ=(rat?.spawnZ!==undefined)?rat.spawnZ:rat?.root?.position?.z ?? doorway.z;
+  const footX=altarFront.x+pat.footX;
+  const footZ=altarFront.z+pat.footZ;
+  if(climb<0.22){
+    const rush=climb/0.22;
+    if(rush<0.52){
+      const u=rush/0.52;
+      targetX=lerp(spawnX,doorway.x+pat.doorX,u);
+      targetZ=lerp(spawnZ,doorway.z+pat.doorZ,u);
+    }else{
+      const u=(rush-0.52)/0.48;
+      targetX=lerp(doorway.x+pat.doorX,footX,u);
+      targetZ=lerp(doorway.z+pat.doorZ,footZ,u);
+    }
+    targetY=groundY;
+    lerpRate=4.6;
+  }else if(climb<0.42){
+    const pack=(climb-0.22)/0.20;
+    targetX=lerp(footX,altarFront.x+pat.packX,pack)+wobbleX;
+    targetZ=lerp(footZ,altarFront.z+pat.packZ,pack)+wobbleZ;
+    targetY=groundY;
+    lerpRate=3.4;
+  }else if(climb<0.62){
+    const lift=(climb-0.42)/0.20;
+    targetX=altarFront.x+pat.packX*0.62+wobbleX;
+    targetZ=altarFront.z+pat.packZ*0.45+wobbleZ;
+    targetY=lerp(groundY,altarEdgeTop.y+0.05+RITUAL_RAT_VISIBLE_Y_OFFSET,lift);
+    lerpRate=3.0;
+  }else if(climb<0.80){
+    const top=(climb-0.62)/0.18;
+    targetX=lerp(altarFront.x+pat.packX*0.45,altarTop.x+pat.topX,top)+wobbleX;
+    targetZ=lerp(altarFront.z+pat.packZ*0.30,altarTop.z+pat.topZ,top)+wobbleZ;
+    targetY=lerp(altarEdgeTop.y+0.05+RITUAL_RAT_VISIBLE_Y_OFFSET,altarTop.y+0.10+RITUAL_RAT_VISIBLE_Y_OFFSET,top);
+    lerpRate=3.2;
+  }else{
+    const crest=(climb-0.80)/0.20;
+    const radius=lerp(1.32,pat.bodyRadius,crest);
+    const angle=pat.bodyAngle+Math.sin(gameTime*0.32+phase)*0.10;
+    targetX=lerp(altarTop.x+pat.topX,idolPos.x+Math.cos(angle)*radius,crest)+wobbleX;
+    targetZ=lerp(altarTop.z+pat.topZ,idolPos.z+Math.sin(angle)*radius*pat.bodyFlat,crest)+wobbleZ;
+    const bodyY=idolBaseY+lerp(0.24,TEMPLE_IDOL_HEIGHT+0.18,pat.bodyHeight);
+    targetY=lerp(altarTop.y+0.10+RITUAL_RAT_VISIBLE_Y_OFFSET,bodyY+RITUAL_RAT_VISIBLE_Y_OFFSET,crest);
+    lerpRate=3.6;
+  }
+  return {x:targetX,y:targetY,z:targetZ,climb,lerpRate};
+}
+function getRitualRatDropTarget(rat){
+  const pat=ensureRitualRatPattern(rat);
+  const altarTop=rat?.templeSwarmSnapshot?.altarTopPos||game.templeEvent.altarTopPos;
+  return {
+    x:altarTop.x+pat.dropX,
+    y:altarTop.y+0.12+RITUAL_RAT_VISIBLE_Y_OFFSET,
+    z:altarTop.z+pat.dropZ,
+    delay:pat.dropDelay
+  };
+}
+function handleRitualFinished(idol){
+  const activeIdol=(idol?.root?.parent?idol:game.templeEvent.idol);
+  const ritualRats=new Set(game.templeEvent.swarmSprites||[]);
+  for(const rat of game.rats){
+    if(rat?.templeBound || rat?.templeSwarmVisual || rat?.followStatue) ritualRats.add(rat);
+  }
+  for(const rat of ritualRats){
+    if(!rat?.root || rat===player || rat===game.controlled) continue;
+    detachRatFromHuman(rat);
+    rat.targetHuman=null;
+    rat.targetTemple=null;
+    rat.templeTarget=null;
+    rat.templeBound=false;
+    rat.templeSwarmVisual=false;
+    rat.followPlayer=false;
+    rat.followStatue=true;
+    rat.targetIdol=activeIdol||null;
+    rat.templeSwarmIdol=activeIdol||rat.templeSwarmIdol||null;
+    rat.visualBudgetLockUntil=gameTime+8;
+    rat.fullFollowerSim=true;
+    rat._brainPrimed=false;
+    rat._worldProbePrimed=false;
+    if(activeIdol?.root) rat.targetPos?.set(activeIdol.root.position.x,0,activeIdol.root.position.z);
+    rat.root.position.y=Math.max(rat.root.position.y,getRitualRatGroundY(rat));
+  }
+}
+function dispatchRitualFinished(idol){
+  if(game.templeEvent.ritualFinishedDispatched) return;
+  game.templeEvent.ritualFinishedDispatched=true;
+  handleRitualFinished(idol);
+  window.dispatchEvent(new CustomEvent('ritual-finished',{
+    detail:{idol,ratCount:game.templeEvent.swarmSprites.length}
+  }));
+}
+window.addEventListener('ritual-finished',e=>handleRitualFinished(e.detail?.idol));
 function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null,entrance=null){
   const street=entrance?.streetPos||plazaSnapshot.streetPos;
   const doorway=entrance?.doorwayPos||plazaSnapshot.doorwayPos;
@@ -6473,6 +6670,7 @@ function spawnTempleSwarmRat(index,total,plazaSnapshot,idolActor=null,entrance=n
   const perpX=-inZ, perpZ=inX;
   const rat=buildRat({isPlayer:false});
   rat.swarmPhase=Math.random()*Math.PI*2;
+  ensureRitualRatPattern(rat,index,total);
   const backOff=rand(0.6,6.5);
   const side=rand(-2.8,2.8);
   const sx=street.x - inX*backOff + perpX*side;
@@ -6548,6 +6746,8 @@ function startTempleAwakeningLegacy(){
   game.templeEvent.phase='gather';
   game.templeEvent.phaseTimer=0;
   game.templeEvent.swarmProgress=0;
+  game.templeEvent.ritualElapsed=0;
+  game.templeEvent.ritualFinishedDispatched=false;
   game.templeEvent.swarmSettleTimer=0;
   game.templeEvent.glowCooldown=0;
   game.templeEvent.swarmSprites.length=0;
@@ -6798,7 +6998,8 @@ function tickTempleEvent(dt){
   tickTempleSwarmSpawnQueue();
   if(!game.templeEvent.started)return;
   if(game.templeEvent.phase==='gather'){
-    game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.swarmProgress+dt*0.22);
+    game.templeEvent.ritualElapsed=(game.templeEvent.ritualElapsed||0)+dt;
+    game.templeEvent.swarmProgress=Math.min(1,game.templeEvent.ritualElapsed/RITUAL_IDOL_CLIMB_DURATION);
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
       const swarmSnapshot=rat.templeSwarmSnapshot||{
@@ -6810,6 +7011,11 @@ function tickTempleEvent(dt){
         streetPos:game.templeEvent.streetPos
       };
       const swarmIdol=(rat.templeSwarmIdol?.root && rat.templeSwarmIdol.root.parent)?rat.templeSwarmIdol:idol;
+      const ritualTarget=getRitualRatClimbTarget(rat,swarmSnapshot,swarmIdol,game.templeEvent.swarmProgress);
+      let targetX=ritualTarget.x, targetZ=ritualTarget.z, targetY=ritualTarget.y;
+      /* Legacy synchronized ring path disabled. The ritual now uses
+         per-rat randomized offsets so the climb reads as chaotic swarm,
+         not a repeated figure-eight orbit.
       const idolBaseY=swarmIdol?.root?.position?.y ?? idol.root.position.y;
       const altarFront=swarmSnapshot.altarFrontPos;
       const altarEdgeTop=swarmSnapshot.altarEdgeTopPos;
@@ -6883,7 +7089,8 @@ function tickTempleEvent(dt){
       // Rush stage uses a higher lerp so the wave from outside the doorway
       // actually reaches the altar foot before the swarmProgress timer
       // advances them into the climb stages.
-      const lerpRate=climb<0.20 ? 6.4 : (climb>0.58 ? 5.6 : 3.4);
+      */
+      const lerpRate=ritualTarget.lerpRate;
       // Gate the vertical lift by horizontal proximity so rats far away
       // from the altar don't take off into the air. Only rats already
       // within ~1.2 m of the target XZ actually climb upward.
@@ -6906,7 +7113,7 @@ function tickTempleEvent(dt){
       rat.root.position.y=lerp(rat.root.position.y,yGate,Math.min(1,dt*(lerpRate+0.6)));
       wrapResidentRingEntity(rat);
       rat.root.rotation.y=Math.atan2(swarmSnapshot.altarPos.x-rat.root.position.x,swarmSnapshot.altarPos.z-rat.root.position.z);
-      rat.moveIntent.y=-1;
+      if(rat.moveIntent){rat.moveIntent.x=0;rat.moveIntent.y=-1;}
       tickRatVisualAnimLOD(rat,dt);
     }
     game.templeEvent.glowCooldown-=dt;
@@ -6945,7 +7152,7 @@ function tickTempleEvent(dt){
     if(Math.random()<0.75) spawnTempleGlow(game.templeEvent.altarPos,12);
     if(game.templeEvent.phaseTimer<=0){
       game.templeEvent.phase='drop';
-      game.templeEvent.phaseTimer=0.85;
+      game.templeEvent.phaseTimer=RITUAL_DROP_DURATION;
       // Reveal the true flesh on every twin simultaneously, then despawn
       // the decorative ones so the looped twin altar isn't left with a
       // static statue while the primary walks away.
@@ -6956,17 +7163,40 @@ function tickTempleEvent(dt){
   }
   if(game.templeEvent.phase==='drop'){
     game.templeEvent.phaseTimer=Math.max(0,game.templeEvent.phaseTimer-dt);
-    const dropProgress=1-(game.templeEvent.phaseTimer/0.85);
+    const dropProgress=1-(game.templeEvent.phaseTimer/RITUAL_DROP_DURATION);
     setTempleFlash(Math.max(0,0.95-dropProgress*1.25));
     for(const rat of game.templeEvent.swarmSprites){
       if(!rat?.root)continue;
-      rat.root.position.y=lerp(rat.root.position.y,getRitualRatGroundY(rat),Math.min(1,dt*6.5));
-      rat.followStatue=true;
-      rat.templeBound=false;
-      rat.templeSwarmVisual=false;
+      const target=getRitualRatDropTarget(rat);
+      const local=clamp((dropProgress-target.delay)/Math.max(0.001,1-target.delay),0,1);
+      const u=local*local*(3-2*local);
+      const moveT=Math.min(1,dt*5.6);
+      const nextX=lerp(rat.root.position.x,target.x,u*moveT);
+      const nextZ=lerp(rat.root.position.z,target.z,u*moveT);
+      const stepX=nextX-rat.root.position.x;
+      const stepZ=nextZ-rat.root.position.z;
+      const stepLen=Math.hypot(stepX,stepZ);
+      if(stepLen>RITUAL_RAT_MAX_FRAME_MOVE){
+        const s=RITUAL_RAT_MAX_FRAME_MOVE/stepLen;
+        rat.root.position.x+=stepX*s;
+        rat.root.position.z+=stepZ*s;
+      }else{
+        rat.root.position.x=nextX;
+        rat.root.position.z=nextZ;
+      }
+      rat.root.position.y=lerp(rat.root.position.y,target.y,Math.min(1,dt*6.0));
+      rat.templeBound=true;
+      rat.templeSwarmVisual=true;
+      rat.followStatue=false;
       rat.followPlayer=false;
+      rat.targetHuman=null;
+      rat.targetIdol=idol;
+      rat.root.rotation.y=Math.atan2(target.x-rat.root.position.x,target.z-rat.root.position.z);
+      if(rat.moveIntent){rat.moveIntent.x=0;rat.moveIntent.y=-1;}
+      tickRatVisualAnimLOD(rat,dt);
     }
     if(game.templeEvent.phaseTimer<=0){
+      dispatchRitualFinished(idol);
       awakenTempleIdol(idol);
       ensureRitualEscortRats();
     }
@@ -11282,7 +11512,7 @@ function enterHost(rat,host){
     host.parasiteAnim.frame=0;
     host.parasiteAnim.timer=0;
   }
-  playSFX('parasiteComplete',{volume:0.95,cooldown:0.08,source:host});
+  playSFX('parasiteComplete',{volume:0.95,cooldown:0.08,source:host,priority:96});
   host.parasiteTimer=HOST_PARASITE_TIME;
   game.controlMode='host';game.controlled=host;game.parasitisedHost=host;
   modeBadge.textContent='CONTROL · HOST';modeBadge.classList.add('mode-host');
@@ -11561,8 +11791,10 @@ function tickControllableHostState(dt){
   if(host.actionTimer>0){
     host.actionTimer=Math.max(0,host.actionTimer-dt);
     if(host.actionTimer<=0){
+      const endedAction=host.actionName;
       host.actionName=null;
       host.lastActionStamp=-1;
+      if(endedAction==='kick') host._forceNextBlendDur=0.045;
       if(host.attackQueued && host.controllable && !host.dead){
         doHostAttack();
       }
@@ -11740,6 +11972,24 @@ function calculateNewPathIndex(idol,pos=idol?.root?.position){
   if(bestD<0.55*0.55 && bestIdx<path.length-1) bestIdx++;
   return clamp(bestIdx,0,path.length-1);
 }
+function realignIdolPath(idol,pos=idol?.root?.position,shifted=0){
+  const path=idol?.processionPath?.length?idol.processionPath:game.templeEvent.processionPath;
+  const oldIndex=idol?.processIndex||0;
+  if(!idol || !path?.length || !pos) return {oldIndex,newIndex:oldIndex,pathLength:path?.length||0};
+  let newIndex=calculateNewPathIndex(idol,pos);
+  if(Number.isFinite(shifted) && Math.abs(shifted)>0.001){
+    const target=path[newIndex];
+    if(target && newIndex<path.length-1){
+      const dx=target.x-pos.x;
+      const dz=target.z-pos.z;
+      const d=Math.hypot(dx,dz);
+      if(d<0.72) newIndex++;
+    }
+  }
+  idol.processIndex=clamp(newIndex,0,path.length-1);
+  idol._processionStuckTimer=0;
+  return {oldIndex,newIndex:idol.processIndex,pathLength:path.length};
+}
 function handleIdolRefreshed(idol){
   if(!idol?.root) return;
   for(const rat of game.rats){
@@ -11879,10 +12129,9 @@ function wrapResidentRingEntity(ent){
   const proxyStatus=clearRingMirrorForEntity(ent);
   if(isTempleIdolEntity(ent)){
     const mixerStatus=resyncActorMixerAfterWarp(ent);
-    const oldIndex=ent.processIndex||0;
-    ent.processIndex=calculateNewPathIndex(ent,p);
-    dispatchIdolRefreshed(ent,{fromX,toX:p.x,shifted,oldIndex,newIndex:ent.processIndex,proxyStatus});
-    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; PathIndex: ${oldIndex}->${ent.processIndex}; Rat handover: dispatched`);
+    const pathSync=realignIdolPath(ent,p,shifted);
+    dispatchIdolRefreshed(ent,{fromX,toX:p.x,shifted,oldIndex:pathSync.oldIndex,newIndex:pathSync.newIndex,proxyStatus});
+    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; PathIndex: ${pathSync.oldIndex}->${pathSync.newIndex}; Rat handover: dispatched`);
   }
   return true;
 }
@@ -12183,7 +12432,7 @@ function updatePlayer(dt){
         ent.actionStamp=(ent.actionStamp||0)+1;
         ent.lastActionStamp=-1;
       }
-      if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent});
+      if(ent===player || ent===game.parasitisedHost) playSFX('playerJump',{volume:0.88,cooldown:0.08,reuseBase:true,source:ent,priority:100});
     }
     inputFlags.jump=false;
   }
@@ -13759,6 +14008,12 @@ function tickFollowerRats(dt){
         tickRatVisualAnimLOD(r,dt,focusPos);
         continue;
       }
+      const swarmSnapshot=r.templeSwarmSnapshot||game.templeEvent;
+      const ritualTarget=getRitualRatClimbTarget(r,swarmSnapshot,idol,game.templeEvent.swarmProgress);
+      const targetX=ritualTarget.x;
+      const targetZ=ritualTarget.z;
+      const climbY=ritualTarget.y;
+      /* Legacy synchronized orbit path disabled; use randomized ritualTarget above.
       const climb=clamp(game.templeEvent.swarmProgress*1.06,0,1);
       const angle=phase+gameTime*0.8;
       let targetX, targetZ, climbY;
@@ -13787,13 +14042,14 @@ function tickFollowerRats(dt){
         targetZ=idol.root.position.z+Math.sin(angle)*radius*0.45;
         climbY=lerp(game.templeEvent.altarTopPos.y+0.06+RITUAL_RAT_VISIBLE_Y_OFFSET,idol.root.position.y+lerp(0.15,TEMPLE_IDOL_HEIGHT*0.75,bodyT)+RITUAL_RAT_VISIBLE_Y_OFFSET,top);
       }
+      */
       const dx=targetX-r.root.position.x;
       const dz=targetZ-r.root.position.z;
       const yaw=Math.atan2(dx,dz);
       const spd=2.1+game.chaos*1.5;
       const horizDist=Math.hypot(dx,dz);
       const yGate=horizDist>1.05?getRitualRatGroundY(r):climbY;
-      const climbRate=climb>0.55?4.8:3.2;
+      const climbRate=ritualTarget.climb>0.55?4.8:3.2;
       r.followPlayer=false;
       const movedStep=moveRatTowardYawClamped(r,yaw,horizDist,spd,dt);
       r.root.position.y=lerp(r.root.position.y,yGate,Math.min(1,dt*climbRate));
@@ -14354,6 +14610,16 @@ Object.defineProperty(window,'player',{get(){return player;},configurable:true})
 window.__debugHooks={
   summonSpillRats,
   triggerPropTip,
+  realignIdolPath,
+  calculateNewPathIndex,
+  dispatchRitualFinished,
+  getRitualRatClimbTarget,
+  startTempleAwakening,
+  awakenTempleIdol,
+  ensureRitualEscortRats,
+  wrapResidentRingEntity,
+  ensureRingMirrorForEntity,
+  clearRingMirrorForEntity,
   getHumans:()=>game.humans,
   getRats:()=>game.rats
 };
