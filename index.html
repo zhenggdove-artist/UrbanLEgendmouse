@@ -7875,7 +7875,7 @@ function tickTempleIdolProcession(idol,dt){
   wrapResidentRingEntity(idol);
   if(dist<0.5){
     if(idol.processIndex<path.length-1) idol.processIndex++;
-    else game.templeEvent.phase='roam';
+    else { game.templeEvent.phase='roam'; idol.roamIdleTimer=rand(0.8,1.6); idol.roamTarget=null; }
   }
   tickTempleIdolKills(idol);
   tickActor(idol,dt);
@@ -7889,47 +7889,83 @@ function tickTempleIdolProcession(idol,dt){
 function tickTempleIdolRoam(idol,dt){
   idol.behaviour='procession';
   idol.actionTimer=999999;
-  idol.roamTimer=(idol.roamTimer||0)-dt;
   const forwardSign=idol._roamForwardSign || (idol._roamForwardSign=1);
-  const needNewTarget=!idol.roamTarget || idol.roamTimer<=0
-    || Math.hypot(idol.roamTarget.x-idol.root.position.x,idol.roamTarget.z-idol.root.position.z)<1.2;
-  if(needNewTarget){
-    idol.roamTimer=rand(2.4,4.8);
+  let moved=0;
+
+  // The idol should not walk forever. When it reaches a target, collides hard,
+  // or its roam timer expires, it pauses and plays Orc Idle before selecting
+  // another forward-biased target.
+  idol.roamIdleTimer=Math.max(0,(idol.roamIdleTimer||0)-dt);
+  if(idol.roamIdleTimer>0){
+    idol.roamTarget=null;
+    idol.roamTimer=0;
+    idol.curSpeed=0;
+    idol._lastMoveDistance=0;
+    idol._idolMoving=false;
+    idol.actionName='idle';
+    idol.root.position.y=resolveIdolGroundY(idol);
+    softClampZ(idol.root.position);
+    softClampTempleX(idol.root.position);
+    wrapResidentRingEntity(idol);
+    tickTempleIdolKills(idol);
+    tickActor(idol,dt);
+    realignActorFeet(idol.inst);
+    return;
+  }
+
+  idol.roamTimer=(idol.roamTimer||0)-dt;
+  const atTarget=idol.roamTarget
+    ? Math.hypot(idol.roamTarget.x-idol.root.position.x,idol.roamTarget.z-idol.root.position.z)<1.2
+    : true;
+  if(atTarget && idol.roamTarget){
+    idol.roamIdleTimer=rand(0.85,1.75);
+    idol.roamTarget=null;
+    idol._idolMoving=false;
+    idol.actionName='idle';
+  }
+  const needNewTarget=!idol.roamTarget || idol.roamTimer<=0;
+  if(needNewTarget && idol.roamIdleTimer<=0){
+    idol.roamTimer=rand(2.2,4.4);
+    idol.curSpeed=HOST_MAX_SPEED*0.68;
     const forwardX=idol.root.position.x+forwardSign*rand(10,24);
     const driftZ=clamp(idol.root.position.z+rand(-2.4,2.4),ALLEY_Z_MIN+2.2,ALLEY_Z_MAX-2.2);
     idol.roamTarget=new THREE.Vector3(forwardX,GROUND_Y_OFFSET+0.12,driftZ);
   }
-  const dx=idol.roamTarget.x-idol.root.position.x;
-  const dz=idol.roamTarget.z-idol.root.position.z;
-  const dist=Math.hypot(dx,dz);
-  let moved=0;
-  if(dist>0.01){
-    const yaw=Math.atan2(dx,dz);
-    rotateTowardYaw(idol,yaw,dt,3.6);
-    const prevX=idol.root.position.x, prevZ=idol.root.position.z;
-    const move=Math.min(idol.curSpeed*dt,dist);
-    idol.root.position.x+=Math.sin(yaw)*move;
-    idol.root.position.z+=Math.cos(yaw)*move;
-    const wrappedAtSeam=wrapResidentRingEntity(idol);
-    idolBreakNearbyProps(idol);
-    if(!wrappedAtSeam && !shouldIdolIgnoreTempleExitCollision(idol)){
-      resolveWorldCollisions(idol,prevX,prevZ,1.05);
-    }else{
-      wrapResidentRingEntity(idol);
-    }
-    moved=Math.hypot(idol.root.position.x-prevX,idol.root.position.z-prevZ);
-    if(move>0.01 && moved<move*0.18){
-      idol._roamStuckTimer=(idol._roamStuckTimer||0)+dt;
-      if(idol._roamStuckTimer>0.42){
-        const side=(idol._roamStuckSide=(idol._roamStuckSide||1)*-1);
-        idol.root.position.z=clamp(idol.root.position.z+side*0.95,ALLEY_Z_MIN+2.0,ALLEY_Z_MAX-2.0);
-        idol.roamTarget=null;
+
+  if(idol.roamTarget){
+    const dx=idol.roamTarget.x-idol.root.position.x;
+    const dz=idol.roamTarget.z-idol.root.position.z;
+    const dist=Math.hypot(dx,dz);
+    if(dist>0.01){
+      const yaw=Math.atan2(dx,dz);
+      rotateTowardYaw(idol,yaw,dt,3.6);
+      const prevX=idol.root.position.x, prevZ=idol.root.position.z;
+      const move=Math.min(idol.curSpeed*dt,dist);
+      idol.root.position.x+=Math.sin(yaw)*move;
+      idol.root.position.z+=Math.cos(yaw)*move;
+      const wrappedAtSeam=wrapResidentRingEntity(idol);
+      idolBreakNearbyProps(idol);
+      if(!wrappedAtSeam && !shouldIdolIgnoreTempleExitCollision(idol)){
+        resolveWorldCollisions(idol,prevX,prevZ,1.05);
+      }else{
+        wrapResidentRingEntity(idol);
+      }
+      moved=Math.hypot(idol.root.position.x-prevX,idol.root.position.z-prevZ);
+      if(move>0.01 && moved<move*0.18){
+        idol._roamStuckTimer=(idol._roamStuckTimer||0)+dt;
+        if(idol._roamStuckTimer>0.42){
+          const side=(idol._roamStuckSide=(idol._roamStuckSide||1)*-1);
+          idol.root.position.z=clamp(idol.root.position.z+side*0.95,ALLEY_Z_MIN+2.0,ALLEY_Z_MAX-2.0);
+          idol.roamTarget=null;
+          idol.roamIdleTimer=rand(0.65,1.35);
+          idol._roamStuckTimer=0;
+        }
+      }else{
         idol._roamStuckTimer=0;
       }
-    }else{
-      idol._roamStuckTimer=0;
     }
   }
+
   idol._lastMoveDistance=moved;
   idol._idolMoving=moved>0.006;
   idol.actionName=idol._idolMoving?'walk':'idle';
@@ -9967,6 +10003,27 @@ function ensureUILayoutBuiltins(config){
       }
       else store.__customFrames.push({...frame});
     }
+    if(!store.__endingScreenUnifiedV7){
+      const endingDefaults=(mode==='mobile')
+        ? {
+            'rats-win':{x:50,y:50,w:86,h:48,z:30,hidden:false,locked:false,rot:0},
+            'rw-text':{x:50,y:39.5,w:66,h:6.4,z:31,hidden:false,locked:false,rot:0,fontSize:20},
+            'rw-sub':{x:50,y:48,w:70,h:4.2,z:31,hidden:false,locked:false,rot:0,fontSize:10},
+            'rw-replay':{x:50,y:60,w:34,h:6.2,z:31,hidden:false,locked:false,rot:0,fontSize:11}
+          }
+        : {
+            'rats-win':{x:50,y:50,w:52,h:46,z:30,hidden:false,locked:false,rot:0},
+            'rw-text':{x:50,y:42,w:52,h:6.2,z:31,hidden:false,locked:false,rot:0,fontSize:24},
+            'rw-sub':{x:50,y:50,w:52,h:4,z:31,hidden:false,locked:false,rot:0,fontSize:11},
+            'rw-replay':{x:50,y:61,w:20,h:5.2,z:31,hidden:false,locked:false,rot:0,fontSize:11}
+          };
+      for(const [id,next] of Object.entries(endingDefaults)){
+        const current=store[id]||{};
+        const text=typeof current.text==='string'?current.text:undefined;
+        store[id]={...next,...(text!==undefined?{text}:{}),hidden:false,locked:false};
+      }
+      store.__endingScreenUnifiedV7=true;
+    }
     for(const [id,src] of Object.entries(UI_LAYOUT_DEFAULT_ART_SRCS)){
       const current=store[id]||{};
       const fallback=(id==='chaos-box-art' || id==='rats-box-art')
@@ -10599,7 +10656,6 @@ function applyRuntimeUILayoutTextOverrides(){
   if(ratCity && document.body.classList.contains('rat-city-mode')){
     setUIArtHostLabel(ratCity,'BACK TO\nCHAOS');
   }
-  applyEndingLayoutToRatCityPanel();
 }
 function applyEndingLayoutToRatCityPanel(){
   if(!document.body.classList.contains('rat-city-mode')) return;
@@ -11578,7 +11634,12 @@ function setUILayoutPosSize(defId,patch){
 }
 function getLoadingTextTargets(){
   const scene=getActiveLayoutScene();
-  return UI_LAYOUT_TARGET_DEFS.filter(def=>UI_LAYOUT_TEXT_TARGETS.has(def.id) && (def.scene||'game')===scene);
+  const textTargets=UI_LAYOUT_TARGET_DEFS.filter(def=>UI_LAYOUT_TEXT_TARGETS.has(def.id) && (def.scene||'game')===scene);
+  if(scene==='ending'){
+    const cardDef=getUILayoutDef('rats-win')||{id:'rats-win',label:'Ending Card',scene:'ending'};
+    return [cardDef,...textTargets];
+  }
+  return textTargets;
 }
 function ensureLoadingTextPanel(){
   if(!uiLayoutState.active) return null;
@@ -11683,6 +11744,7 @@ function refreshLoadingTextPanel(){
     const metrics=ensureUILayoutMetrics(def);
     const fallback=document.getElementById(def.id);
     const fallbackText=fallback?(def.multiline?fallback.innerText:(fallback.textContent||'')):'';
+    const layoutOnly=def.id==='rats-win';
     const text=(typeof metrics.text==='string')?metrics.text:fallbackText;
     const fontSize=metrics.fontSize||'';
     const fontFamily=metrics.fontFamily||'';
@@ -11695,7 +11757,18 @@ function refreshLoadingTextPanel(){
     const grp=document.createElement('div');
     grp.className='group';
     grp.dataset.defId=def.id;
-    grp.innerHTML=`
+    grp.innerHTML=layoutOnly?`
+      <label>Ending Card / Frame Image</label>
+      <div class="row three">
+        <div><div class="micro">X %</div><input type="number" step="0.1" data-field="x" value="${metrics.x??50}"></div>
+        <div><div class="micro">Y %</div><input type="number" step="0.1" data-field="y" value="${metrics.y??50}"></div>
+        <div><div class="micro">Z</div><input type="number" step="1" data-field="z" value="${metrics.z??1}"></div>
+      </div>
+      <div class="row">
+        <div><div class="micro">Card Width %</div><input type="number" step="0.1" data-field="w" value="${metrics.w??10}"></div>
+        <div><div class="micro">Card Height %</div><input type="number" step="0.1" data-field="h" value="${metrics.h??10}"></div>
+      </div>
+    `:`
       <label>${def.label}</label>
       <textarea data-field="text" rows="${def.multiline?4:2}">${escapeHTMLForLayout(text)}</textarea>
       <div class="row three">
@@ -12254,22 +12327,15 @@ function beginHostAttackHold(kind='pointer'){
   const host=game.parasitisedHost;
   if(game.controlMode!=='host' || !host) return false;
   if(state.timer) window.clearTimeout(state.timer);
-  const now=performance.now();
-  const pendingSameHost=pendingHostTapAttack && pendingHostTapAttack.timer && pendingHostTapAttack.host===host;
-  if(pendingSameHost && (now-pendingHostTapAttack.startedAt)<=HOST_ATTACK_COMBO_WINDOW*1000){
-    cancelPendingHostTapAttack();
-    state.active=true;
-    state.triggered=true;
-    doHostAttack('punchcombo',{interruptHandAttack:true});
-    return true;
-  }
+  // No tap-buffer / first-punch pre-roll. Hold waits for kick; release before
+  // the threshold calls triggerHostTapAttack(), which now plays punchcombo.
+  cancelPendingHostTapAttack();
   state.active=true;
   state.triggered=false;
   state.timer=window.setTimeout(()=>{
     state.timer=null;
     if(!state.active || game.controlMode!=='host') return;
     state.triggered=true;
-    if(typeof cancelPendingHostTapAttack==='function') cancelPendingHostTapAttack();
     doHostAttack('kick');
   },HOST_ATTACK_HOLD_MS);
   return true;
@@ -12789,7 +12855,6 @@ function setRatCityMode(enabled){
   ratCityPanel.classList.toggle('show',enabled);
   if(!enabled) ratCityPanel.classList.remove('min');
   setUIArtHostLabel(ratCityBtn,enabled?'BACK TO\nCHAOS':'RAT CITY');
-  if(enabled) applyEndingLayoutToRatCityPanel();
   if(enabled){
     game.ratCityAngle=camYaw;
     ratCityPitch=0.58;
@@ -12926,11 +12991,13 @@ function doHostPickupRelease(){
 }
 function chooseHostAttackAction(host,requested='kick'){
   const actions=host?.inst?.actions||{};
-  if(requested==='punchcombo' && actions.punchcombo) return 'punchcombo';
-  if(requested==='punch' && actions.punch) return 'punch';
+  // Input policy: tap / repeated tap = punchcombo, hold = kick.
+  // The old single punch route is deliberately disabled at dispatch level.
   if(requested==='kick' && actions.kick) return 'kick';
-  return actions.punch || actions.punchcombo
-    ? (actions.punch?'punch':'punchcombo')
+  if((requested==='punchcombo' || requested==='punch' || requested==='tap') && actions.punchcombo) return 'punchcombo';
+  if((requested==='punchcombo' || requested==='punch' || requested==='tap') && actions.punch) return 'punch';
+  return actions.punchcombo || actions.punch
+    ? (actions.punchcombo?'punchcombo':'punch')
     : (actions.kick?'kick':null);
 }
 function getHostAttackTimeScale(actionName){
@@ -12958,29 +13025,11 @@ function cancelPendingHostTapAttack(){
 function triggerHostTapAttack(){
   const host=game.parasitisedHost;
   if(!host) return;
-  const now=performance.now();
-  const pendingSameHost=pendingHostTapAttack.timer && pendingHostTapAttack.host===host;
-  const comboFromPending=pendingSameHost && (now-pendingHostTapAttack.startedAt)<=HOST_ATTACK_COMBO_WINDOW*1000;
-  const comboFromActive=host.actionName==='punch' && host.actionTimer>0 && (now-(host._lastPunchStartedAt||0))<=HOST_ATTACK_COMBO_WINDOW*1000;
-  if(comboFromPending || comboFromActive){
-    cancelPendingHostTapAttack();
-    host._lastAttackTapAt=now*0.001;
-    doHostAttack('punchcombo',{interruptHandAttack:true});
-    return;
-  }
+  // Single tap and repeated tap both fire punchcombo immediately.
+  // No delayed pending-punch buffer remains, so punch is never played first.
   cancelPendingHostTapAttack();
-  host._lastAttackTapAt=now*0.001;
-  pendingHostTapAttack.host=host;
-  pendingHostTapAttack.startedAt=now;
-  pendingHostTapAttack.timer=window.setTimeout(()=>{
-    const targetHost=pendingHostTapAttack.host;
-    pendingHostTapAttack.timer=null;
-    pendingHostTapAttack.host=null;
-    pendingHostTapAttack.startedAt=0;
-    if(targetHost && targetHost===game.parasitisedHost && game.controlMode==='host'){
-      doHostAttack('punch');
-    }
-  },HOST_ATTACK_TAP_BUFFER_MS);
+  host._lastAttackTapAt=performance.now()*0.001;
+  doHostAttack('punchcombo',{interruptHandAttack:true});
 }
 function doHostAttack(requested='kick',opts={}){
   const host=game.parasitisedHost;
@@ -16030,6 +16079,7 @@ function startGame(){
   gameState='playing';gameTime=0;
   document.body.classList.remove('game-won');
   ratsWinEl.classList.remove('show');
+  ratsWinEl.style.display='';
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
   game.chaos=0;game.chaosDisplay=0;
@@ -16055,11 +16105,14 @@ function triggerRatsWin(){
   cancelHostAttackHold();
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
-  if(game.ratCityMode) setRatCityMode(false);
+  setRatCityMode(false);
+  ratCityPanel?.classList?.remove('show','min');
+  document.body.classList.remove('rat-city-mode');
   introEl.style.display='none';
   document.body.classList.remove('intro-active');
   document.body.classList.add('game-won');
   applyEndingScreenLayoutText();
+  ratsWinEl.style.display='flex';
   ratsWinEl.classList.add('show');
   applyUILayoutConfig();
 }
