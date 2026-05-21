@@ -1462,6 +1462,7 @@ class AudioManager{
     this.frameDedupe=new Set();
     this._urlPreloadPromises=new Map();
     this._debugWarnedLocked=false;
+    this._postUnlockCheckTimer=0;
     for(const item of manifest){
       this.items.set(item.name,item);
       sfxState.players.set(item.name,{path:item.url,group:item.group,loop:!!item.loop,preload:!!item.preload});
@@ -1475,7 +1476,17 @@ class AudioManager{
       return null;
     }
     try{
-      this.ctx=new Ctx({latencyHint:IS_MOBILE_DEVICE?'interactive':'balanced'});
+      if(navigator.audioSession){
+        try{navigator.audioSession.type='playback';}catch(_){}
+      }
+      try{
+        this.ctx=new Ctx({latencyHint:IS_MOBILE_DEVICE?'interactive':'balanced'});
+      }catch(optionsErr){
+        // Older iOS WebKit builds reject constructor options and would
+        // otherwise leave the whole game silent on mobile.
+        this.ctx=new Ctx();
+        console.warn('[audio] AudioContext options fallback',optionsErr);
+      }
       this.masterGain=this.ctx.createGain();
       this.masterGain.gain.value=this.masterVolume;
       this.masterGain.connect(this.ctx.destination);
@@ -1486,6 +1497,14 @@ class AudioManager{
         this.groupGains.set(group,gain);
       }
       this.unlockBuffer=this.ctx.createBuffer(1,1,this.ctx.sampleRate||44100);
+      this.ctx.onstatechange=()=>{
+        if(this.ctx?.state==='running'){
+          this.unlocked=true;
+          sfxState.unlocked=true;
+          this._debugWarnedLocked=false;
+          this.flushQueued();
+        }
+      };
     }catch(err){
       this.lastError=`AudioContext create failed: ${err?.message||err}`;
       console.warn('[audio] AudioContext create failed',err);
@@ -1513,6 +1532,12 @@ class AudioManager{
     this.groupVolumes[group]=clamp(v,0,1);
     const gain=this.groupGains.get(group);
     if(gain && this.ctx) gain.gain.setTargetAtTime(this.groupVolumes[group],this.ctx.currentTime,0.02);
+  }
+  connectThroughGain(src,gain,destination){
+    // Do not use `src.connect(gain).connect(dest)`: older iOS Safari
+    // returns void from connect(), which made mobile audio fully silent.
+    src.connect(gain);
+    gain.connect(destination||this.masterGain||this.ctx?.destination);
   }
   async decodeArrayBuffer(arrayBuffer){
     const ctx=this.getContext();
@@ -1573,25 +1598,59 @@ class AudioManager{
     const ctx=this.getContext();
     if(!ctx) return false;
     try{
-      if(ctx.state==='suspended') await ctx.resume();
-      if(this.unlockBuffer){
-        const src=ctx.createBufferSource();
-        const gain=ctx.createGain();
-        gain.gain.value=0.00001;
-        src.buffer=this.unlockBuffer;
-        src.connect(gain).connect(this.masterGain||ctx.destination);
-        src.start(0);
+      // Start the ping synchronously inside the gesture call stack.
+      // Awaiting resume() before start() is less reliable on iOS Safari.
+      this.playUnlockPing();
+      if(ctx.state==='suspended' && typeof ctx.resume==='function'){
+        let resumeError=null;
+        const resumePromise=ctx.resume().catch(err=>{resumeError=err;});
+        await Promise.race([
+          resumePromise,
+          new Promise(resolve=>window.setTimeout(resolve,120))
+        ]);
+        if(resumeError) throw resumeError;
       }
-      this.unlocked=ctx.state==='running' || ctx.state==='interrupted';
+      this.playUnlockPing();
+      this.unlocked=ctx.state==='running';
       sfxState.unlocked=this.unlocked;
       this._debugWarnedLocked=false;
       if(this.unlocked) this.flushQueued();
+      else this.schedulePostUnlockCheck(source);
       return this.unlocked;
     }catch(err){
       this.lastError=`unlock failed (${source}): ${err?.message||err}`;
       console.warn('[audio] unlock failed',source,err);
+      this.schedulePostUnlockCheck(source);
       return false;
     }
+  }
+  playUnlockPing(){
+    if(!this.ctx || !this.unlockBuffer) return;
+    try{
+      const src=this.ctx.createBufferSource();
+      const gain=this.ctx.createGain();
+      gain.gain.value=0.0008;
+      src.buffer=this.unlockBuffer;
+      this.connectThroughGain(src,gain,this.masterGain||this.ctx.destination);
+      src.start(0);
+      src.onended=()=>{try{src.disconnect();gain.disconnect();}catch(_){}};
+    }catch(err){
+      this.lastError=`unlock ping failed: ${err?.message||err}`;
+    }
+  }
+  schedulePostUnlockCheck(source='user'){
+    if(this._postUnlockCheckTimer) clearTimeout(this._postUnlockCheckTimer);
+    this._postUnlockCheckTimer=window.setTimeout(()=>{
+      this._postUnlockCheckTimer=0;
+      if(this.ctx?.state==='running'){
+        this.unlocked=true;
+        sfxState.unlocked=true;
+        this._debugWarnedLocked=false;
+        this.flushQueued();
+      }else if(this.ctx){
+        this.lastError=`unlock pending (${source}); context=${this.ctx.state}`;
+      }
+    },160);
   }
   enqueue(name,opts){
     if(this.queued.length<40){
@@ -1643,7 +1702,7 @@ class AudioManager{
       src.buffer=buffer;
       src.playbackRate.value=playbackRate;
       gain.gain.value=clamp(volume,0,1);
-      src.connect(gain).connect(this.getGroupGain(item.group)||this.masterGain);
+      this.connectThroughGain(src,gain,this.getGroupGain(item.group)||this.masterGain);
       const handle={source:src,gain,key:name,_sfxKey:name,_sfxPriority:getSFXPriority(name,priority),paused:false,ended:false,startedAt:ctx.currentTime};
       src.onended=()=>{
         handle.ended=true;
@@ -1694,7 +1753,7 @@ class AudioManager{
       src.loop=true;
       src.playbackRate.value=playbackRate;
       gain.gain.value=0;
-      src.connect(gain).connect(this.getGroupGain(item.group)||this.masterGain);
+      this.connectThroughGain(src,gain,this.getGroupGain(item.group)||this.masterGain);
       loop={
         source:src,gain,key:name,loopId,
         _sfxKey:name,_sfxPriority:getSFXPriority(name,priority),
@@ -11455,7 +11514,10 @@ document.addEventListener('touchend',(e)=>{
   __lastTouchEnd=now;
 },{passive:false});
 document.addEventListener('dblclick',blockZoomEvent,{passive:false});
-document.addEventListener('touchstart',()=>{ unlockSFX(); },{passive:true,capture:true});
+document.addEventListener('touchstart',()=>{ unlockSFX('document-touchstart'); },{passive:true,capture:true});
+document.addEventListener('touchend',()=>{ unlockSFX('document-touchend'); },{passive:true,capture:true});
+document.addEventListener('pointerdown',()=>{ unlockSFX('document-pointerdown'); },{passive:true,capture:true});
+document.addEventListener('click',()=>{ unlockSFX('document-click'); },{passive:true,capture:true});
 
 let joyX=0,joyY=0;
 const keys={w:false,a:false,s:false,d:false,up:false,down:false,left:false,right:false};
@@ -11470,7 +11532,7 @@ const exitHostBtn=document.getElementById('exit-host-btn');
   const STICK_MAX=38;
   let ptrId=null,cx=0,cy=0;
   zone.addEventListener('pointerdown',e=>{
-    unlockSFX();
+    unlockSFX('joystick-pointerdown');
     if(ptrId!==null)return;e.preventDefault();
     ptrId=e.pointerId;zone.setPointerCapture(ptrId);
     const r=zone.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;
@@ -11487,15 +11549,15 @@ const exitHostBtn=document.getElementById('exit-host-btn');
   const end=e=>{if(e.pointerId!==ptrId)return;ptrId=null;joyX=0;joyY=0;stick.style.transform='translate(0,0)'};
   zone.addEventListener('pointerup',end);zone.addEventListener('pointercancel',end);
 }
-jumpBtn.addEventListener('pointerdown',e=>{unlockSFX();e.preventDefault();inputFlags.jump=true});
+jumpBtn.addEventListener('pointerdown',e=>{unlockSFX('jump-pointerdown');e.preventDefault();inputFlags.jump=true});
 biteBtn.addEventListener('pointerdown',e=>{
-  unlockSFX();
+  unlockSFX('bite-pointerdown');
   e.preventDefault();
   if(game.controlMode==='host') doHostAttack();
   else inputFlags.action=true;
 });
 pickupBtn.addEventListener('pointerdown',e=>{
-  unlockSFX();
+  unlockSFX('pickup-pointerdown');
   e.preventDefault();
   if(game.controlMode==='host') doHostPickupPress();
 });
@@ -11507,7 +11569,7 @@ pickupBtn.addEventListener('pointerup',releasePickup);
 pickupBtn.addEventListener('pointercancel',releasePickup);
 pickupBtn.addEventListener('pointerleave',releasePickup);
 exitHostBtn.addEventListener('pointerdown',e=>{
-  unlockSFX();
+  unlockSFX('exit-host-pointerdown');
   e.preventDefault();
   if(game.controlMode==='host') abandonHost();
 });
@@ -11625,7 +11687,7 @@ let ratCityPitch=0.58,ratCityZoom=26,ratCityAutoRotate=true;
 let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
 canvas.addEventListener('pointerdown',e=>{
   if(e.target!==canvas)return;
-  unlockSFX();
+  unlockSFX('canvas-pointerdown');
   e.preventDefault();
   canvas.setPointerCapture?.(e.pointerId);
   dragging=true;dragPId=e.pointerId;
@@ -15024,11 +15086,13 @@ function setIntroProgress(p,label){
   }
   renderIntroProgress();
 }
-startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
-startBtn.addEventListener('touchstart',()=>{ if(gameState==='intro') unlockSFX(); },{passive:true});
+startBtn.addEventListener('pointerdown',()=>{ if(gameState==='intro') unlockSFX('start-pointerdown'); },{passive:true});
+startBtn.addEventListener('pointerup',()=>{ if(gameState==='intro') unlockSFX('start-pointerup'); },{passive:true});
+startBtn.addEventListener('touchstart',()=>{ if(gameState==='intro') unlockSFX('start-touchstart'); },{passive:true});
+startBtn.addEventListener('touchend',()=>{ if(gameState==='intro') unlockSFX('start-touchend'); },{passive:true});
 startBtn.addEventListener('click',()=>{
   if(gameState!=='intro')return;
-  unlockSFX();
+  unlockSFX('start-click');
   startBtn.disabled=true;
   if(startBtnLabel) startBtnLabel.textContent='LOADING...';
   setIntroProgress(100);
