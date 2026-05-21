@@ -1375,6 +1375,7 @@ const sfxState={
   masterVolume:0.78,
   players:new Map(),
   loops:new Map(),
+  streetAmbienceOffsetPrimed:false,
   streetAmbienceGain:0
 };
 let sfxSourceSeq=0;
@@ -1521,7 +1522,8 @@ function ensureSFXPlayer(key){
   const audio=createSFXAudio(path);
   const pool=[audio];
   const loopAudio=SFX_LOOP_KEYS.has(key)?createSFXAudio(path,{loop:true}):null;
-  player={path,audio,pool,loopAudio,lastTime:-Infinity,nextIndex:0,warmed:false,cooldowns:new Map()};
+  const crossfadeAudio=key==='streetAmbience'?createSFXAudio(path,{loop:true}):null;
+  player={path,audio,pool,loopAudio,crossfadeAudio,lastTime:-Infinity,nextIndex:0,warmed:false,cooldowns:new Map()};
   sfxState.players.set(key,player);
   return player;
 }
@@ -1533,7 +1535,7 @@ function primeSFXPlayers(keys=null){
     ensureSFXPlayer(key);
   }
 }
-function waitSFXAudioReady(audio,timeoutMs=9000){
+function waitSFXAudioReady(audio,timeoutMs=15000){
   return new Promise(resolve=>{
     if(!audio || audio.readyState>=2){resolve(true);return;}
     let done=false;
@@ -1565,6 +1567,7 @@ async function preloadSFXPlayers(keys=ALL_SFX_KEYS){
     if(!player) continue;
     waits.push(waitSFXAudioReady(player.audio));
     if(player.loopAudio) waits.push(waitSFXAudioReady(player.loopAudio));
+    if(player.crossfadeAudio) waits.push(waitSFXAudioReady(player.crossfadeAudio));
   }
   const results=await Promise.allSettled(waits);
   const failed=results.filter(r=>r.status==='fulfilled' && !r.value).length + results.filter(r=>r.status==='rejected').length;
@@ -1575,6 +1578,7 @@ function warmSFXKey(key,{fullPool=false}={}){
   if(!player) return [];
   const warms=[warmSFXAudioElement(player.audio)];
   if(player.loopAudio) warms.push(warmSFXAudioElement(player.loopAudio));
+  if(player.crossfadeAudio) warms.push(warmSFXAudioElement(player.crossfadeAudio));
   if(fullPool){
     const targetPool=Math.max(1,getSFXPolyphony(key));
     while(player.pool.length<targetPool) player.pool.push(createSFXAudio(player.path));
@@ -1690,6 +1694,15 @@ function startLoopSFX(key,{volume=1,playbackRate=1,source=null,priority=null}={}
   return audio;
 }
 function stopLoopSFX(key,{reset=true}={}){
+  if(key==='streetAmbience'){
+    const player=sfxState.players.get('streetAmbience');
+    for(const layer of [player?.loopAudio,player?.crossfadeAudio]){
+      if(!layer) continue;
+      layer.pause();
+      if(reset) layer.currentTime=0;
+    }
+    sfxState.streetAmbienceOffsetPrimed=false;
+  }
   const audio=sfxState.loops.get(key);
   if(!audio) return;
   audio.pause();
@@ -1801,12 +1814,37 @@ function syncFollowerRatMovementSFX(dt){
     });
   }
 }
+function playLayeredRatSwarmBurst(source=null,{volume=0.72,stagger=0.16,priority=86}={}){
+  if(!sfxState.unlocked) return null;
+  const first=playSFX('ratSwarmLoop',{
+    volume,
+    playbackRate:0.96+Math.random()*0.04,
+    cooldown:0.08,
+    source,
+    priority
+  });
+  window.setTimeout(()=>{
+    playSFX('ratSwarmLoop',{
+      volume:volume*0.84,
+      playbackRate:1.02+Math.random()*0.05,
+      cooldown:0,
+      source,
+      priority
+    });
+  },Math.max(40,stagger*1000+Math.random()*70));
+  return first;
+}
 function playRatSpawnSFX(count=1,source=null){
   if(count<=0) return null;
-  const key=count>=4?'ratSwarmLoop':'ratFootstep';
+  if(count>=4) return playLayeredRatSwarmBurst(source,{
+    volume:count>=12?0.82:0.64,
+    stagger:0.13,
+    priority:84
+  });
+  const key='ratFootstep';
   return playSFX(key,{
-    volume:count>=12?0.82:0.58,
-    playbackRate:count>=12?0.96:1.05,
+    volume:0.58,
+    playbackRate:1.05,
     cooldown:0.18,
     source,
     priority:82
@@ -1841,13 +1879,58 @@ function syncPlayerBiteLoop(){
     stopLoopSFX('playerBiteLoop');
   }
 }
+function syncStreetAmbienceLayered(volume,source=null){
+  const playerSFX=ensureSFXPlayer('streetAmbience');
+  if(!playerSFX) return null;
+  if(!playerSFX.loopAudio) playerSFX.loopAudio=createSFXAudio(playerSFX.path,{loop:true});
+  if(!playerSFX.crossfadeAudio) playerSFX.crossfadeAudio=createSFXAudio(playerSFX.path,{loop:true});
+  const layerA=playerSFX.loopAudio;
+  const layerB=playerSFX.crossfadeAudio;
+  sfxState.loops.set('streetAmbience',layerA);
+  sfxState.loops.set('streetAmbienceB',layerB);
+  const gain=clamp(volume*getSFXDistanceGain(source)*sfxState.masterVolume,0,1);
+  if(gain<=0.004){
+    for(const layer of [layerA,layerB]){
+      layer.volume=0;
+      if(!layer.paused) layer.pause();
+    }
+    sfxState.streetAmbienceOffsetPrimed=false;
+    return null;
+  }
+  if(!sfxState.streetAmbienceOffsetPrimed){
+    const primeOffset=()=>{
+      try{
+        if(Number.isFinite(layerB.duration) && layerB.duration>3){
+          layerB.currentTime=Math.min(layerB.duration-0.25,Math.max(1.2,layerB.duration*0.48));
+        }else{
+          layerB.currentTime=0.65;
+        }
+      }catch(_){}
+      sfxState.streetAmbienceOffsetPrimed=true;
+    };
+    if(layerB.readyState>=1) primeOffset();
+    else layerB.addEventListener('loadedmetadata',primeOffset,{once:true});
+  }
+  const phase=gameTime*0.28;
+  const weightA=0.66+Math.sin(phase)*0.18;
+  const weightB=0.66+Math.sin(phase+Math.PI)*0.18;
+  for(const [layer,weight] of [[layerA,weightA],[layerB,weightB]]){
+    layer.volume=clamp(gain*weight,0,1);
+    layer.playbackRate=1;
+    layer.muted=false;
+    layer._sfxPriority=getSFXPriority('streetAmbience',92);
+    layer._sfxKey='streetAmbience';
+    if(layer.paused) requestAudioPlay(layer);
+  }
+  return layerA;
+}
 function syncStreetAmbience(dt){
   if(!sfxState.unlocked) return;
   const activeScene=(gameState==='playing') && !isPlayerInsideEventTemple();
   const target=activeScene?0.5:0;
   sfxState.streetAmbienceGain=lerp(sfxState.streetAmbienceGain||0,target,Math.min(1,dt*2.2));
   if((sfxState.streetAmbienceGain||0)>0.004){
-    startLoopSFX('streetAmbience',{volume:sfxState.streetAmbienceGain,playbackRate:1,source:player,priority:92});
+    syncStreetAmbienceLayered(sfxState.streetAmbienceGain,player);
   }else{
     stopLoopSFX('streetAmbience',{reset:false});
   }
@@ -8909,7 +8992,7 @@ const UI_LAYOUT_DEFAULT_ART_SRCS={
 };
 const UI_LAYOUT_BUILTIN_FRAMES={
   desktop:[
-    {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E6%95%B4%E9%AB%94%E5%9C%96%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
+    {id:'builtin-frame-gameplay',label:'Gameplay Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/%E9%9B%BB%E8%85%A6%E7%89%88%E9%81%8A%E6%88%B2%E7%95%AB%E9%9D%A2%E8%A3%9D%E9%A3%BE%E6%A1%86.png',x:50,y:50,w:100,h:100,z:16,hidden:false,locked:false,scene:'game'},
     {id:'builtin-frame-host-life',label:'Host Life Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/host%20life%20bar.png',x:6.1,y:50.7,w:31,h:7.8,z:18,hidden:true,locked:false,rot:90,scene:'game'},
     {id:'builtin-frame-loading',label:'Loading Window Frame',src:'./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png',x:50,y:50,w:56,h:76,z:31,hidden:true,locked:false,scene:'loading'}
   ],
@@ -11997,6 +12080,9 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
   const clone=obj.clone(true);
   clone.name=`${obj.name||'chunkObject'}_ringPreview_${label}`;
   clone.position.x+=shiftX;
+  clone.userData={...(clone.userData||{}),ringSeamSourceUuid:obj.uuid,ringSeamShift:shiftX};
+  const sourceProp=obj.userData?.isPropRoot ? game.props.find(p=>p?.root===obj) : null;
+  if(sourceProp?.tipped || sourceProp?.tipTriggered) clone.visible=false;
   clone.traverse(n=>{
     n.userData={...(n.userData||{}),ringSeamPreview:true};
     n.raycast=()=>{};
@@ -12010,6 +12096,15 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
     }
   });
   return clone;
+}
+function setRingPreviewPropVisible(prop,visible){
+  if(!prop?.root) return;
+  const sourceUuid=prop.root.uuid;
+  for(const group of [ringSeamPreviewMinGroup,ringSeamPreviewMaxGroup]){
+    group?.traverse?.(obj=>{
+      if(obj?.userData?.ringSeamSourceUuid===sourceUuid) obj.visible=visible;
+    });
+  }
 }
 function isTempleIdolEntity(ent){
   return !!(ent && (ent===game.templeEvent?.idol || ent.behaviour==='procession'));
@@ -12081,14 +12176,47 @@ function realignIdolPath(idol,pos=idol?.root?.position,shifted=0){
   idol._processionStuckTimer=0;
   return {oldIndex,newIndex:idol.processIndex,pathLength:path.length};
 }
-function handleIdolRefreshed(idol){
+function shiftEscortRatAcrossIdolWarp(rat,idol,shifted){
+  if(!rat?.root || !Number.isFinite(shifted) || Math.abs(shifted)<0.001) return false;
+  detachRatFromHuman(rat);
+  rat.root.position.x+=shifted;
+  if(rat.targetPos?.x!==undefined) rat.targetPos.x+=shifted;
+  if(rat.roamTarget?.x!==undefined) rat.roamTarget.x+=shifted;
+  if(rat.followOffset?.x!==undefined) rat.followOffset.x+=shifted;
+  if(rat.streetBurstTarget?.x!==undefined) rat.streetBurstTarget.x+=shifted;
+  if(rat.streetBurstOrigin?.x!==undefined) rat.streetBurstOrigin.x+=shifted;
+  if(rat.climbStartX!==undefined) rat.climbStartX+=shifted;
+  if(rat.templeClimbStart?.x!==undefined) rat.templeClimbStart.x+=shifted;
+  rat.targetIdol=idol;
+  rat.followStatue=true;
+  rat.followPlayer=false;
+  rat.templeBound=false;
+  rat.templeSwarmVisual=false;
+  rat._brainPrimed=false;
+  rat._worldProbePrimed=false;
+  rat.huntChaseTimer=0;
+  rat.huntRetry=0.18+Math.random()*0.22;
+  rat.targetPos?.set(idol.root.position.x,0,idol.root.position.z);
+  rat.root.position.y=getRitualRatGroundY(rat);
+  rat.root.visible=true;
+  rat.visualBudgetLockUntil=gameTime+6;
+  clearRingMirrorForEntity(rat);
+  return true;
+}
+function handleIdolRefreshed(idol,detail={}){
   if(!idol?.root) return;
+  const shifted=Number.isFinite(detail.shifted)?detail.shifted:0;
+  let shiftedRats=0;
   for(const rat of game.rats){
     if(!rat || rat===player || rat===game.controlled) continue;
     if(rat.followStatue || rat.templeBound || rat.templeSwarmVisual || rat.targetHuman || rat.climbingHuman){
       rat.targetIdol=idol;
       if(rat.templeSwarmIdol && !rat.templeSwarmIdol.root?.parent) rat.templeSwarmIdol=idol;
       if(rat.followStatue){
+        if(Math.abs(shifted)>0.001 && shiftEscortRatAcrossIdolWarp(rat,idol,shifted)){
+          shiftedRats++;
+          continue;
+        }
         rat.followPlayer=false;
         rat._brainPrimed=false;
         rat._worldProbePrimed=false;
@@ -12096,12 +12224,16 @@ function handleIdolRefreshed(idol){
       }
     }
   }
+  if(shiftedRats>0) console.log(`[idol-refreshed] escort rats warped with idol: ${shiftedRats}`);
 }
 function dispatchIdolRefreshed(idol,detail={}){
-  handleIdolRefreshed(idol);
-  window.dispatchEvent(new CustomEvent('idol-refreshed',{detail:{idol,...detail}}));
+  handleIdolRefreshed(idol,detail);
+  window.dispatchEvent(new CustomEvent('idol-refreshed',{detail:{idol,...detail,handledLocal:true}}));
 }
-window.addEventListener('idol-refreshed',e=>handleIdolRefreshed(e.detail?.idol));
+window.addEventListener('idol-refreshed',e=>{
+  if(e.detail?.handledLocal) return;
+  handleIdolRefreshed(e.detail?.idol,e.detail||{});
+});
 function buildRingMirrorBonePairs(sourceRoot,mirrorRoot){
   const dstByName=new Map();
   mirrorRoot.traverse(o=>{ if(o.isBone && o.name) dstByName.set(o.name,o); });
@@ -12711,17 +12843,81 @@ function getPropBreakSFXKey(p){
   if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter') return 'vehicleBreak';
   return 'glassBreak';
 }
+function findRingTwinProp(prop){
+  if(!RESIDENT_RING_MODE || !prop?.root || !prop.basePosition || RING_SEAM_LENGTH<=0) return null;
+  const baseX=prop.basePosition.x;
+  const baseZ=prop.basePosition.z;
+  let best=null;
+  let bestScore=Infinity;
+  const scanCandidates=(candidates,targetX)=>{
+    for(const cand of candidates){
+      if(!cand || cand===prop || !cand.root || !cand.basePosition) continue;
+      if(cand.kind!==prop.kind) continue;
+      const dx=Math.abs(cand.basePosition.x-targetX);
+      const dz=Math.abs(cand.basePosition.z-baseZ);
+      if(dx>1.65 || dz>1.65) continue;
+      const sizePenalty=Math.abs((cand.halfX||0)-(prop.halfX||0))+Math.abs((cand.halfZ||0)-(prop.halfZ||0));
+      const score=dx*dx+dz*dz+sizePenalty*0.2;
+      if(score<bestScore){
+        bestScore=score;
+        best=cand;
+      }
+    }
+  };
+  for(const shift of [-RING_SEAM_LENGTH,RING_SEAM_LENGTH]){
+    const targetX=baseX+shift;
+    scanCandidates(getPropsNear(targetX,baseZ,2.2),targetX);
+    if(best) return best;
+  }
+  for(const shift of [-RING_SEAM_LENGTH,RING_SEAM_LENGTH]){
+    scanCandidates(game.props,baseX+shift);
+    if(best) return best;
+  }
+  return null;
+}
+function syncRingTwinPropTip(prop,angle){
+  if(prop?._ringTwinSyncing) return null;
+  const twin=findRingTwinProp(prop);
+  if(!twin || twin.tipTriggered) return twin||null;
+  prop._ringTwinSyncing=true;
+  twin._ringTwinSyncing=true;
+  try{
+    triggerPropTip(twin,angle,0,'ring-sync');
+  }finally{
+    prop._ringTwinSyncing=false;
+    twin._ringTwinSyncing=false;
+  }
+  return twin;
+}
+function syncRingTwinPropRestore(prop){
+  if(prop?._ringTwinSyncing) return null;
+  const twin=findRingTwinProp(prop);
+  if(!twin || (!twin.tipped && !twin.tipTriggered)) return twin||null;
+  prop._ringTwinSyncing=true;
+  twin._ringTwinSyncing=true;
+  try{
+    restorePropFromCleaner(twin,'ring-sync');
+  }finally{
+    prop._ringTwinSyncing=false;
+    twin._ringTwinSyncing=false;
+  }
+  return twin;
+}
 function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   if(!p||p.tipTriggered)return;
-  const awardsChaos=source!=='idol';
+  const silentSync=source==='ring-sync';
+  const awardsChaos=source!=='idol' && !silentSync;
   activeProps.add(p);
   p.tipTriggered=true;
   p.tipped=true;
   p.tidyProgress=0;
-  spawnHitFlash(p.root.position);
-  playSFX(getPropBreakSFXKey(p),{volume:0.84,cooldown:0.08,source:p});
-  spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
-  spawnComicImpact(p.root.position,p.kind==='stall'?'WHAM!':'POW!',p.kind==='stall'?'#fff2a6':'#fff7c2');
+  setRingPreviewPropVisible(p,false);
+  if(!silentSync){
+    spawnHitFlash(p.root.position);
+    playSFX(getPropBreakSFXKey(p),{volume:0.84,cooldown:0.08,source:p});
+    spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
+    spawnComicImpact(p.root.position,p.kind==='stall'?'WHAM!':'POW!',p.kind==='stall'?'#fff2a6':'#fff7c2');
+  }
   const fallDirX=Math.sin(angle);
   const fallDirZ=Math.cos(angle);
   const fallDistance=Math.max(p.tipOffset||0.22,Math.max(p.halfX||0.22,p.halfZ||0.22)*0.55);
@@ -12752,15 +12948,21 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     p.spillMesh.position.z=Math.sin(angle)*0.48;
   }
   if(p.kind==='soup-pot') activateBrothFX(p,angle,1.05);
-  if(p.kind==='stall' && p.hasSoup && Math.random()<STALL_SOUP_CHANCE) activateBrothFX(p,angle,1.35);
+  if(p.kind==='stall' && p.hasSoup && !silentSync && Math.random()<STALL_SOUP_CHANCE) activateBrothFX(p,angle,1.35);
   if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE){
     activateFireFX(p,angle,source);
     playSFX('stallFire',{volume:0.9,cooldown:0.05,source:p});
   }
-  registerChaosSpot(p.root.position.x,p.root.position.z,1.2+(p.kind==='stall'?0.8:0.3),6.5);
-  const spillRatCount=p.spawnRatsOnTip>0
+  if(!silentSync){
+    registerChaosSpot(p.root.position.x,p.root.position.z,1.2+(p.kind==='stall'?0.8:0.3),6.5);
+    if(!game.templeEvent.awakened && countNearbyGroundRats(p.root.position,5.4)>=3){
+      playLayeredRatSwarmBurst(p,{volume:0.78,stagger:0.15,priority:86});
+    }
+    syncRingTwinPropTip(p,angle);
+  }
+  const spillRatCount=silentSync?0:(p.spawnRatsOnTip>0
     ? p.spawnRatsOnTip
-    : ((source==='host' || source==='throw' || source==='idol') ? ((p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter') ? 3 : 2) : 0);
+    : ((source==='host' || source==='throw' || source==='idol') ? ((p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter') ? 3 : 2) : 0));
   if(spillRatCount>0){
     summonSpillRats(p.root.position.x,p.root.position.z,spillRatCount,{
       spawnFromPlayer:source==='host',
@@ -12853,13 +13055,14 @@ function findNearestMessForCleaner(cleaner){
   if(best) best.reservedBy=cleaner;
   return best;
 }
-function restorePropFromCleaner(prop){
+function restorePropFromCleaner(prop,source='cleaner'){
   prop.root.position.copy(prop.basePosition);
   prop.root.rotation.copy(prop.baseRotation);
   prop.root.position.y=prop.basePosition.y;
   prop.tipped=false;
   prop.tipTriggered=false;
   prop.tipAnim=null;
+  setRingPreviewPropVisible(prop,true);
   prop.heldBy=null;
   prop.throwVel=null;
   prop.throwOwner=null;
@@ -12872,7 +13075,10 @@ function restorePropFromCleaner(prop){
   clearPropFX(prop);
   if(prop.reservedBy) prop.reservedBy.targetProp=null;
   prop.reservedBy=null;
-  game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
+  if(source!=='ring-sync'){
+    syncRingTwinPropRestore(prop);
+    game.chaos=Math.max(0,game.chaos-CLEANER_CHAOS_RESTORE*prop.chaosWeight);
+  }
 }
 function countNearbyGroundRats(pos,radius=3.2){
   // Spatial-grid scan instead of O(N) over every rat in the world.
@@ -12891,7 +13097,7 @@ function countNearbyGroundRats(pos,radius=3.2){
       for(let i=0;i<cell.length;i++){
         const rat=cell[i];
         if(rat===player || rat===game.controlled) continue;
-        const dx=rat.root.position.x-pos.x;
+        const dx=nearestRingDelta(rat.root.position.x,pos.x);
         const dz=rat.root.position.z-pos.z;
         if(dx*dx+dz*dz<=r2) count++;
       }
@@ -13852,11 +14058,11 @@ function findHumanToAttackFor(rat,idol){
   for(const h of candidates){
     if(h.dead||h.parasitised||h.transformedToIdol||h.nonRatTarget||h.nonBiteable) continue;
     if(h===game.parasitisedHost) continue;
-    const dx=h.root.position.x-ix, dz=h.root.position.z-iz;
+    const dx=nearestRingDelta(h.root.position.x,ix), dz=h.root.position.z-iz;
     const distFromIdolSq=dx*dx+dz*dz;
     if(distFromIdolSq>RAT_HUNT_HUMAN_RANGE_SQ) continue;
     if((h.ratCoverage||0)>=HUMAN_RAT_ATTACK_CAP) continue;
-    const rx=h.root.position.x-rat.root.position.x;
+    const rx=nearestRingDelta(h.root.position.x,rat.root.position.x);
     const rz=h.root.position.z-rat.root.position.z;
     const d2=rx*rx+rz*rz;
     if(d2<bestD){bestD=d2;best=h}
@@ -14018,8 +14224,8 @@ function tickFollowerRats(dt){
     if(escortHunterCount+pendingHunters.length>RAT_ESCORT_ACTIVE_HUNTERS){
       pendingHunters.sort((a,b)=>{
         const ah=a.targetHuman, bh=b.targetHuman;
-        const ad=ah?Math.hypot(ah.root.position.x-a.root.position.x,ah.root.position.z-a.root.position.z):9999;
-        const bd=bh?Math.hypot(bh.root.position.x-b.root.position.x,bh.root.position.z-b.root.position.z):9999;
+        const ad=ah?Math.hypot(nearestRingDelta(ah.root.position.x,a.root.position.x),ah.root.position.z-a.root.position.z):9999;
+        const bd=bh?Math.hypot(nearestRingDelta(bh.root.position.x,b.root.position.x),bh.root.position.z-b.root.position.z):9999;
         return ad-bd;
       });
       const keep=Math.max(0,RAT_ESCORT_ACTIVE_HUNTERS-escortHunterCount);
@@ -14218,7 +14424,7 @@ function tickFollowerRats(dt){
         r.targetHuman=null;
       }
       if(victim){
-        const vdx=victim.root.position.x-r.root.position.x;
+        const vdx=nearestRingDelta(victim.root.position.x,r.root.position.x);
         const vdz=victim.root.position.z-r.root.position.z;
         const vd2=vdx*vdx+vdz*vdz;
         r.huntChaseTimer=(r.huntChaseTimer||0)+dt;
@@ -14300,7 +14506,8 @@ function tickFollowerRats(dt){
         r.roamTimer=(r.followPlayer && !r.streetBurstOrigin)?rand(0.18,0.42):rand(0.35,1.2);
       }
     }
-    const tx=(r.targetPos&&Number.isFinite(r.targetPos.x)) ? r.targetPos.x : (target?.x ?? player.root.position.x);
+    const rawTx=(r.targetPos&&Number.isFinite(r.targetPos.x)) ? r.targetPos.x : (target?.x ?? player.root.position.x);
+    const tx=RESIDENT_RING_MODE ? rawTx+ringShiftNearestToReference(rawTx,r.root.position.x) : rawTx;
     const tz=(r.targetPos&&Number.isFinite(r.targetPos.z)) ? r.targetPos.z : (target?.z ?? player.root.position.z);
     const dx=tx-r.root.position.x;
     const dz=tz-r.root.position.z;
@@ -14660,8 +14867,8 @@ function startGame(){
   stopLoopSFX('playerBiteLoop');
   stopLoopSFX('ritualSwarm');
   game.chaos=0;game.chaosDisplay=0;
-  sfxState.streetAmbienceGain=0.5;
-  if(sfxState.unlocked) startLoopSFX('streetAmbience',{volume:0.5,playbackRate:1,source:player,priority:92});
+  sfxState.streetAmbienceGain=0.08;
+  if(sfxState.unlocked) syncStreetAmbienceLayered(sfxState.streetAmbienceGain,player);
   setRatCityMode(false);
   seedVisibleHumansAroundFocus(true);
   updateActionButtons();
@@ -14735,10 +14942,15 @@ window.__debugHooks={
   wrapResidentRingEntity,
   resolveWorldCollisions,
   idolClearBlockingProp,
+  findRingTwinProp,
+  syncRingTwinPropTip,
+  shiftEscortRatAcrossIdolWarp,
   ensureRingMirrorForEntity,
   clearRingMirrorForEntity,
   playSFX,
   startLoopSFX,
+  playLayeredRatSwarmBurst,
+  syncStreetAmbienceLayered,
   getSFXState:()=>({
     unlocked:sfxState.unlocked,
     activeOneShots:getActiveOneShotSFX().map(a=>({key:a._sfxKey||'',priority:a._sfxPriority??0,paused:a.paused,ended:a.ended})),
