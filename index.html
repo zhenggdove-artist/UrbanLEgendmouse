@@ -638,6 +638,19 @@
   #rat-city-score{margin:20px 0 16px !important;font-size:clamp(13px,1.1vw,16px) !important;line-height:1.45 !important;}
   #rat-city-list{max-height:min(38vh,260px);overflow:auto;padding-right:6px !important;}
   #rat-city-list li{padding:10px 12px !important;line-height:1.45 !important;}
+  /* v9: the minimise control scales the complete ending card, not only its text. */
+  #rat-city-panel.min{
+    display:block !important;
+    left:auto !important;right:18px !important;top:18px !important;bottom:auto !important;
+    width:min(760px,calc(100vw - 36px)) !important;
+    height:min(520px,calc(100vh - 36px)) !important;
+    transform-origin:top right !important;
+    transform:scale(0.34) !important;
+    padding:clamp(34px,4.2vw,58px) clamp(44px,5.4vw,76px) clamp(32px,4.0vw,54px) !important;
+  }
+  #rat-city-panel.min p,#rat-city-panel.min #rat-city-list,#rat-city-panel.min #rat-city-name,#rat-city-panel.min #rat-city-save{display:revert !important;}
+  #rat-city-panel.min #rat-city-list{display:flex !important;}
+  #rat-city-panel.min .rat-city-row{display:grid !important;}
   body.game-won.rat-city-mode #rat-city-btn,
   body.game-won.rat-city-mode #rat-city-panel.show{display:block !important;}
   body.game-won.rat-city-mode #rats-win{display:none !important;}
@@ -664,11 +677,11 @@
 </div>
 <button id="rat-city-btn" class="ui-art-host" type="button"><span class="ui-art-label">RAT CITY</span><img id="rat-city-btn-art" class="ui-art-layer" alt=""></button>
 <div id="rat-city-panel">
-  <h3>RAT CITY</h3>
-  <p>Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.</p>
+  <h3 id="rat-city-title">RAT CITY</h3>
+  <p id="rat-city-desc">Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.</p>
   <button id="rat-city-min" type="button" aria-label="Minimize">-</button>
   <button id="rat-city-close" type="button" aria-label="Back">↻</button>
-  <div class="rat-city-row">
+  <div class="rat-city-row" id="rat-city-row">
     <input id="rat-city-name" type="text" maxlength="18" placeholder="Rat King Name:" />
     <button id="rat-city-save" type="button">Save</button>
   </div>
@@ -5471,6 +5484,7 @@ let ringSeamOccludersBuilt=false;
 let ringSeamPreviewBuilt=false;
 let ringSeamPreviewMinGroup=null;
 let ringSeamPreviewMaxGroup=null;
+const ringSeamPreviewSourceByUuid=new Map();
 let ringSeamVisualHoldUntil=0;
 let residentRingBuilt=false;
 let lastChunkIdx=null;
@@ -5850,6 +5864,7 @@ function removeRingSeamPreviewGroups(){
   ringSeamPreviewBuilt=false;
   ringSeamPreviewMinGroup=null;
   ringSeamPreviewMaxGroup=null;
+  ringSeamPreviewSourceByUuid.clear();
 }
 function ensureRitualEscortRats(){
   const idol=game.templeEvent.idol;
@@ -9923,10 +9938,19 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'intro-progress-text',label:'Loading Progress Text',isText:true,scene:'loading'},
   {id:'intro-progress-track',label:'Loading Progress Bar',scene:'loading'},
   {id:'rat-city-panel',label:'Ending Card',scene:'ending'},
+  {id:'rat-city-title',label:'Ending Title',isText:true,scene:'ending'},
+  {id:'rat-city-desc',label:'Ending Description',isText:true,multiline:true,scene:'ending'},
+  {id:'rat-city-min',label:'Ending Minimize Button',isText:true,scene:'ending'},
+  {id:'rat-city-close',label:'Ending Back Button',isText:true,scene:'ending'},
+  {id:'rat-city-row',label:'Ending Input Row',scene:'ending'},
+  {id:'rat-city-name',label:'Ending Name Input',isText:true,scene:'ending'},
+  {id:'rat-city-save',label:'Ending Save Button',isText:true,scene:'ending'},
+  {id:'rat-city-score',label:'Ending Score Text',isText:true,scene:'ending'},
+  {id:'rat-city-list',label:'Ending Ranking List',scene:'ending'},
   {id:'rats-win',label:'Legacy Ending Card',scene:'ending'},
-  {id:'rw-text',label:'Ending Title',isText:true,scene:'ending'},
-  {id:'rw-sub',label:'Ending Subtitle',isText:true,scene:'ending'},
-  {id:'rw-replay',label:'Ending Replay Button',isText:true,scene:'ending'}
+  {id:'rw-text',label:'Legacy Ending Title',isText:true,scene:'ending'},
+  {id:'rw-sub',label:'Legacy Ending Subtitle',isText:true,scene:'ending'},
+  {id:'rw-replay',label:'Legacy Ending Replay Button',isText:true,scene:'ending'}
 ];
 const UI_LAYOUT_ART_TARGETS={
   'chaos-box':'chaos-box-art',
@@ -9937,13 +9961,20 @@ const UI_LAYOUT_ART_TARGETS={
   'pickup-btn':'pickup-btn-art',
   'exit-host-btn':'exit-host-btn-art'
 };
-const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rats-win','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rats-win','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_STYLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn']);
-const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-name','rat-city-save','rat-city-score','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_DEFAULTS={
   'rat-city-btn':'RAT CITY',
   'start-btn-label':'BEGIN',
   'intro-title':'URBAN LEGEND RAT',
+  'rat-city-title':'RAT CITY',
+  'rat-city-desc':'Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.',
+  'rat-city-min':'-',
+  'rat-city-close':'↻',
+  'rat-city-name':'Rat King Name:',
+  'rat-city-save':'SAVE',
+  'rat-city-score':'CHAOS 0 · SCORE 0',
   'rw-text':'RATS WIN',
   'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
   'rw-replay':'BACK TO THE STREET',
@@ -10000,7 +10031,17 @@ const UI_LAYOUT_INTRO_FALLBACK={
   'rats-win':{x:50,y:50,w:56,h:56,z:30,hidden:false,locked:false},
   'rw-text':{x:50,y:43,w:58,h:7,z:31,hidden:false,locked:false,fontSize:24},
   'rw-sub':{x:50,y:54,w:54,h:4,z:31,hidden:false,locked:false,fontSize:11},
-  'rw-replay':{x:50,y:69,w:18,h:6,z:31,hidden:false,locked:false}
+  'rw-replay':{x:50,y:69,w:18,h:6,z:31,hidden:false,locked:false},
+  'rat-city-panel':{x:50,y:48,w:54,h:44,z:46,hidden:false,locked:false},
+  'rat-city-title':{x:34,y:34,w:20,h:5,z:48,hidden:false,locked:false,fontSize:28},
+  'rat-city-desc':{x:50,y:42,w:46,h:7,z:48,hidden:false,locked:false,fontSize:12,lineHeight:1.55},
+  'rat-city-min':{x:64.8,y:31.4,w:3.8,h:4.0,z:50,hidden:false,locked:false,fontSize:14},
+  'rat-city-close':{x:70.6,y:31.4,w:3.8,h:4.0,z:50,hidden:false,locked:false,fontSize:14},
+  'rat-city-row':{x:50,y:53,w:42,h:7,z:48,hidden:false,locked:false},
+  'rat-city-name':{x:45.4,y:53,w:32,h:5.2,z:49,hidden:false,locked:false,fontSize:13},
+  'rat-city-save':{x:65.3,y:53,w:7.6,h:5.4,z:49,hidden:false,locked:false,fontSize:13},
+  'rat-city-score':{x:39.5,y:64,w:30,h:4.5,z:48,hidden:false,locked:false,fontSize:15},
+  'rat-city-list':{x:50,y:74,w:44,h:16,z:48,hidden:false,locked:false}
 };
 const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-top':'viewport-frame-bottom',
@@ -10187,6 +10228,39 @@ function ensureUILayoutBuiltins(config){
         }
       }
       store.__endingCardLayoutApplied=true;
+    }
+    if(!store.__actualRatCityEndingV9){
+      const endingDefaults=(mode==='mobile')
+        ? {
+            'rat-city-panel':{x:50,y:46,w:88,h:48,z:46,hidden:false,locked:false,rot:0},
+            'rat-city-title':{x:23,y:30,w:30,h:5,z:48,hidden:false,locked:false,rot:0,fontSize:20,text:'RAT CITY'},
+            'rat-city-desc':{x:50,y:37,w:70,h:7,z:48,hidden:false,locked:false,rot:0,fontSize:10,lineHeight:1.5,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-desc']},
+            'rat-city-min':{x:72,y:26,w:9,h:5,z:50,hidden:false,locked:false,rot:0,fontSize:13,text:'-'},
+            'rat-city-close':{x:84,y:26,w:9,h:5,z:50,hidden:false,locked:false,rot:0,fontSize:13,text:'↻'},
+            'rat-city-row':{x:50,y:48,w:70,h:8,z:48,hidden:false,locked:false,rot:0},
+            'rat-city-name':{x:43,y:48,w:50,h:5.8,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'Rat King Name:'},
+            'rat-city-save':{x:74,y:48,w:14,h:5.8,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'SAVE'},
+            'rat-city-score':{x:34,y:59,w:44,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:'CHAOS 0 · SCORE 0'},
+            'rat-city-list':{x:50,y:70,w:72,h:16,z:48,hidden:false,locked:false,rot:0}
+          }
+        : {
+            'rat-city-panel':{x:50,y:46,w:58,h:44,z:46,hidden:false,locked:false,rot:0},
+            'rat-city-title':{x:34,y:31,w:22,h:5,z:48,hidden:false,locked:false,rot:0,fontSize:28,text:'RAT CITY'},
+            'rat-city-desc':{x:50,y:39,w:48,h:7,z:48,hidden:false,locked:false,rot:0,fontSize:12,lineHeight:1.55,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-desc']},
+            'rat-city-min':{x:65.5,y:27.5,w:4.0,h:4.2,z:50,hidden:false,locked:false,rot:0,fontSize:14,text:'-'},
+            'rat-city-close':{x:71.5,y:27.5,w:4.0,h:4.2,z:50,hidden:false,locked:false,rot:0,fontSize:14,text:'↻'},
+            'rat-city-row':{x:50,y:50.5,w:44,h:7,z:48,hidden:false,locked:false,rot:0},
+            'rat-city-name':{x:45.5,y:50.5,w:33,h:5.2,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'Rat King Name:'},
+            'rat-city-save':{x:66,y:50.5,w:8,h:5.4,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'SAVE'},
+            'rat-city-score':{x:39.5,y:61.5,w:32,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:15,text:'CHAOS 0 · SCORE 0'},
+            'rat-city-list':{x:50,y:72,w:46,h:16,z:48,hidden:false,locked:false,rot:0}
+          };
+      for(const [id,next] of Object.entries(endingDefaults)){
+        const current=store[id]||{};
+        store[id]={...current,...next,hidden:false,locked:false};
+      }
+      store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
+      store.__actualRatCityEndingV9=true;
     }
     if(!store['host-life-box']){
       const frame=store.__customFrames.find(entry=>entry?.id==='builtin-frame-host-life');
@@ -10466,6 +10540,7 @@ function getUILayoutMinBoxSize(def){
   if(def?.id==='start-btn') return {width:4,height:4};
   if(def?.id==='start-btn-label') return {width:2,height:2};
   if(def?.id==='intro-progress-track') return {width:4,height:2};
+  if(['rat-city-min','rat-city-close'].includes(def?.id)) return {width:2,height:2};
   if(def?.isSkinArt) return {width:4,height:4};
   return {width:6,height:6};
 }
@@ -10745,6 +10820,9 @@ function applyUILayoutMetrics(def,metrics){
       if(def.id==='rat-city-btn'){
         const label=ensureUIArtHostLabel(el);
         if(label) label.textContent=metrics.text;
+      }else if(def.id==='rat-city-name' && el.tagName==='INPUT'){
+        el.setAttribute('placeholder',metrics.text);
+        if(uiLayoutState.active && !el.value) el.value=metrics.text;
       }else if(def.multiline){
         el.textContent=metrics.text;
       }else{
@@ -11749,8 +11827,8 @@ function getLoadingTextTargets(){
   const scene=getActiveLayoutScene();
   const textTargets=UI_LAYOUT_TARGET_DEFS.filter(def=>UI_LAYOUT_TEXT_TARGETS.has(def.id) && (def.scene||'game')===scene);
   if(scene==='ending'){
-    const cardDef=getUILayoutDef('rats-win')||{id:'rats-win',label:'Ending Card',scene:'ending'};
-    return [cardDef,...textTargets];
+    const editableIds=['rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list'];
+    return editableIds.map(id=>getUILayoutDef(id)).filter(Boolean);
   }
   return textTargets;
 }
@@ -11857,7 +11935,7 @@ function refreshLoadingTextPanel(){
     const metrics=ensureUILayoutMetrics(def);
     const fallback=document.getElementById(def.id);
     const fallbackText=fallback?(def.multiline?fallback.innerText:(fallback.textContent||'')):'';
-    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel';
+    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel' || def.id==='rat-city-row' || def.id==='rat-city-list';
     const text=(typeof metrics.text==='string')?metrics.text:fallbackText;
     const fontSize=metrics.fontSize||'';
     const fontFamily=metrics.fontFamily||'';
@@ -13316,6 +13394,7 @@ function updateRingSeamVeil(dt){
     // min source shifted to max is only useful at the max seam, and vice versa.
     if(ringSeamPreviewMinGroup) ringSeamPreviewMinGroup.visible=hold || nearMax;
     if(ringSeamPreviewMaxGroup) ringSeamPreviewMaxGroup.visible=hold || nearMin;
+    syncRingSeamPreviewClonesLive();
   }
 }
 function makeRingSeamFogTexture(){
@@ -13365,14 +13444,14 @@ function shiftedObjectIntersectsTempleKeepOut(obj,shiftX,margin=2.4){
   return false;
 }
 function cloneRingSeamPreviewObject(obj,shiftX,label){
-  if(shiftedObjectIntersectsTempleKeepOut(obj,shiftX,2.4)) return null;
+  // v9: do not filter destination objects out of the shifted preview.
+  // The preview must be a real-time copy of exactly what exists at the other end;
+  // filtering by temple keep-out zones was the main source of visible mismatch.
   const clone=obj.clone(true);
   clone.name=`${obj.name||'chunkObject'}_ringPreview_${label}`;
   clone.position.x+=shiftX;
   clone.userData={...(clone.userData||{}),ringSeamSourceUuid:obj.uuid,ringSeamShift:shiftX};
-  const sourceProp=obj.userData?.isPropRoot ? game.props.find(p=>p?.root===obj) : null;
-  const linkedSourceProp=sourceProp?null:game.props.find(p=>Array.isArray(p?.linkedStallParts) && p.linkedStallParts.includes(obj));
-  if(sourceProp?.tipped || sourceProp?.tipTriggered || linkedSourceProp?.tipped || linkedSourceProp?.tipTriggered) clone.visible=false;
+  ringSeamPreviewSourceByUuid.set(obj.uuid,obj);
   clone.traverse(n=>{
     n.userData={...(n.userData||{}),ringSeamPreview:true};
     n.raycast=()=>{};
@@ -13387,19 +13466,32 @@ function cloneRingSeamPreviewObject(obj,shiftX,label){
   });
   return clone;
 }
-function setRingPreviewPropVisible(prop,visible){
-  if(!prop?.root) return;
-  const sourceUuids=new Set([prop.root.uuid]);
-  if(Array.isArray(prop.linkedStallParts)){
-    for(const part of prop.linkedStallParts){
-      if(part?.uuid) sourceUuids.add(part.uuid);
+function syncRingSeamPreviewClonesLive(){
+  if(!RESIDENT_RING_MODE || !ringSeamPreviewBuilt) return;
+  for(const group of [ringSeamPreviewMinGroup,ringSeamPreviewMaxGroup]){
+    if(!group) continue;
+    for(const clone of group.children){
+      const sourceUuid=clone?.userData?.ringSeamSourceUuid;
+      const source=sourceUuid?ringSeamPreviewSourceByUuid.get(sourceUuid):null;
+      if(!source || !source.parent){
+        clone.visible=false;
+        continue;
+      }
+      const shift=Number(clone.userData?.ringSeamShift)||0;
+      clone.visible=source.visible!==false;
+      clone.position.copy(source.position);
+      clone.position.x+=shift;
+      clone.quaternion.copy(source.quaternion);
+      clone.scale.copy(source.scale);
+      clone.updateMatrixWorld(true);
     }
   }
-  for(const group of [ringSeamPreviewMinGroup,ringSeamPreviewMaxGroup]){
-    group?.traverse?.(obj=>{
-      if(sourceUuids.has(obj?.userData?.ringSeamSourceUuid)) obj.visible=visible;
-    });
-  }
+}
+function setRingPreviewPropVisible(prop,visible){
+  // v9: preview copies now mirror their source transform/visibility every frame.
+  // Do not hide a tipped prop preview here; hiding caused the far end to show
+  // empty space while the landing side still contained the fallen object.
+  return;
 }
 function isTempleIdolEntity(ent){
   return !!(ent && (ent===game.templeEvent?.idol || ent.behaviour==='procession'));
@@ -13544,7 +13636,8 @@ function buildRingMirrorBonePairs(sourceRoot,mirrorRoot){
 function ensureRingMirrorForEntity(ent){
   if(!ent?._ringMirrorRoot){
     ent._ringMirrorRoot=SkeletonUtils.clone(ent.root);
-    ent._ringMirrorRoot.userData.ringMirrorOwnerId=ent.idolInstanceId || ent.root?.userData?.idolInstanceId || null;
+    if(!ent._ringMirrorOwnerId) ent._ringMirrorOwnerId=ent.idolInstanceId || ent.root?.userData?.idolInstanceId || ent.root?.uuid || `ring-ent-${Math.random().toString(36).slice(2)}`;
+    ent._ringMirrorRoot.userData.ringMirrorOwnerId=ent._ringMirrorOwnerId;
     ent._ringMirrorRoot.userData.ringMirrorProxy=true;
     ent._ringMirrorRoot.traverse(o=>{
       if(o.isMesh||o.isSkinnedMesh){
@@ -13676,6 +13769,10 @@ function syncRingSeamDynamicMirrors(){
   const focus=(game.controlled?.root?.position||player?.root?.position||null);
   if(!focus) return;
   const candidates=[];
+  if(game.controlled?.root) candidates.push(game.controlled);
+  for(const h of game.humans){
+    if(h?.root && h!==game.controlled && !h.dead && !h.transformedToIdol) candidates.push(h);
+  }
   if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
   let mirroredRatCandidates=0;
   for(const r of game.rats){
