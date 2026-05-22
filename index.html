@@ -131,9 +131,9 @@
   #rat-city-panel{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:46;
     width:min(520px,calc(100vw - 28px));padding:44px 42px 38px;border-radius:22px;display:none;
     border:none;background:transparent;box-shadow:none;box-sizing:border-box}
-  #rat-city-panel::before{content:'';position:absolute;left:50%;top:50%;width:116%;height:132%;
+  #rat-city-panel::before{content:'';position:absolute;left:50%;top:50%;width:100%;height:100%;
     transform:translate(-50%,-50%);pointer-events:none;z-index:0;
-    background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/100% 100% no-repeat}
+    background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/contain no-repeat}
   #rat-city-panel > *{position:relative;z-index:1}
   #rat-city-panel > .rat-city-row{position:relative}
   #rat-city-panel.show{display:block}
@@ -146,7 +146,7 @@
     background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em}
   #rat-city-save,#rat-city-close,#rat-city-min{appearance:none;border:none;border-radius:10px;padding:10px 12px;cursor:pointer;
     font:700 11px/1 var(--ui-display-font);letter-spacing:0.14em;text-transform:uppercase}
-  #rat-city-save{background:#ffd166;color:#2a1320}
+  #rat-city-save{background:#ffd166;color:#2a1320;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #rat-city-close{background:#ff8fb8;color:#351320}
   #rat-city-min{background:#9fd6ff;color:#17324b}
   #rat-city-close,#rat-city-min{position:absolute;top:34px;z-index:2}
@@ -157,6 +157,15 @@
   #rat-city-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;
     background:rgba(255,255,255,0.04);font:11px/1.3 "Courier New",monospace;color:#fff7d3}
   #rat-city-list .rank-name{max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rat-city-list li span:last-child{flex:0 0 auto;white-space:nowrap;text-align:right}
+  #rat-city-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font:700 10px/1 var(--ui-display-font);letter-spacing:0.14em;color:#fff1c2;text-transform:uppercase}
+  #rat-city-pager span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rat-city-pager button{appearance:none;border:none;border-radius:8px;padding:8px 12px;
+    background:linear-gradient(180deg,#e5e5e5,#a9a9a9);color:#151515;
+    font:700 10px/1 var(--ui-display-font);letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;
+    white-space:nowrap}
+  #rat-city-pager button:disabled{opacity:0.45;cursor:not-allowed}
   #rat-city-save:disabled{opacity:0.52;filter:grayscale(0.35);cursor:not-allowed}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
@@ -616,11 +625,14 @@
     box-shadow:0 2px 8px rgba(0,0,0,0.18) !important;
   }
   #rat-city-panel{
-    padding:clamp(34px,4.2vw,58px) clamp(44px,5.4vw,76px) clamp(32px,4.0vw,54px) !important;
+    aspect-ratio:3/2;
+    max-width:calc(100vw - 8px);
+    max-height:calc(100vh - 8px);
+    padding:0 !important;
     min-height:0;
     overflow:hidden;
   }
-  #rat-city-panel::before{width:112% !important;height:122% !important;}
+  #rat-city-panel::before{width:100% !important;height:100% !important;background-size:contain !important;}
   #rat-city-panel h3{
     margin:0 148px 18px 0 !important;
     font-size:clamp(20px,2.0vw,30px) !important;
@@ -634,11 +646,16 @@
     line-height:1.72 !important;
     letter-spacing:0.055em !important;
   }
-  #rat-city-panel .rat-city-row{gap:16px;margin:0 0 18px;}
-  #rat-city-name{height:42px;box-sizing:border-box;}
-  #rat-city-score{margin:20px 0 16px !important;font-size:clamp(13px,1.1vw,16px) !important;line-height:1.45 !important;}
-  #rat-city-list{max-height:min(38vh,260px);overflow:auto;padding-right:6px !important;}
-  #rat-city-list li{padding:10px 12px !important;line-height:1.45 !important;}
+  #rat-city-panel .rat-city-row{gap:12px;margin:0;}
+  #rat-city-name{height:100%;box-sizing:border-box;}
+  #rat-city-save{min-width:0;height:100%;box-sizing:border-box;}
+  #rat-city-score{margin:0 !important;font-size:clamp(10px,1.1vw,15px) !important;line-height:1.2 !important;}
+  #rat-city-list{overflow:hidden;padding-right:0 !important;}
+  #rat-city-list li{
+    min-height:0;flex:1 1 0;align-items:center;padding:4px 8px !important;
+    border-radius:8px !important;line-height:1.15 !important;
+  }
+  #rat-city-list .rank-name{max-width:56%}
   /* v9: the minimise control scales the complete ending card, not only its text. */
   #rat-city-panel.min{
     display:block !important;
@@ -659,6 +676,14 @@
   body.admin-stage-active.scene-ending #rat-city-panel{display:block !important;}
   body.admin-stage-active.scene-ending #rat-city-panel{pointer-events:auto;}
   body.admin-stage-active.scene-ending #rats-win{display:none !important;}
+  @media (max-width:900px){
+    #rat-city-btn .ui-art-label{line-height:1.05 !important;letter-spacing:0.08em}
+    #rat-city-list{gap:2px !important;}
+    #rat-city-list li{font-size:10px !important;padding:1px 6px !important;}
+    #rat-city-list .rank-name{max-width:52%}
+    #rat-city-pager{font-size:9px !important;gap:6px}
+    #rat-city-pager button{font-size:9px !important;padding:5px 8px}
+  }
 
 </style>
 </head>
@@ -686,8 +711,9 @@
     <input id="rat-city-name" type="text" maxlength="18" placeholder="Rat King Name:" />
     <button id="rat-city-save" type="button">Save</button>
   </div>
-  <div id="rat-city-score">CHAOS 0 · SCORE 0</div>
+  <div id="rat-city-score">CHAOS 0 / RATS 0</div>
   <ol id="rat-city-list"></ol>
+  <div id="rat-city-pager" aria-live="polite"></div>
 </div>
 <div id="hint"></div>
 <div id="bite-lock"><span>BITE!</span></div>
@@ -1188,6 +1214,7 @@ const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
 // Do not read a browser-local override here: stale debug URLs were the reason later builds silently fell back to localStorage.
 const RAT_CITY_LEADERBOARD_API_URL='https://urban-legend-rat-leaderboard.zhenggdove-artist.workers.dev/api/leaderboard';
 const RAT_CITY_LEADERBOARD_LIMIT=20;
+const RAT_CITY_LEADERBOARD_PAGE_SIZE=5;
 const RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS=30000;
 const RAT_CITY_SCORE_MAX=10000000;
 const BROTH_POOL_GROWTH=2.8;
@@ -9089,8 +9116,21 @@ function sortRatCityEntries(entries){
     .sort((a,b)=>b.score-a.score||b.chaos-a.chaos||String(a.date).localeCompare(String(b.date)))
     .slice(0,RAT_CITY_LEADERBOARD_LIMIT);
 }
+function getRatCityLeaderboardPageCount(){
+  return Math.max(1,Math.ceil((game.leaderboard?.length||0)/RAT_CITY_LEADERBOARD_PAGE_SIZE));
+}
+function clampRatCityLeaderboardPage(){
+  const maxPage=getRatCityLeaderboardPageCount()-1;
+  const page=Math.floor(Number(ratCityLeaderboardState.page)||0);
+  ratCityLeaderboardState.page=Math.max(0,Math.min(maxPage,page));
+}
+function setRatCityLeaderboardPage(page){
+  ratCityLeaderboardState.page=Math.max(0,Math.min(getRatCityLeaderboardPageCount()-1,Math.floor(Number(page)||0)));
+  renderRatCityLeaderboard();
+}
 function setRatCityLeaderboard(entries){
   game.leaderboard=sortRatCityEntries(entries);
+  clampRatCityLeaderboardPage();
 }
 function parseRatCityLeaderboardPayload(data){
   if(Array.isArray(data))return data;
@@ -9105,7 +9145,8 @@ const ratCityLeaderboardState={
   lastFetchAt:0,
   lastError:'',
   lastStatus:0,
-  lastUrl:RAT_CITY_LEADERBOARD_API_URL
+  lastUrl:RAT_CITY_LEADERBOARD_API_URL,
+  page:0
 };
 function getRatCityLeaderboardApiUrl(){
   // Match the reference version's simple, deterministic save/render flow:
@@ -9445,18 +9486,20 @@ const UI_LAYOUT_DEFAULTS={
       "rot": 0
     },
     "rat-city-btn": {
-      "x": 49.688,
-      "y": 6.926,
-      "w": 13.084,
-      "h": 11.611,
+      "x": 50,
+      "y": 7,
+      "w": 18,
+      "h": 7,
       "z": 20,
       "hidden": false,
       "locked": false,
       "rot": 0,
       "text": "RAT CITY",
-      "color": "\t#FFFFAA",
+      "color": "#FFFFAA",
       "bgColor": "",
-      "fontSize": 23
+      "fontSize": 18,
+      "lineHeight": 1.05,
+      "letterSpacing": 0.12
     },
     "hint": {
       "x": 50,
@@ -9799,10 +9842,10 @@ const UI_LAYOUT_DEFAULTS={
     "__beginButtonEditableApplied": true,
     "__endingScreenUnifiedV7": true,
     "rat-city-title": {
-      "x": 52,
-      "y": 25.534,
-      "w": 22,
-      "h": 5,
+      "x": 50,
+      "y": 24,
+      "w": 38,
+      "h": 5.5,
       "z": 48,
       "hidden": false,
       "locked": false,
@@ -9824,37 +9867,37 @@ const UI_LAYOUT_DEFAULTS={
       "rot": 0
     },
     "rat-city-min": {
-      "x": 77.629,
-      "y": 23.974,
-      "w": 4.775,
-      "h": 3.203,
+      "x": 65,
+      "y": 21,
+      "w": 5,
+      "h": 4.2,
       "z": 50,
       "hidden": false,
       "locked": true,
-      "fontSize": 10,
+      "fontSize": 13,
       "text": "-",
       "rot": 0,
-      "lineHeight": "0.6"
+      "lineHeight": 1
     },
     "rat-city-close": {
-      "x": 82.883,
-      "y": 24.13,
-      "w": 4.473,
-      "h": 4.019,
+      "x": 71,
+      "y": 21,
+      "w": 5,
+      "h": 4.2,
       "z": 50,
       "hidden": false,
       "locked": true,
       "fontSize": 14,
       "text": "↻",
       "rot": 0,
-      "lineHeight": "0.3",
-      "letterSpacing": -2
+      "lineHeight": 1,
+      "letterSpacing": 0
     },
     "rat-city-name": {
-      "x": 35.448,
-      "y": 0.61,
-      "w": 33,
-      "h": 5.2,
+      "x": 43,
+      "y": 37,
+      "w": 36,
+      "h": 5.5,
       "z": 49,
       "hidden": false,
       "locked": false,
@@ -9863,37 +9906,37 @@ const UI_LAYOUT_DEFAULTS={
       "rot": 0
     },
     "rat-city-save": {
-      "x": 69.331,
-      "y": -1.012,
-      "w": 13.726,
-      "h": 4.457,
+      "x": 65,
+      "y": 37,
+      "w": 12,
+      "h": 5.5,
       "z": 49,
       "hidden": false,
       "locked": false,
-      "fontSize": 10,
+      "fontSize": 12,
       "text": "SAVE",
       "rot": 0,
-      "lineHeight": "0.1",
-      "color": "#D6D6AD"
+      "lineHeight": 1,
+      "color": ""
     },
     "rat-city-score": {
-      "x": 51.817,
-      "y": 48.312,
-      "w": 26.01,
-      "h": 4.002,
+      "x": 50,
+      "y": 45.5,
+      "w": 52,
+      "h": 3.8,
       "z": 48,
-      "hidden": true,
+      "hidden": false,
       "locked": false,
-      "fontSize": 6,
-      "text": "CHAOS 0 · SCORE 0",
+      "fontSize": 13,
+      "text": "CHAOS 0 / RATS 0",
       "rot": 0,
-      "letterSpacing": -1.5
+      "letterSpacing": 0
     },
     "rat-city-panel": {
-      "x": 48.925,
-      "y": 57.085,
-      "w": 60.151,
-      "h": 66.169,
+      "x": 50,
+      "y": 50,
+      "w": 72,
+      "h": 48,
       "z": 46,
       "hidden": false,
       "locked": true,
@@ -9901,20 +9944,30 @@ const UI_LAYOUT_DEFAULTS={
     },
     "__actualRatCityEndingV8": true,
     "rat-city-row": {
-      "x": 50.757,
-      "y": 52.079,
-      "w": 44,
-      "h": 7,
+      "x": 50,
+      "y": 37,
+      "w": 52,
+      "h": 5.8,
       "z": 48,
       "hidden": false,
       "locked": false,
       "rot": 0
     },
     "rat-city-list": {
-      "x": 50.782,
-      "y": 60.597,
-      "w": 46,
-      "h": 16,
+      "x": 50,
+      "y": 57.5,
+      "w": 58,
+      "h": 19,
+      "z": 48,
+      "hidden": false,
+      "locked": true,
+      "rot": 0
+    },
+    "rat-city-pager": {
+      "x": 50,
+      "y": 70.5,
+      "w": 48,
+      "h": 5,
       "z": 48,
       "hidden": false,
       "locked": true,
@@ -10016,17 +10069,19 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-btn": {
       "x": 50,
-      "y": 2.87,
-      "w": 36.631,
-      "h": 2.295,
+      "y": 4.8,
+      "w": 44,
+      "h": 6.4,
       "z": 24,
       "hidden": false,
       "locked": true,
       "rot": 0,
       "bgColor": "",
       "text": "RAT CITY",
-      "color": "#FFFFF",
-      "fontSize": 13
+      "color": "#FFFFAA",
+      "fontSize": 11,
+      "lineHeight": 1.05,
+      "letterSpacing": 0.08
     },
     "hint": {
       "x": 30,
@@ -10400,14 +10455,14 @@ const UI_LAYOUT_DEFAULTS={
     "__beginButtonEditableApplied": true,
     "__endingScreenUnifiedV7": true,
     "rat-city-title": {
-      "x": 54.178,
-      "y": 24.77,
-      "w": 30,
-      "h": 5,
-      "z": 10,
+      "x": 50,
+      "y": 19.2,
+      "w": 52,
+      "h": 7.2,
+      "z": 48,
       "hidden": false,
       "locked": true,
-      "fontSize": 20,
+      "fontSize": 17,
       "text": "RAT CITY",
       "rot": 0
     },
@@ -10425,97 +10480,107 @@ const UI_LAYOUT_DEFAULTS={
       "rot": 0
     },
     "rat-city-min": {
-      "x": 69.715,
-      "y": 21.986,
-      "w": 9,
-      "h": 4.105,
-      "z": 14,
+      "x": 70,
+      "y": 19.6,
+      "w": 8,
+      "h": 7.2,
+      "z": 50,
       "hidden": false,
       "locked": true,
       "fontSize": 13,
       "text": "-",
       "rot": 0,
-      "lineHeight": "-0.3"
+      "lineHeight": 1
     },
     "rat-city-close": {
-      "x": 79.517,
-      "y": 22.006,
+      "x": 80,
+      "y": 19.6,
       "w": 9,
-      "h": 4.478,
-      "z": 13,
+      "h": 7.2,
+      "z": 50,
       "hidden": false,
       "locked": true,
       "fontSize": 13,
       "text": "↻",
       "rot": 0,
-      "letterSpacing": -1,
-      "lineHeight": "-0.7"
+      "letterSpacing": 0,
+      "lineHeight": 1
     },
     "rat-city-name": {
-      "x": 27.026,
-      "y": 6.099,
-      "w": 50,
-      "h": 5.8,
-      "z": 11,
+      "x": 39,
+      "y": 33.2,
+      "w": 52,
+      "h": 10.2,
+      "z": 49,
       "hidden": false,
       "locked": true,
-      "fontSize": 12,
+      "fontSize": 11,
       "text": "Rat King Name:",
       "rot": 0
     },
     "rat-city-save": {
-      "x": 66.481,
-      "y": 2.921,
-      "w": 16.342,
-      "h": 5.8,
-      "z": 12,
+      "x": 70.8,
+      "y": 33.2,
+      "w": 21.6,
+      "h": 10.2,
+      "z": 49,
       "hidden": false,
       "locked": true,
       "fontSize": 8,
       "text": "SAVE",
       "rot": 0,
       "letterSpacing": 0,
-      "lineHeight": "0"
+      "lineHeight": 1
     },
     "rat-city-score": {
-      "x": 34,
-      "y": 59,
-      "w": 44,
-      "h": 4.5,
-      "z": 7,
-      "hidden": true,
+      "x": 50,
+      "y": 43.8,
+      "w": 76,
+      "h": 6.5,
+      "z": 48,
+      "hidden": false,
       "locked": false,
-      "fontSize": 13,
-      "text": "CHAOS 0 · SCORE 0",
+      "fontSize": 9,
+      "text": "CHAOS 0 / RATS 0",
       "rot": 0
     },
     "rat-city-panel": {
-      "x": 49.516,
-      "y": 52.157,
-      "w": 88.968,
-      "h": 60.315,
-      "z": 5,
+      "x": 50,
+      "y": 50.6,
+      "w": 98,
+      "h": 65.333,
+      "z": 46,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
     "__actualRatCityEndingV8": true,
     "rat-city-row": {
-      "x": 55.096,
-      "y": 46.332,
-      "w": 82.828,
-      "h": 8,
-      "z": 8,
+      "x": 50,
+      "y": 33.2,
+      "w": 76,
+      "h": 10.2,
+      "z": 48,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
     "rat-city-list": {
-      "x": 49.857,
-      "y": 56.127,
-      "w": 56.861,
-      "h": 14.15,
-      "z": 6,
+      "x": 50,
+      "y": 58.5,
+      "w": 80,
+      "h": 27.6,
+      "z": 48,
+      "hidden": false,
+      "locked": true,
+      "rot": 0
+    },
+    "rat-city-pager": {
+      "x": 50,
+      "y": 79.2,
+      "w": 76,
+      "h": 8.2,
+      "z": 48,
       "hidden": false,
       "locked": true,
       "rot": 0
@@ -10570,6 +10635,7 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'rat-city-save',label:'Ending Save Button',isText:true,scene:'ending'},
   {id:'rat-city-score',label:'Ending Score Text',isText:true,scene:'ending'},
   {id:'rat-city-list',label:'Ending Ranking List',scene:'ending'},
+  {id:'rat-city-pager',label:'Ending Ranking Pager',scene:'ending'},
   {id:'rats-win',label:'Legacy Ending Card',scene:'ending'},
   {id:'rw-text',label:'Legacy Ending Title',isText:true,scene:'ending'},
   {id:'rw-sub',label:'Legacy Ending Subtitle',isText:true,scene:'ending'},
@@ -10584,7 +10650,7 @@ const UI_LAYOUT_ART_TARGETS={
   'pickup-btn':'pickup-btn-art',
   'exit-host-btn':'exit-host-btn-art'
 };
-const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rats-win','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rat-city-pager','rats-win','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_STYLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn']);
 const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-name','rat-city-save','rat-city-score','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_DEFAULTS={
@@ -10597,7 +10663,7 @@ const UI_LAYOUT_TEXT_DEFAULTS={
   'rat-city-close':'↻',
   'rat-city-name':'Rat King Name:',
   'rat-city-save':'SAVE',
-  'rat-city-score':'CHAOS 0 · SCORE 0',
+  'rat-city-score':'CHAOS 0 / RATS 0',
   'rw-text':'RATS WIN',
   'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
   'rw-replay':'BACK TO THE STREET',
@@ -10664,7 +10730,8 @@ const UI_LAYOUT_INTRO_FALLBACK={
   'rat-city-name':{x:45.4,y:53,w:32,h:5.2,z:49,hidden:false,locked:false,fontSize:13},
   'rat-city-save':{x:65.3,y:53,w:7.6,h:5.4,z:49,hidden:false,locked:false,fontSize:13},
   'rat-city-score':{x:39.5,y:64,w:30,h:4.5,z:48,hidden:false,locked:false,fontSize:15},
-  'rat-city-list':{x:50,y:74,w:44,h:16,z:48,hidden:false,locked:false}
+  'rat-city-list':{x:50,y:74,w:44,h:16,z:48,hidden:false,locked:false},
+  'rat-city-pager':{x:50,y:82,w:44,h:5,z:48,hidden:false,locked:false}
 };
 const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-top':'viewport-frame-bottom',
@@ -10863,7 +10930,7 @@ function ensureUILayoutBuiltins(config){
             'rat-city-row':{x:50,y:48,w:70,h:8,z:48,hidden:false,locked:false,rot:0},
             'rat-city-name':{x:43,y:48,w:50,h:5.8,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'Rat King Name:'},
             'rat-city-save':{x:74,y:48,w:14,h:5.8,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'SAVE'},
-            'rat-city-score':{x:34,y:59,w:44,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:'CHAOS 0 · SCORE 0'},
+            'rat-city-score':{x:34,y:59,w:44,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:'CHAOS 0 / RATS 0'},
             'rat-city-list':{x:50,y:70,w:72,h:16,z:48,hidden:false,locked:false,rot:0}
           }
         : {
@@ -10875,7 +10942,7 @@ function ensureUILayoutBuiltins(config){
             'rat-city-row':{x:50,y:50.5,w:44,h:7,z:48,hidden:false,locked:false,rot:0},
             'rat-city-name':{x:45.5,y:50.5,w:33,h:5.2,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'Rat King Name:'},
             'rat-city-save':{x:66,y:50.5,w:8,h:5.4,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'SAVE'},
-            'rat-city-score':{x:39.5,y:61.5,w:32,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:15,text:'CHAOS 0 · SCORE 0'},
+            'rat-city-score':{x:39.5,y:61.5,w:32,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:15,text:'CHAOS 0 / RATS 0'},
             'rat-city-list':{x:50,y:72,w:46,h:16,z:48,hidden:false,locked:false,rot:0}
           };
       for(const [id,next] of Object.entries(endingDefaults)){
@@ -10884,6 +10951,46 @@ function ensureUILayoutBuiltins(config){
       }
       store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
       store.__actualRatCityEndingV9=true;
+    }
+    if(!store.__ratCityLeaderboardCardV10){
+      const endingDefaults=(mode==='mobile')
+        ? {
+            'rat-city-btn':{x:50,y:4.8,w:44,h:6.4,z:24,hidden:false,locked:true,rot:0,fontSize:11,lineHeight:1.05,letterSpacing:0.08,color:'#FFFFAA',bgColor:''},
+            'rat-city-panel':{x:50,y:50.6,w:98,h:65.333,z:46,hidden:false,locked:true,rot:0},
+            'rat-city-title':{x:50,y:19.2,w:52,h:7.2,z:48,hidden:false,locked:true,rot:0,fontSize:17,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-title'],lineHeight:1},
+            'rat-city-desc':{x:50,y:39,w:70,h:5,z:48,hidden:true,locked:false,rot:0,fontSize:10,lineHeight:1.35,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-desc']},
+            'rat-city-min':{x:70,y:19.6,w:8,h:7.2,z:50,hidden:false,locked:true,rot:0,fontSize:13,text:'-',lineHeight:1,letterSpacing:0},
+            'rat-city-close':{x:79.5,y:20,w:9,h:8,z:50,hidden:false,locked:true,rot:0,fontSize:13,text:'â†»',lineHeight:1,letterSpacing:0},
+            'rat-city-row':{x:50,y:33.2,w:76,h:10.2,z:48,hidden:false,locked:true,rot:0},
+            'rat-city-name':{x:39,y:33.2,w:52,h:10.2,z:49,hidden:false,locked:true,rot:0,fontSize:11,text:'Rat King Name:',lineHeight:1},
+            'rat-city-save':{x:70.8,y:33.2,w:21.6,h:10.2,z:49,hidden:false,locked:true,rot:0,fontSize:8,text:'SAVE',lineHeight:1,letterSpacing:0},
+            'rat-city-score':{x:50,y:43.8,w:76,h:6.5,z:48,hidden:false,locked:false,rot:0,fontSize:9,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-score'],lineHeight:1.1,letterSpacing:0},
+            'rat-city-list':{x:50,y:58.5,w:80,h:27.6,z:48,hidden:false,locked:true,rot:0},
+            'rat-city-pager':{x:50,y:79.2,w:76,h:8.2,z:48,hidden:false,locked:true,rot:0}
+          }
+        : {
+            'rat-city-btn':{x:50,y:7,w:18,h:7,z:20,hidden:false,locked:false,rot:0,fontSize:18,lineHeight:1.05,letterSpacing:0.12,color:'#FFFFAA',bgColor:''},
+            'rat-city-panel':{x:50,y:50,w:72,h:48,z:46,hidden:false,locked:true,rot:0},
+            'rat-city-title':{x:50,y:24,w:38,h:5.5,z:48,hidden:false,locked:false,rot:0,fontSize:28,text:'RAT KING',lineHeight:1},
+            'rat-city-desc':{x:50,y:31,w:48,h:5,z:48,hidden:true,locked:false,rot:0,fontSize:12,lineHeight:1.4,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-desc']},
+            'rat-city-min':{x:65,y:21,w:5,h:4.2,z:50,hidden:false,locked:true,rot:0,fontSize:13,text:'-',lineHeight:1,letterSpacing:0},
+            'rat-city-close':{x:71,y:21,w:5,h:4.2,z:50,hidden:false,locked:true,rot:0,fontSize:14,text:'â†»',lineHeight:1,letterSpacing:0},
+            'rat-city-row':{x:50,y:37,w:52,h:5.8,z:48,hidden:false,locked:false,rot:0},
+            'rat-city-name':{x:43,y:37,w:36,h:5.5,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'Rat King Name:',lineHeight:1},
+            'rat-city-save':{x:65,y:37,w:12,h:5.5,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'SAVE',lineHeight:1,letterSpacing:0,color:''},
+            'rat-city-score':{x:50,y:45.5,w:52,h:3.8,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-score'],lineHeight:1.15,letterSpacing:0},
+            'rat-city-list':{x:50,y:57.5,w:58,h:19,z:48,hidden:false,locked:true,rot:0},
+            'rat-city-pager':{x:50,y:70.5,w:48,h:5,z:48,hidden:false,locked:true,rot:0}
+          };
+      for(const [id,next] of Object.entries(endingDefaults)){
+        const current=store[id]||{};
+        const keepText=(typeof current.text==='string' && current.text.trim() && !['rat-city-save','rat-city-score','rat-city-name','rat-city-min','rat-city-close'].includes(id))
+          ? {text:current.text}
+          : {};
+        store[id]={...current,...next,...keepText,hidden:next.hidden,locked:next.locked};
+      }
+      store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
+      store.__ratCityLeaderboardCardV10=true;
     }
     if(!store['host-life-box']){
       const frame=store.__customFrames.find(entry=>entry?.id==='builtin-frame-host-life');
@@ -11436,6 +11543,13 @@ function applyUILayoutMetrics(def,metrics){
   }
   el.style.right='auto';
   el.style.bottom='auto';
+  if(def.id==='rat-city-panel'){
+    el.style.aspectRatio='3 / 2';
+    el.style.width=`min(${metrics.w}%, calc(100vw - 8px), calc(150vh - 12px))`;
+    el.style.height='auto';
+    el.style.maxWidth='calc(100vw - 8px)';
+    el.style.maxHeight='calc(100vh - 8px)';
+  }
   if(def.id==='chaos-box' || def.id==='rats-box'){
     // Mobile CSS used to impose a fixed min-width that was not active in
     // the desktop editor's mobile preview, so live mobile drifted from the
@@ -12459,7 +12573,7 @@ function getLoadingTextTargets(){
   const scene=getActiveLayoutScene();
   const textTargets=UI_LAYOUT_TARGET_DEFS.filter(def=>UI_LAYOUT_TEXT_TARGETS.has(def.id) && (def.scene||'game')===scene);
   if(scene==='ending'){
-    const editableIds=['rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list'];
+    const editableIds=['rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rat-city-pager'];
     return editableIds.map(id=>getUILayoutDef(id)).filter(Boolean);
   }
   return textTargets;
@@ -12567,7 +12681,7 @@ function refreshLoadingTextPanel(){
     const metrics=ensureUILayoutMetrics(def);
     const fallback=document.getElementById(def.id);
     const fallbackText=fallback?(def.multiline?fallback.innerText:(fallback.textContent||'')):'';
-    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel' || def.id==='rat-city-row' || def.id==='rat-city-list';
+    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel' || def.id==='rat-city-row' || def.id==='rat-city-list' || def.id==='rat-city-pager';
     const text=(typeof metrics.text==='string')?metrics.text:fallbackText;
     const fontSize=metrics.fontSize||'';
     const fontFamily=metrics.fontFamily||'';
@@ -13520,6 +13634,7 @@ const ratCityMin=document.getElementById('rat-city-min');
 const ratCityClose=document.getElementById('rat-city-close');
 const ratCityScore=document.getElementById('rat-city-score');
 const ratCityList=document.getElementById('rat-city-list');
+const ratCityPager=document.getElementById('rat-city-pager');
 let ratCityScoreSavedThisRun=false;
 const hintEl=document.getElementById('hint');
 const biteLockEl=document.getElementById('bite-lock');
@@ -13660,26 +13775,60 @@ function getRatCityRatValue(){
   return Math.round(getTotalRatCount());
 }
 function renderRatCityLeaderboard(){
-  const status=ratCityLeaderboardState.onlineReady?' · ONLINE':(ratCityLeaderboardState.lastError?' · LOCAL ONLY':'');
-  ratCityScore.textContent=`CHAOS ${getRatCityChaosValue()} · RATS ${getRatCityRatValue()}${status}`;
+  const compact=window.matchMedia?.('(max-width: 900px)').matches;
+  const status=ratCityLeaderboardState.onlineReady?' | ONLINE':(ratCityLeaderboardState.lastError?' | LOCAL ONLY':'');
+  ratCityScore.textContent=compact
+    ? `C ${getRatCityChaosValue()} / R ${getRatCityRatValue()}${status}`
+    : `CHAOS ${getRatCityChaosValue()} / RATS ${getRatCityRatValue()}${status}`;
   ratCityScore.title=ratCityLeaderboardState.lastError||ratCityLeaderboardState.lastUrl||'';
   ratCityList.innerHTML='';
+  if(ratCityPager) ratCityPager.innerHTML='';
+  clampRatCityLeaderboardPage();
   if(!game.leaderboard.length){
     const li=document.createElement('li');
     li.textContent=ratCityLeaderboardState.lastError?'No online rankings loaded.':'No rankings logged yet.';
     ratCityList.appendChild(li);
+    if(ratCityPager){
+      const pageLabel=document.createElement('span');
+      pageLabel.textContent='PAGE 0/0';
+      const next=document.createElement('button');
+      next.type='button';
+      next.textContent='NEXT PAGE';
+      next.disabled=true;
+      ratCityPager.append(pageLabel,next);
+    }
     return;
   }
-  game.leaderboard.slice(0,RAT_CITY_LEADERBOARD_LIMIT).forEach((entry,idx)=>{
+  const pageCount=getRatCityLeaderboardPageCount();
+  const page=ratCityLeaderboardState.page;
+  const start=page*RAT_CITY_LEADERBOARD_PAGE_SIZE;
+  const pageEntries=game.leaderboard.slice(start,start+RAT_CITY_LEADERBOARD_PAGE_SIZE);
+  pageEntries.forEach((entry,idx)=>{
     const li=document.createElement('li');
     const left=document.createElement('span');
     left.className='rank-name';
-    left.textContent=`#${idx+1} ${entry.name}`;
+    left.textContent=`#${start+idx+1} ${entry.name}`;
     const right=document.createElement('span');
-    right.textContent=`CHAOS ${Math.round(entry.chaos||entry.score||0)} · RATS ${Math.round(entry.rats||0)}`;
+    const entryChaos=Math.round(entry.chaos||entry.score||0);
+    const entryRats=Math.round(entry.rats||0);
+    right.textContent=compact?`C${entryChaos} R${entryRats}`:`CHAOS ${entryChaos} / RATS ${entryRats}`;
     li.append(left,right);
     ratCityList.appendChild(li);
   });
+  if(ratCityPager){
+    const pageLabel=document.createElement('span');
+    const end=Math.min(start+pageEntries.length,game.leaderboard.length);
+    pageLabel.textContent=`PAGE ${page+1}/${pageCount} - ${start+1}-${end} OF ${game.leaderboard.length}`;
+    const next=document.createElement('button');
+    next.type='button';
+    next.textContent='NEXT PAGE';
+    next.disabled=pageCount<=1;
+    next.addEventListener('pointerdown',e=>{
+      e.preventDefault();
+      setRatCityLeaderboardPage((ratCityLeaderboardState.page+1)%pageCount);
+    });
+    ratCityPager.append(pageLabel,next);
+  }
 }
 function setRatCityMode(enabled){
   game.ratCityMode=enabled;
@@ -13688,6 +13837,7 @@ function setRatCityMode(enabled){
   if(!enabled) ratCityPanel.classList.remove('min');
   setUIArtHostLabel(ratCityBtn,enabled?'BACK TO\nTHE STREET':'RAT CITY');
   if(enabled){
+    ratCityLeaderboardState.page=0;
     game.ratCityAngle=camYaw;
     ratCityPitch=0.58;
     ratCityZoom=26;
@@ -13717,10 +13867,11 @@ function submitRatCityScore(){
   ratCitySave.setAttribute('aria-disabled','true');
   game.leaderboard.push(entry);
   setRatCityLeaderboard(game.leaderboard);
+  ratCityLeaderboardState.page=0;
   saveRatCityLeaderboard();
   renderRatCityLeaderboard();
   postRatCityOnlineScore(entry).then(ok=>{
-    ratCitySave.textContent=ok?'SAVED ONLINE':'SAVED LOCAL';
+    ratCitySave.textContent=ok?'ONLINE':'LOCAL';
     if(!ok){
       console.warn('[rat-city] score saved locally but Cloudflare sync failed:',ratCityLeaderboardState.lastError);
     }

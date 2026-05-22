@@ -1,93 +1,62 @@
-# Layout Export Replace Guide
+# Layout 匯出替換指南
 
-檔案：`index.html`
+目標檔案：`index.html`
 
-## 目前這一版要取代的精確行號
+## 為什麼會跳出版本差異警告
 
-把 `index.html` 的：
+這個警告通常不是 Layout Admin 匯出的內容壞掉，而是編輯器發現你正在覆蓋一份已經被其他工具更新過的 `index.html`。也就是說，你手上開著的是舊版本，磁碟上的檔案已經更新，所以編輯器阻止你直接儲存。
 
-- 第 `4742` 行
-- 到第 `4775` 行
+常見原因：
 
-整段全部取代掉。
+- 依照舊指南的行號替換，但 `index.html` 已經被 AI 或其他工具改過，行號不再準。
+- 你開著 `index.html` 的舊分頁時，Codex 或其他 AI 又改了同一個檔案。
+- 瀏覽器裡的遊戲還是舊版，匯出的 layout 缺少新欄位，例如這次新增的 `rat-city-pager`。
+- 替換範圍太大，不小心覆蓋到 `UI_LAYOUT_DEFAULTS` 後面的程式碼。
 
-不要改到第 `4776` 行，因為第 `4776` 行是下一段：
+## 正確替換規則
 
-```js
-const UI_LAYOUT_TARGET_DEFS=[
-```
+不要用行號。請用搜尋錨點。
 
-## 要被取代的起始符號
-
-從這一行開始取代：
+只替換這一整段：
 
 ```js
 const UI_LAYOUT_DEFAULTS={
-```
-
-## 要被取代的結束符號
-
-取代到這一行為止：
-
-```js
+  ...
 };
 ```
 
-注意：
-
-- 這個 `};` 是 `const UI_LAYOUT_DEFAULTS=` 這一整個物件的結尾。
-- 這個 `};` 的下一行必須立刻是：
-
-```js
-const UI_LAYOUT_TARGET_DEFS=[
-```
-
-## 最穩定的取代方式
-
-如果之後 `index.html` 行號變了，不要靠行號判斷，直接用下面這個規則：
-
-1. 找到第一個：
+開始位置請搜尋：
 
 ```js
 const UI_LAYOUT_DEFAULTS={
 ```
 
-2. 往下找到它結束後、下一行剛好接著這個地方：
+結束位置是同一個物件的配對 `};`。不要刪到後面的區段，例如：
+
+```js
+// RESTORED constants & functions
+```
+
+或：
 
 ```js
 const UI_LAYOUT_TARGET_DEFS=[
 ```
 
-3. 把這兩者之間的整段 `UI_LAYOUT_DEFAULTS` 完整替換成 `Export` 複製出來的新 block。
+## 安全流程
 
-## Export 後貼回去時的正確樣子
+1. 在編輯器中先重新載入 `index.html`，確定它是磁碟上的最新版本。
+2. 在瀏覽器重新整理遊戲，進入 Layout Admin 後再調整畫面。
+3. 按 `Export`。
+4. 回到 `index.html`，搜尋 `const UI_LAYOUT_DEFAULTS={`。
+5. 只選取這個物件，從 `const UI_LAYOUT_DEFAULTS={` 到它自己的配對 `};`。
+6. 貼上匯出的內容並儲存。
+7. 如果又出現版本差異警告，選擇取消儲存，重新載入檔案後再貼一次。
 
-`Export` 產生的內容會長得像這樣：
+## 這版需要注意
 
-```js
-const UI_LAYOUT_DEFAULTS={
-  desktop:{...},
-  mobile:{...}
-};
-```
-
-你要做的是：
-
-- 保留 `const UI_LAYOUT_TARGET_DEFS=[` 這行以下的內容不動
-- 只替換 `const UI_LAYOUT_DEFAULTS=` 這整段
-
-## 一句話版
-
-把 `index.html` 內：
-
-```js
-const UI_LAYOUT_DEFAULTS={
-```
-
-到下一個：
-
-```js
-const UI_LAYOUT_TARGET_DEFS=[
-```
-
-前一行為止的所有內容，全部換成 `Export` 產生的新 `const UI_LAYOUT_DEFAULTS=...;`
+- 匯出內容必須包含 `desktop` 和 `mobile`。
+- 匯出內容應該包含 `rat-city-pager`。如果沒有，代表瀏覽器還在跑舊版，請重新整理遊戲後再匯出。
+- 不要替換 `UI_LAYOUT_TARGET_DEFS`、Cloudflare Worker、排行榜 API、或 `UI_LAYOUT_DEFAULTS` 以外的程式碼。
+- 如果你只想修手機版，仍然要保留匯出內容裡的 `desktop`，不要只貼 `mobile` 片段。
+- 若版面整個跑掉，先在 Layout Admin 對目前 bucket 做 `Reset`，再重新調整與匯出。
