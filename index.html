@@ -14158,6 +14158,38 @@ function shiftNearbySeamDependentsForLeader(ent,fromX,shifted){
     }
   }
 }
+function continueTempleIdolForwardAfterRingWrap(idol,shifted){
+  const oldIndex=idol?.processIndex||0;
+  if(!idol?.root){
+    return {oldIndex,newIndex:oldIndex,pathLength:idol?.processionPath?.length||0};
+  }
+  // Crossing the resident-ring seam is not a command to replay the temple
+  // procession route. The previous implementation realigned the idol to the
+  // nearest point on its temple path after wrapping; near the seam this could
+  // choose an old doorway/altar segment, so the statue turned around and cut
+  // through the shrine. After a seam wrap, force it into forward roam.
+  const forwardSign=shifted<0?1:-1;
+  idol._roamForwardSign=forwardSign;
+  idol.behaviour='procession';
+  idol.actionName='walk';
+  idol.actionTimer=999999;
+  idol.curSpeed=Math.max(idol.curSpeed||0,HOST_MAX_SPEED*0.62);
+  idol.roamIdleTimer=0;
+  idol.roamTimer=rand(1.8,3.2);
+  idol.roamTarget=new THREE.Vector3(
+    idol.root.position.x+forwardSign*rand(12,22),
+    GROUND_Y_OFFSET+0.12,
+    clamp(idol.root.position.z+rand(-1.4,1.4),ALLEY_Z_MIN+2.2,ALLEY_Z_MAX-2.2)
+  );
+  idol._processionStuckTimer=0;
+  idol._roamStuckTimer=0;
+  if(game.templeEvent?.idol===idol){
+    game.templeEvent.phase='roam';
+  }
+  const len=idol.processionPath?.length||0;
+  if(len) idol.processIndex=len-1;
+  return {oldIndex,newIndex:idol.processIndex||oldIndex,pathLength:len};
+}
 function wrapResidentRingEntity(ent){
   if(!RESIDENT_RING_MODE || !ent?.root || ent._noRingWrap) return false;
   const p=ent.root.position;
@@ -14168,11 +14200,12 @@ function wrapResidentRingEntity(ent){
   if(!shifted) return false;
   const fromX=p.x;
   p.x+=shifted;
+  const templeIdolWrap=isTempleIdolEntity(ent);
   shiftNearbySeamDependentsForLeader(ent,fromX,shifted);
-  if(ent.targetPos?.x!==undefined) ent.targetPos.x+=shifted;
-  if(ent.roamTarget?.x!==undefined) ent.roamTarget.x+=shifted;
-  if(ent.followOffset?.x!==undefined) ent.followOffset.x+=shifted;
-  if(ent.processionPath?.length){ for(const q of ent.processionPath){ if(q?.x!==undefined) q.x+=shifted; } }
+  if(ent.targetPos?.x!==undefined && !templeIdolWrap) ent.targetPos.x+=shifted;
+  if(ent.roamTarget?.x!==undefined && !templeIdolWrap) ent.roamTarget.x+=shifted;
+  if(ent.followOffset?.x!==undefined && !templeIdolWrap) ent.followOffset.x+=shifted;
+  if(ent.processionPath?.length && !templeIdolWrap){ for(const q of ent.processionPath){ if(q?.x!==undefined) q.x+=shifted; } }
   if(ent===player || ent===game.controlled || ent.controllable){
     ringSeamLastWrapTime=gameTime;
     ringSeamVisualHoldUntil=gameTime+0.72;
@@ -14184,9 +14217,9 @@ function wrapResidentRingEntity(ent){
   const proxyStatus=clearRingMirrorForEntity(ent);
   if(isTempleIdolEntity(ent)){
     const mixerStatus=resyncActorMixerAfterWarp(ent);
-    const pathSync=realignIdolPath(ent,p,shifted);
+    const pathSync=continueTempleIdolForwardAfterRingWrap(ent,shifted);
     dispatchIdolRefreshed(ent,{fromX,toX:p.x,shifted,oldIndex:pathSync.oldIndex,newIndex:pathSync.newIndex,proxyStatus});
-    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; PathIndex: ${pathSync.oldIndex}->${pathSync.newIndex}; Rat handover: dispatched`);
+    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; ForwardRoam: ${ent._roamForwardSign}; PathIndex: ${pathSync.oldIndex}->${pathSync.newIndex}; Rat handover: dispatched`);
   }
   return true;
 }
@@ -14253,7 +14286,11 @@ function syncRingSeamDynamicMirrors(){
   const candidates=[];
   if(game.controlled?.root) candidates.push(game.controlled);
   for(const h of game.humans){
-    if(h?.root && h!==game.controlled && !h.transformedToIdol) candidates.push(h);
+    // Transformed idol NPCs are still dynamic skinned actors. Excluding
+    // h.transformedToIdol was the reason the small statue NPCs vanished
+    // at the resident-ring seam: only their source side existed, with no
+    // live mirror on the landing side.
+    if(h?.root && h!==game.controlled) candidates.push(h);
   }
   if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
   let mirroredRatCandidates=0;
