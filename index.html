@@ -625,7 +625,7 @@
     box-shadow:0 2px 8px rgba(0,0,0,0.18) !important;
   }
   #rat-city-panel{
-    aspect-ratio:3/2;
+    aspect-ratio:auto;
     max-width:calc(100vw - 8px);
     max-height:calc(100vh - 8px);
     padding:0 !important;
@@ -649,7 +649,10 @@
   #rat-city-panel .rat-city-row{gap:12px;margin:0;}
   #rat-city-name{height:100%;box-sizing:border-box;}
   #rat-city-save{min-width:0;height:100%;box-sizing:border-box;}
-  #rat-city-score{margin:0 !important;font-size:clamp(10px,1.1vw,15px) !important;line-height:1.2 !important;}
+  #rat-city-title,#rat-city-score,#rat-city-pager,#rat-city-list li,#rat-city-save,#rat-city-name{
+    max-width:100%;overflow:hidden;overflow-wrap:anywhere;
+  }
+  #rat-city-score{margin:0 !important;font-size:clamp(10px,1.1vw,15px) !important;line-height:1.2 !important;white-space:normal !important;}
   #rat-city-list{overflow:hidden;padding-right:0 !important;}
   #rat-city-list li{
     min-height:0;flex:1 1 0;align-items:center;padding:4px 8px !important;
@@ -678,10 +681,14 @@
   body.admin-stage-active.scene-ending #rats-win{display:none !important;}
   @media (max-width:900px){
     #rat-city-btn .ui-art-label{line-height:1.05 !important;letter-spacing:0.08em}
+    #rat-city-title{font-size:clamp(14px,4.2vw,17px) !important;line-height:1 !important}
+    #rat-city-save,#rat-city-name{padding:4px 8px !important}
+    #rat-city-score{font-size:clamp(8px,2.2vw,10px) !important;line-height:1.08 !important}
     #rat-city-list{gap:2px !important;}
-    #rat-city-list li{font-size:10px !important;padding:1px 6px !important;}
+    #rat-city-list li{font-size:clamp(8px,2.1vw,10px) !important;padding:1px 6px !important;}
     #rat-city-list .rank-name{max-width:52%}
-    #rat-city-pager{font-size:9px !important;gap:6px}
+    #rat-city-pager{font-size:clamp(8px,2vw,9px) !important;gap:6px;line-height:1.05 !important}
+    #rat-city-pager span{white-space:normal !important}
     #rat-city-pager button{font-size:9px !important;padding:5px 8px}
   }
 
@@ -9843,8 +9850,8 @@ const UI_LAYOUT_DEFAULTS={
     "__endingScreenUnifiedV7": true,
     "rat-city-title": {
       "x": 50,
-      "y": 24,
-      "w": 38,
+      "y": 21,
+      "w": 42,
       "h": 5.5,
       "z": 48,
       "hidden": false,
@@ -9895,9 +9902,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-name": {
       "x": 43,
-      "y": 37,
+      "y": 35,
       "w": 36,
-      "h": 5.5,
+      "h": 6,
       "z": 49,
       "hidden": false,
       "locked": false,
@@ -9907,9 +9914,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-save": {
       "x": 65,
-      "y": 37,
+      "y": 35,
       "w": 12,
-      "h": 5.5,
+      "h": 6,
       "z": 49,
       "hidden": false,
       "locked": false,
@@ -9921,9 +9928,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-score": {
       "x": 50,
-      "y": 45.5,
+      "y": 45,
       "w": 52,
-      "h": 3.8,
+      "h": 4.4,
       "z": 48,
       "hidden": false,
       "locked": false,
@@ -9936,18 +9943,18 @@ const UI_LAYOUT_DEFAULTS={
       "x": 50,
       "y": 50,
       "w": 72,
-      "h": 48,
+      "h": 78,
       "z": 46,
       "hidden": false,
-      "locked": true,
+      "locked": false,
       "rot": 0
     },
     "__actualRatCityEndingV8": true,
     "rat-city-row": {
       "x": 50,
-      "y": 37,
+      "y": 35,
       "w": 52,
-      "h": 5.8,
+      "h": 6.4,
       "z": 48,
       "hidden": false,
       "locked": false,
@@ -9955,9 +9962,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-list": {
       "x": 50,
-      "y": 57.5,
+      "y": 61,
       "w": 58,
-      "h": 19,
+      "h": 24,
       "z": 48,
       "hidden": false,
       "locked": true,
@@ -9965,15 +9972,18 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-pager": {
       "x": 50,
-      "y": 70.5,
+      "y": 78,
       "w": 48,
-      "h": 5,
+      "h": 6,
       "z": 48,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
-    "__actualRatCityEndingV9": true
+    "__actualRatCityEndingV9": true,
+    "__ratCityLeaderboardCardV10": true,
+    "__endingCardResizeFixV11": true,
+    "__ratCityEndingCardV12": true
   },
   "mobile": {
     "viewport-frame-top": {
@@ -10456,7 +10466,7 @@ const UI_LAYOUT_DEFAULTS={
     "__endingScreenUnifiedV7": true,
     "rat-city-title": {
       "x": 50,
-      "y": 19.2,
+      "y": 17.5,
       "w": 52,
       "h": 7.2,
       "z": 48,
@@ -10481,7 +10491,7 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-min": {
       "x": 70,
-      "y": 19.6,
+      "y": 18,
       "w": 8,
       "h": 7.2,
       "z": 50,
@@ -10494,7 +10504,7 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-close": {
       "x": 80,
-      "y": 19.6,
+      "y": 18,
       "w": 9,
       "h": 7.2,
       "z": 50,
@@ -10508,9 +10518,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-name": {
       "x": 39,
-      "y": 33.2,
+      "y": 30.5,
       "w": 52,
-      "h": 10.2,
+      "h": 8.6,
       "z": 49,
       "hidden": false,
       "locked": true,
@@ -10520,9 +10530,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-save": {
       "x": 70.8,
-      "y": 33.2,
+      "y": 30.5,
       "w": 21.6,
-      "h": 10.2,
+      "h": 8.6,
       "z": 49,
       "hidden": false,
       "locked": true,
@@ -10534,9 +10544,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-score": {
       "x": 50,
-      "y": 43.8,
+      "y": 39.8,
       "w": 76,
-      "h": 6.5,
+      "h": 5.8,
       "z": 48,
       "hidden": false,
       "locked": false,
@@ -10546,20 +10556,20 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-panel": {
       "x": 50,
-      "y": 50.6,
+      "y": 50,
       "w": 98,
-      "h": 65.333,
+      "h": 74,
       "z": 46,
       "hidden": false,
-      "locked": true,
+      "locked": false,
       "rot": 0
     },
     "__actualRatCityEndingV8": true,
     "rat-city-row": {
       "x": 50,
-      "y": 33.2,
+      "y": 30.5,
       "w": 76,
-      "h": 10.2,
+      "h": 8.6,
       "z": 48,
       "hidden": false,
       "locked": true,
@@ -10567,9 +10577,9 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-list": {
       "x": 50,
-      "y": 58.5,
+      "y": 55.5,
       "w": 80,
-      "h": 27.6,
+      "h": 26,
       "z": 48,
       "hidden": false,
       "locked": true,
@@ -10577,15 +10587,18 @@ const UI_LAYOUT_DEFAULTS={
     },
     "rat-city-pager": {
       "x": 50,
-      "y": 79.2,
+      "y": 75,
       "w": 76,
-      "h": 8.2,
+      "h": 7,
       "z": 48,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
-    "__actualRatCityEndingV9": true
+    "__actualRatCityEndingV9": true,
+    "__ratCityLeaderboardCardV10": true,
+    "__endingCardResizeFixV11": true,
+    "__ratCityEndingCardV12": true
   }
 };
 // RESTORED constants & functions — an earlier auto-commit (4923786)
@@ -10997,6 +11010,38 @@ function ensureUILayoutBuiltins(config){
         store['rat-city-panel']={...store['rat-city-panel'],locked:false};
       }
       store.__endingCardResizeFixV11=true;
+    }
+    if(!store.__ratCityEndingCardV12){
+      const endingDefaults=(mode==='mobile')
+        ? {
+            'rat-city-panel':{x:50,y:50,w:98,h:74,z:46,hidden:false,locked:false,rot:0},
+            'rat-city-title':{x:50,y:17.5,w:52,h:7.2,z:48,hidden:false,locked:true,rot:0,fontSize:17,lineHeight:1},
+            'rat-city-min':{x:70,y:18,w:8,h:7.2,z:50,hidden:false,locked:true,rot:0,fontSize:13,lineHeight:1,letterSpacing:0},
+            'rat-city-close':{x:79.5,y:18,w:9,h:8,z:50,hidden:false,locked:true,rot:0,fontSize:13,lineHeight:1,letterSpacing:0},
+            'rat-city-row':{x:50,y:30.5,w:76,h:8.6,z:48,hidden:false,locked:true,rot:0},
+            'rat-city-name':{x:39,y:30.5,w:52,h:8.6,z:49,hidden:false,locked:true,rot:0,fontSize:11,lineHeight:1},
+            'rat-city-save':{x:70.8,y:30.5,w:21.6,h:8.6,z:49,hidden:false,locked:true,rot:0,fontSize:8,lineHeight:1,letterSpacing:0},
+            'rat-city-score':{x:50,y:39.8,w:76,h:5.8,z:48,hidden:false,locked:false,rot:0,fontSize:9,lineHeight:1.1,letterSpacing:0},
+            'rat-city-list':{x:50,y:55.5,w:80,h:26,z:48,hidden:false,locked:true,rot:0},
+            'rat-city-pager':{x:50,y:75,w:76,h:7,z:48,hidden:false,locked:true,rot:0}
+          }
+        : {
+            'rat-city-panel':{x:50,y:50,w:72,h:78,z:46,hidden:false,locked:false,rot:0},
+            'rat-city-title':{x:50,y:21,w:42,h:5.5,z:48,hidden:false,locked:false,rot:0,fontSize:28,lineHeight:1},
+            'rat-city-min':{x:65,y:21,w:5,h:4.2,z:50,hidden:false,locked:true,rot:0,fontSize:13,lineHeight:1,letterSpacing:0},
+            'rat-city-close':{x:71,y:21,w:5,h:4.2,z:50,hidden:false,locked:true,rot:0,fontSize:14,lineHeight:1,letterSpacing:0},
+            'rat-city-row':{x:50,y:35,w:52,h:6.4,z:48,hidden:false,locked:false,rot:0},
+            'rat-city-name':{x:43,y:35,w:36,h:6,z:49,hidden:false,locked:false,rot:0,fontSize:13,lineHeight:1},
+            'rat-city-save':{x:65,y:35,w:12,h:6,z:49,hidden:false,locked:false,rot:0,fontSize:12,lineHeight:1,letterSpacing:0,color:''},
+            'rat-city-score':{x:50,y:45,w:52,h:4.4,z:48,hidden:false,locked:false,rot:0,fontSize:13,lineHeight:1.15,letterSpacing:0},
+            'rat-city-list':{x:50,y:61,w:58,h:24,z:48,hidden:false,locked:true,rot:0},
+            'rat-city-pager':{x:50,y:78,w:48,h:6,z:48,hidden:false,locked:true,rot:0}
+          };
+      for(const [id,next] of Object.entries(endingDefaults)){
+        const current=store[id]||{};
+        store[id]={...current,...next,hidden:next.hidden,locked:next.locked};
+      }
+      store.__ratCityEndingCardV12=true;
     }
     if(!store['host-life-box']){
       const frame=store.__customFrames.find(entry=>entry?.id==='builtin-frame-host-life');
@@ -11604,7 +11649,7 @@ function applyRuntimeUILayoutTextOverrides(){
 function applyEndingLayoutToRatCityPanel(){
   if(!document.body.classList.contains('rat-city-mode')) return;
   const panel=document.getElementById('rat-city-panel');
-  const def=getUILayoutDef('rats-win');
+  const def=getUILayoutDef('rat-city-panel');
   if(!panel || !def) return;
   const metrics=ensureUILayoutMetrics(def);
   if(!metrics) return;
@@ -11674,7 +11719,7 @@ function getUILayoutElementRect(def){
   return null;
 }
 function measureUILayoutRect(def,metrics){
-  if(uiLayoutState.active && def?.isCustomFrame){
+  if(uiLayoutState.active){
     return getUILayoutBoxRect(def,metrics);
   }
   const domRect=getUILayoutElementRect(def);
@@ -11994,12 +12039,77 @@ function refreshUILayoutEditor(){
   }
   uiLayoutState.objectPanelScrollTop=savedScroll;
 }
+function findUILayoutDefaultsBlockBounds(source){
+  const token='const UI_LAYOUT_DEFAULTS=';
+  const start=source.indexOf(token);
+  if(start<0) return null;
+  const braceStart=source.indexOf('{',start+token.length);
+  if(braceStart<0) return null;
+  let depth=0,quote=null,escaped=false;
+  for(let i=braceStart;i<source.length;i++){
+    const ch=source[i];
+    if(quote){
+      if(escaped) escaped=false;
+      else if(ch==='\\') escaped=true;
+      else if(ch===quote) quote=null;
+      continue;
+    }
+    if(ch==='"'||ch==="'"||ch==='`'){
+      quote=ch;
+      continue;
+    }
+    if(ch==='{') depth++;
+    else if(ch==='}'){
+      depth--;
+      if(depth===0){
+        let end=i+1;
+        while(end<source.length && /\s/.test(source[end])) end++;
+        if(source[end]===';') end++;
+        return {start,end};
+      }
+    }
+  }
+  return null;
+}
+function replaceUILayoutDefaultsInSource(source,block){
+  const bounds=findUILayoutDefaultsBlockBounds(source);
+  if(!bounds) throw new Error('UI_LAYOUT_DEFAULTS block not found');
+  return source.slice(0,bounds.start)+block+source.slice(bounds.end);
+}
+function downloadTextFile(filename,text,type='text/plain;charset=utf-8'){
+  const blob=new Blob([text],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+async function downloadPatchedUILayoutHTML(block){
+  const sourceUrl=new URL(location.href);
+  sourceUrl.hash='';
+  sourceUrl.searchParams.set('layout_export_cache_bust',String(Date.now()));
+  const response=await fetch(sourceUrl.href,{cache:'no-store'});
+  if(!response.ok) throw new Error(`Could not read current HTML (${response.status})`);
+  const source=await response.text();
+  const patched=replaceUILayoutDefaultsInSource(source,block);
+  downloadTextFile('index.layout-applied.html',patched,'text/html;charset=utf-8');
+}
 async function exportUILayoutConfig(){
   const block=`const UI_LAYOUT_DEFAULTS=${JSON.stringify(uiLayoutState.config,null,2)};`;
   navigator.clipboard?.writeText(block).then(
-    ()=>showUILayoutToast('Layout config copied'),
+    ()=>showUILayoutToast('Layout copied; patched HTML downloading'),
     ()=>window.prompt('Copy layout config',block)
   );
+  try{
+    await downloadPatchedUILayoutHTML(block);
+  }catch(err){
+    console.warn('[layout-export] patched HTML download failed:',err);
+    downloadTextFile('ui-layout-defaults-export.js',block,'text/javascript;charset=utf-8');
+    showUILayoutToast('Layout copied; JS fallback downloaded');
+  }
 }
 function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
   const def=getUILayoutDef(defId);
@@ -12019,7 +12129,7 @@ function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
     corner,
     startX:e.clientX,
     startY:e.clientY,
-    startRect:measureUILayoutRect(def,metrics),
+    startRect:getUILayoutBoxRect(def,metrics),
     pointerId:e.pointerId
   };
   uiLayoutState.overlays.get(def.id)?.classList.add('active');

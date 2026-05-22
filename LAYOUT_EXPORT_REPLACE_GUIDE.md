@@ -1,37 +1,34 @@
-# Layout 匯出替換指南
+# Layout 匯出與套用指南
 
 目標檔案：`index.html`
 
-## 為什麼會跳出版本差異警告
+## 先用新的 Export 流程
 
-這個警告通常不是 Layout Admin 匯出的內容壞掉，而是編輯器發現你正在覆蓋一份已經被其他工具更新過的 `index.html`。也就是說，你手上開著的是舊版本，磁碟上的檔案已經更新，所以編輯器阻止你直接儲存。
+這版開始，Layout Admin 的 `Export` 不只會複製 `UI_LAYOUT_DEFAULTS`，也會自動下載一份已套用目前 layout 的完整 HTML：
 
-常見原因：
-
-- 依照舊指南的行號替換，但 `index.html` 已經被 AI 或其他工具改過，行號不再準。
-- 你開著 `index.html` 的舊分頁時，Codex 或其他 AI 又改了同一個檔案。
-- 瀏覽器裡的遊戲還是舊版，匯出的 layout 缺少新欄位，例如這次新增的 `rat-city-pager`。
-- 替換範圍太大，不小心覆蓋到 `UI_LAYOUT_DEFAULTS` 後面的程式碼。
-
-## 正確替換規則
-
-不要用行號。請用搜尋錨點。
-
-只替換這一整段：
-
-```js
-const UI_LAYOUT_DEFAULTS={
-  ...
-};
+```text
+index.layout-applied.html
 ```
 
-開始位置請搜尋：
+這是為了避開編輯器「版本不一樣 / 檔案已在磁碟上變更」的警告。不要在舊分頁或舊 buffer 內直接覆蓋儲存，因為那會把舊版 `index.html` 寫回去。
+
+建議流程：
+
+1. 重新整理瀏覽器中的遊戲，確定跑的是最新版本。
+2. 進入 Layout Admin 調整 UI。
+3. 按 `Export`。
+4. 優先使用下載出的 `index.layout-applied.html` 作為已套用 layout 的完整檔案。
+5. 若瀏覽器擋住完整 HTML 下載，才使用剪貼簿裡的 `const UI_LAYOUT_DEFAULTS={...};` 手動替換。
+
+## 如果必須手動替換
+
+不要用行號。請搜尋錨點：
 
 ```js
 const UI_LAYOUT_DEFAULTS={
 ```
 
-結束位置是同一個物件的配對 `};`。不要刪到後面的區段，例如：
+只替換這一整段物件，從 `const UI_LAYOUT_DEFAULTS={` 到它自己的配對 `};`。不要刪到後面的區段，例如：
 
 ```js
 // RESTORED constants & functions
@@ -43,20 +40,15 @@ const UI_LAYOUT_DEFAULTS={
 const UI_LAYOUT_TARGET_DEFS=[
 ```
 
-## 安全流程
+如果儲存時出現「版本不同」警告，請取消儲存，重新載入磁碟上的 `index.html` 後再貼一次。不要選覆蓋。
 
-1. 在編輯器中先重新載入 `index.html`，確定它是磁碟上的最新版本。
-2. 在瀏覽器重新整理遊戲，進入 Layout Admin 後再調整畫面。
-3. 按 `Export`。
-4. 回到 `index.html`，搜尋 `const UI_LAYOUT_DEFAULTS={`。
-5. 只選取這個物件，從 `const UI_LAYOUT_DEFAULTS={` 到它自己的配對 `};`。
-6. 貼上匯出的內容並儲存。
-7. 如果又出現版本差異警告，選擇取消儲存，重新載入檔案後再貼一次。
+## 版本檢查
 
-## 這版需要注意
+這版匯出的 layout 應該包含：
 
-- 匯出內容必須包含 `desktop` 和 `mobile`。
-- 匯出內容應該包含 `rat-city-pager`。如果沒有，代表瀏覽器還在跑舊版，請重新整理遊戲後再匯出。
-- 不要替換 `UI_LAYOUT_TARGET_DEFS`、Cloudflare Worker、排行榜 API、或 `UI_LAYOUT_DEFAULTS` 以外的程式碼。
-- 如果你只想修手機版，仍然要保留匯出內容裡的 `desktop`，不要只貼 `mobile` 片段。
-- 若版面整個跑掉，先在 Layout Admin 對目前 bucket 做 `Reset`，再重新調整與匯出。
+- `desktop`
+- `mobile`
+- `rat-city-pager`
+- `__ratCityEndingCardV12`
+
+如果缺少這些欄位，代表瀏覽器還在跑舊版，請重新整理或清快取後再匯出。
