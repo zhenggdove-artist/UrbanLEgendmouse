@@ -24,6 +24,12 @@ npx wrangler d1 create urban_legend_rat_leaderboard
 npx wrangler d1 execute urban_legend_rat_leaderboard --file=worker/schema.sql --remote
 ```
 
+If the database already existed before the cumulative CHAOS leaderboard fix, also run:
+
+```powershell
+npx wrangler d1 execute urban_legend_rat_leaderboard --file=worker/migrate-chaos-score.sql --remote
+```
+
 4. Confirm `ALLOWED_ORIGIN` in `wrangler.toml`.
 
 For this GitHub Pages repo it should normally be:

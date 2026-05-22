@@ -2,6 +2,7 @@ const DEFAULT_ALLOWED_ORIGIN = 'https://zhenggdove-artist.github.io';
 const DEFAULT_MAX_SCORE = 10000000;
 const DEFAULT_MAX_ROWS = 200;
 const TOP_LIMIT = 20;
+const MAX_RATS = 1000000;
 
 function json(payload, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
@@ -122,8 +123,8 @@ async function handlePost(request, env) {
     entry = {
       name: sanitizeName(payload.name),
       score: parseBoundedInt(payload.score, 'score', 0, getMaxScore(env)),
-      chaos: parseBoundedInt(payload.chaos ?? 0, 'chaos', 0, 100),
-      rats: parseBoundedInt(payload.rats ?? 0, 'rats', 0, 1000000),
+      chaos: parseBoundedInt(payload.chaos ?? 0, 'chaos', 0, getMaxScore(env)),
+      rats: parseBoundedInt(payload.rats ?? 0, 'rats', 0, MAX_RATS),
     };
   } catch (error) {
     return json({ ok: false, error: error.message }, 400);
