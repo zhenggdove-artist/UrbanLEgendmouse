@@ -11277,6 +11277,13 @@ function applyUILayoutMetrics(def,metrics){
   }
   el.style.right='auto';
   el.style.bottom='auto';
+  if(def.id==='chaos-box' || def.id==='rats-box'){
+    // Mobile CSS used to impose a fixed min-width that was not active in
+    // the desktop editor's mobile preview, so live mobile drifted from the
+    // saved layout. Let the layout metrics fully control these HUD boxes.
+    el.style.minWidth='0';
+    el.style.minHeight='0';
+  }
   el.style.transform=getUILayoutTransform(metrics);
   el.style.zIndex=String(getUILayoutLayer(def,metrics));
   applyUILayoutVisual(def,metrics,el);
