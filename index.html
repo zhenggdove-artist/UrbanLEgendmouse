@@ -8957,13 +8957,17 @@ function sanitizeRatCityName(value){
 }
 function normalizeRatCityEntry(entry){
   if(!entry||typeof entry!=='object')return null;
-  const score=Math.round(Number(entry.score));
+  const rawScore=Number(entry.score ?? entry.chaos ?? 0);
+  const score=Math.round(rawScore);
   if(!Number.isFinite(score))return null;
-  const chaos=Math.round(Number(entry.chaos??0));
-  const rats=Math.round(Number(entry.rats??0));
+  const rawChaos=Number(entry.chaos ?? entry.chaosScore ?? entry.score ?? 0);
+  const chaos=Math.round(rawChaos);
+  const rats=Math.round(Number(entry.rats ?? entry.ratCount ?? 0));
   return {
     name:sanitizeRatCityName(entry.name),
-    chaos:clamp(Number.isFinite(chaos)?chaos:0,0,100),
+    // v14: leaderboard records the visible HUD numbers, not the decaying chaos meter.
+    // chaos = the right-top CHAOS BOX value (game.chaosScore), which can be far above 100.
+    chaos:clamp(Number.isFinite(chaos)?chaos:0,0,RAT_CITY_SCORE_MAX),
     score:clamp(score,0,RAT_CITY_SCORE_MAX),
     rats:clamp(Number.isFinite(rats)?rats:0,0,1000000),
     date:typeof entry.date==='string'?entry.date:(entry.created_at||new Date().toISOString())
@@ -9004,8 +9008,9 @@ async function refreshRatCityOnlineLeaderboard(options={}){
     const res=await fetch(apiUrl,{method:'GET',headers:{'Accept':'application/json'},cache:'no-store'});
     if(!res.ok)throw new Error(`GET ${res.status}`);
     const data=await res.json();
-    if(!data||!Array.isArray(data.entries))throw new Error('Invalid leaderboard payload');
-    setRatCityLeaderboard(data.entries);
+    const entries=Array.isArray(data)?data:data?.entries;
+    if(!Array.isArray(entries))throw new Error('Invalid leaderboard payload');
+    setRatCityLeaderboard(entries);
     saveRatCityLeaderboard();
     ratCityLeaderboardState.onlineReady=true;
     ratCityLeaderboardState.lastError='';
@@ -9030,8 +9035,9 @@ async function postRatCityOnlineScore(entry){
     });
     if(!res.ok)throw new Error(`POST ${res.status}`);
     const data=await res.json();
-    if(data&&Array.isArray(data.entries)){
-      setRatCityLeaderboard(data.entries);
+    const entries=Array.isArray(data)?data:data?.entries;
+    if(Array.isArray(entries)){
+      setRatCityLeaderboard(entries);
       saveRatCityLeaderboard();
       ratCityLeaderboardState.onlineReady=true;
       ratCityLeaderboardState.lastError='';
@@ -13501,10 +13507,16 @@ function handleActionPress(){
   }else exitHost();
 }
 function getRatCityScore(){
-  return Math.round(game.chaos*1000);
+  return Math.round(game.chaosScore||0);
+}
+function getRatCityChaosValue(){
+  return Math.round(game.chaosScore||0);
+}
+function getRatCityRatValue(){
+  return Math.round(getTotalRatCount());
 }
 function renderRatCityLeaderboard(){
-  ratCityScore.textContent=`CHAOS ${Math.round(game.chaos*100)} · SCORE ${getRatCityScore()}`;
+  ratCityScore.textContent=`CHAOS ${getRatCityChaosValue()} · RATS ${getRatCityRatValue()}`;
   ratCityList.innerHTML='';
   if(!game.leaderboard.length){
     const li=document.createElement('li');
@@ -13518,7 +13530,7 @@ function renderRatCityLeaderboard(){
     left.className='rank-name';
     left.textContent=`#${idx+1} ${entry.name}`;
     const right=document.createElement('span');
-    right.textContent=`CHAOS ${entry.chaos}% · ${entry.score}`;
+    right.textContent=`CHAOS ${Math.round(entry.chaos||entry.score||0)} · RATS ${Math.round(entry.rats||0)}`;
     li.append(left,right);
     ratCityList.appendChild(li);
   });
@@ -13539,11 +13551,13 @@ function setRatCityMode(enabled){
   }
 }
 function submitRatCityScore(){
+  const hudChaos=getRatCityChaosValue();
+  const hudRats=getRatCityRatValue();
   const entry=normalizeRatCityEntry({
     name:sanitizeRatCityName(ratCityName.value||'ANON RAT'),
-    chaos:Math.round(game.chaos*100),
-    score:getRatCityScore(),
-    rats:getTotalRatCount(),
+    chaos:hudChaos,
+    score:hudChaos,
+    rats:hudRats,
     date:new Date().toISOString()
   });
   if(!entry)return;
@@ -13592,7 +13606,7 @@ function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   let best=null,bestD=maxDist;
   const near=getPropsNear(host.root.position.x,host.root.position.z,maxDist+0.8);
   for(const p of near){
-    if(p.heldBy||p.throwVel)continue;
+    if(p.heldBy||p.throwVel||p.noPickup)continue;
     const dx=p.root.position.x-host.root.position.x;
     const dz=p.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
@@ -13679,42 +13693,99 @@ function chooseHostAttackAction(host,requested='kick'){
     ? (actions.punchcombo?'punchcombo':'punch')
     : (actions.kick?'kick':null);
 }
-function spawnFallingBuildingSign(host){
+function spawnFallingBuildingSign(host,opts={}){
   if(!host?.root) return null;
-  if(Number.isFinite(host._lastBuildingSignDropAt) && gameTime-host._lastBuildingSignDropAt<0.65) return null;
+  if(!opts.ignoreCooldown && Number.isFinite(host._lastBuildingSignDropAt) && gameTime-host._lastBuildingSignDropAt<0.42) return null;
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
   const origin=host.root.position;
-  const side=fz>=0?1:-1;
+  const side=opts.side??(fz>=0?1:-1);
   const facingSide=Math.abs(fz)>0.34 && Math.sign(fz)===side;
   const frontZ=origin.z+fz*2.4;
-  if(!facingSide || Math.abs(frontZ)<4.8) return null;
-  const x=origin.x+fx*1.8+rand(-0.45,0.45);
-  const z=clamp(side*6.15,ALLEY_Z_MIN+0.8,ALLEY_Z_MAX-0.8);
+  if(!opts.force && (!facingSide || Math.abs(frontZ)<4.8)) return null;
+  const x=opts.x??(origin.x+fx*1.8+rand(-0.55,0.55));
+  const z=opts.z??clamp(side*6.15,ALLEY_Z_MIN+0.8,ALLEY_Z_MAX-0.8);
   if(pointInsideTempleZone(x,z,2.2)) return null;
   const tex=pick([TEX.signRed,TEX.signBlue,TEX.signYellow,TEX.signGreen,TEX.signPink,TEX.signPurple,TEX.signWhite]);
   const root=new THREE.Group();
-  root.position.set(x,3.45,z);
+  root.position.set(x,opts.y??rand(2.65,4.25),z);
   root.rotation.y=side>0?Math.PI:0;
+  const signW=rand(0.68,2.45);
+  const signH=rand(0.26,0.78);
   const signMesh=new THREE.Mesh(
-    new THREE.BoxGeometry(rand(1.05,1.55),0.42,0.10),
+    new THREE.BoxGeometry(signW,signH,0.10),
     new THREE.MeshBasicMaterial({map:tex||null,color:tex?0xffffff:'#d43a3a'})
   );
   root.add(signMesh);
   const bracketMat=new THREE.MeshBasicMaterial({color:'#211817'});
-  for(const sx of [-0.38,0.38]){
-    const bracket=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.08,0.64),bracketMat);
+  const bracketSpread=Math.min(signW*0.38,0.78);
+  for(const sx of [-bracketSpread,bracketSpread]){
+    const bracket=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.08,rand(0.42,0.82)),bracketMat);
     bracket.position.set(sx,0,side*-0.28);
     root.add(bracket);
   }
-  const prop=registerProp(root,0.72,1.55);
+  const prop=registerProp(root,Math.max(0.42,signW*0.42),1.55);
   prop.kind='falling-sign';
-  prop.tipOffset=0.72;
+  prop.tipOffset=Math.max(0.42,signW*0.36);
   prop.spawnRatsOnTip=1;
   prop.groundRestY=0.08;
   host._lastBuildingSignDropAt=gameTime;
   triggerPropTip(prop,host.yaw,1.0,'host');
-  spawnComicImpact(root.position,'SIGN!','#fff2a6',{yOffset:0.35,scaleX:1.45,scaleY:0.72});
+  spawnComicImpact(root.position,'SIGN!','#fff2a6',{yOffset:0.35,scaleX:1.2+signW*0.18,scaleY:0.62+signH*0.18});
   return prop;
+}
+function spawnBuildingFacadeFire(host,side,x,z){
+  if(!host?.root) return null;
+  if(Number.isFinite(host._lastBuildingFireAt) && gameTime-host._lastBuildingFireAt<0.9) return null;
+  const root=new THREE.Group();
+  root.position.set(x,rand(1.15,2.65),z);
+  root.rotation.y=side>0?Math.PI:0;
+  const prop=registerProp(root,0.46,1.8);
+  prop.kind='building-fire';
+  prop.spawnRatsOnTip=0;
+  prop.groundRestY=root.position.y;
+  prop.noPickup=true;
+  activateFireFX(prop,host.yaw,'impact');
+  registerChaosSpot(x,z,1.8,8.0);
+  awardChaosScore(root.position,CHAOS_PER_TIP*1.15,4.2);
+  host._lastBuildingFireAt=gameTime;
+  spawnComicImpact(root.position,'FIRE!','#ffcf5a',{yOffset:0.45,scaleX:1.25,scaleY:0.78});
+  return prop;
+}
+function spawnFallingRoofObject(host,side,x,z){
+  if(!host?.root) return null;
+  if(Number.isFinite(host._lastRoofDropAt) && gameTime-host._lastRoofDropAt<0.58) return null;
+  const roofY=rand(4.2,6.8);
+  const prop=Math.random()<0.52
+    ? buildRoofWaterTank(x+rand(-0.6,0.6),roofY,z-side*rand(0.05,0.35),rand(0.82,1.28))
+    : buildLaundryRack(x+rand(-0.7,0.7),roofY,z-side*rand(0.05,0.42),side,rand(0.82,1.22));
+  if(!prop) return null;
+  prop.groundRestY=0.08;
+  prop.spawnRatsOnTip=Math.max(prop.spawnRatsOnTip||0,1);
+  prop.tipOffset=Math.max(prop.tipOffset||0.24,0.7);
+  triggerPropTip(prop,host.yaw,1.15,'host');
+  host._lastRoofDropAt=gameTime;
+  spawnComicImpact(prop.root.position,prop.kind==='tank'?'TANK!':'RACK!','#dff5ff',{yOffset:0.36,scaleX:1.35,scaleY:0.7});
+  return prop;
+}
+function triggerBuildingFacadeDamage(host){
+  if(!host?.root) return false;
+  const fz=Math.cos(host.yaw);
+  if(Math.abs(fz)<0.34) return false;
+  const side=fz>=0?1:-1;
+  const frontZ=host.root.position.z+fz*2.4;
+  if(Math.abs(frontZ)<4.75) return false;
+  const fx=Math.sin(host.yaw);
+  const x=host.root.position.x+fx*rand(0.6,2.0)+rand(-0.45,0.45);
+  const z=clamp(side*6.15,ALLEY_Z_MIN+0.75,ALLEY_Z_MAX-0.75);
+  if(pointInsideTempleZone(x,z,2.4)) return false;
+  let triggered=false;
+  const signCount=1+(Math.random()<0.45?1:0)+(Math.random()<0.18?1:0);
+  for(let i=0;i<signCount;i++){
+    if(spawnFallingBuildingSign(host,{force:true,ignoreCooldown:i>0,side,x:x+rand(-0.8,0.8),z,y:rand(2.55,4.55)})) triggered=true;
+  }
+  if(Math.random()<0.72 && spawnBuildingFacadeFire(host,side,x+rand(-0.8,0.8),z-side*0.10)) triggered=true;
+  if(Math.random()<0.62 && spawnFallingRoofObject(host,side,x+rand(-0.9,0.9),z)) triggered=true;
+  return triggered;
 }
 function getHostAttackTimeScale(actionName){
   if(actionName==='punch') return HOST_PUNCH_TIME_SCALE;
@@ -13798,7 +13869,7 @@ function doHostAttack(requested='kick',opts={}){
   let bestPropScore=-Infinity;
   const nearbyProps=getPropsNear(host.root.position.x,host.root.position.z,HOST_ATTACK_RADIUS+2.2);
   for(const p of nearbyProps){
-    if(p.heldBy||p.throwVel)continue;
+    if(p.heldBy||p.throwVel||p.noPickup)continue;
     const dx=p.root.position.x-host.root.position.x;
     const dz=p.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
@@ -13839,8 +13910,7 @@ function doHostAttack(requested='kick',opts={}){
     struck=true;
   }
   if(!struck){
-    const droppedSign=spawnFallingBuildingSign(host);
-    if(droppedSign) struck=true;
+    if(triggerBuildingFacadeDamage(host)) struck=true;
   }
   if(struck) showHint(actionName==='kick'?'Kick landed.':(actionName==='punchcombo'?'Combo landed.':'Punch landed.'),0.28);
 }
@@ -14932,13 +15002,14 @@ function addRatSwarm(count,origin=player?.root?.position||new THREE.Vector3()){
 function getPropBreakSFXKey(p){
   if(!p) return 'glassBreak';
   if(p.kind==='bin') return 'binFall';
-  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole' || p.kind==='falling-sign') return 'vehicleBreak';
+  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry' || p.kind==='building-fire') return 'vehicleBreak';
   return 'glassBreak';
 }
 function getPropTipRestY(p){
   if(!p) return 0.08;
   if(Number.isFinite(p.groundRestY)) return Math.max(0.035,p.groundRestY);
-  if(p.kind==='soup-pot' || p.kind==='falling-sign') return 0.08;
+  if(p.kind==='soup-pot' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry') return 0.08;
+  if(p.kind==='building-fire') return Math.max(0.08,p.root?.position?.y??0.08);
   return Math.max(0.08,(p.root?.userData?.baseY??p.basePosition?.y??0)*0.45);
 }
 function playPropImpactFeedback(p,angle=0,{text=null,volume=0.84}={}){
