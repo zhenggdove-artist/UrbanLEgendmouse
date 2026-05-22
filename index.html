@@ -157,6 +157,7 @@
   #rat-city-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;
     background:rgba(255,255,255,0.04);font:11px/1.3 "Courier New",monospace;color:#fff7d3}
   #rat-city-list .rank-name{max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rat-city-save:disabled{opacity:0.52;filter:grayscale(0.35);cursor:not-allowed}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:
@@ -3591,22 +3592,38 @@ function makeFXBlobTexture(inner,outer){
   return pixelate(new THREE.CanvasTexture(c));
 }
 function makeSmokePlumeTexture(){
-  const c=document.createElement('canvas');c.width=96;c.height=160;
+  // v21: one sprite is an irregular soft smoke puff, not a vertical strip.
+  // Building smoke is composed from many of these puffs at different depths,
+  // so it reads as a volumetric cloud cluster instead of long flat bars.
+  const c=document.createElement('canvas');c.width=c.height=128;
   const cx=c.getContext('2d');
   cx.clearRect(0,0,c.width,c.height);
   const blobs=[
-    [48,128,24,0.50],[38,108,22,0.42],[58,101,26,0.46],
-    [46,82,25,0.38],[34,66,20,0.32],[62,58,23,0.34],
-    [48,38,19,0.24],[40,24,13,0.16],[58,20,15,0.14]
+    [54,68,31,0.34],[72,61,28,0.30],[44,50,22,0.24],
+    [82,79,25,0.24],[55,88,24,0.22],[35,75,20,0.18],
+    [68,39,18,0.16],[92,55,16,0.13],[47,101,14,0.10]
   ];
   for(const [x,y,r,a] of blobs){
-    const g=cx.createRadialGradient(x,y,Math.max(2,r*0.12),x,y,r);
+    const g=cx.createRadialGradient(x,y,Math.max(2,r*0.10),x,y,r);
     g.addColorStop(0,`rgba(255,255,255,${a})`);
-    g.addColorStop(0.48,`rgba(220,220,220,${a*0.46})`);
+    g.addColorStop(0.46,`rgba(210,205,190,${a*0.58})`);
     g.addColorStop(1,'rgba(0,0,0,0)');
     cx.fillStyle=g;
-    cx.beginPath();cx.ellipse(x,y,r*rand(0.72,1.08),r*rand(0.86,1.32),rand(-0.5,0.5),0,Math.PI*2);cx.fill();
+    cx.beginPath();
+    cx.ellipse(x,y,r*rand(0.70,1.35),r*rand(0.68,1.24),rand(-0.75,0.75),0,Math.PI*2);
+    cx.fill();
   }
+  // Break the silhouette so the puff does not become a perfect oval at distance.
+  cx.globalCompositeOperation='destination-out';
+  for(let i=0;i<15;i++){
+    const x=rand(12,116),y=rand(12,116),r=rand(4,12);
+    const g=cx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,'rgba(0,0,0,0.10)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    cx.fillStyle=g;
+    cx.beginPath();cx.arc(x,y,r,0,Math.PI*2);cx.fill();
+  }
+  cx.globalCompositeOperation='source-over';
   return pixelate(new THREE.CanvasTexture(c));
 }
 
@@ -8976,10 +8993,14 @@ function tickPropFX(prop,dt){
           smoke.userData.baseY+rise*riseHeight,
           smoke.userData.baseZ+drift*(0.45+rise*1.25)
         );
-        const sc=smoke.userData.size*(0.78+rise*1.75)*(1+burn.stage*0.46);
-        const narrow=1-Math.min(0.38,rise*0.24);
-        smoke.scale.set(sc*(smoke.userData.xScale||0.65)*narrow,sc*(smoke.userData.yScale||3.2)*(0.88+rise*0.42),1);
-        smoke.material.opacity=(smoke.userData.opacityBase+smoke.userData.opacityPulse*Math.abs(Math.sin(t*1.1))+(0.05*burn.stage))*(1-rise*0.58);
+        const sc=smoke.userData.size*(0.72+rise*1.55)*(1+burn.stage*0.42);
+        const cloudSpread=1+rise*0.85;
+        smoke.scale.set(
+          sc*(smoke.userData.xScale||1.25)*cloudSpread,
+          sc*(smoke.userData.yScale||1.15)*(0.86+rise*0.72),
+          1
+        );
+        smoke.material.opacity=(smoke.userData.opacityBase+smoke.userData.opacityPulse*Math.abs(Math.sin(t*1.1))+(0.035*burn.stage))*(1-rise*0.68);
         smoke.material.rotation=(smoke.material.rotation||0)+dt*smoke.userData.spin;
       }
     }
@@ -9133,12 +9154,12 @@ async function postRatCityOnlineScore(entry){
     return false;
   }
   try{
-    // text/plain avoids a CORS preflight. Cloudflare Workers request.json()
-    // can still parse the JSON string body, and this prevents OPTIONS handling
-    // bugs from making cross-device leaderboard saves disappear.
+    // v21: match the Worker contract again. The working v14 front end posted
+    // application/json; switching to text/plain made some deployed Workers reject
+    // the save before it reached D1.
     const res=await fetch(apiUrl,{
       method:'POST',mode:'cors',credentials:'omit',
-      headers:{'Accept':'application/json','Content-Type':'text/plain;charset=UTF-8'},
+      headers:{'Accept':'application/json','Content-Type':'application/json'},
       body:JSON.stringify(entry),
       cache:'no-store'
     });
@@ -13496,6 +13517,7 @@ const ratCityMin=document.getElementById('rat-city-min');
 const ratCityClose=document.getElementById('rat-city-close');
 const ratCityScore=document.getElementById('rat-city-score');
 const ratCityList=document.getElementById('rat-city-list');
+let ratCityScoreSavedThisRun=false;
 const hintEl=document.getElementById('hint');
 const biteLockEl=document.getElementById('bite-lock');
 let hintTimer=0;
@@ -13672,6 +13694,10 @@ function setRatCityMode(enabled){
   }
 }
 function submitRatCityScore(){
+  if(ratCityScoreSavedThisRun){
+    renderRatCityLeaderboard();
+    return;
+  }
   const hudChaos=getRatCityChaosValue();
   const hudRats=getRatCityRatValue();
   const entry=normalizeRatCityEntry({
@@ -13682,17 +13708,21 @@ function submitRatCityScore(){
     date:new Date().toISOString()
   });
   if(!entry)return;
+  // One game run can write only once. Lock immediately so repeated pointerdown
+  // or Enter spam cannot flood either localStorage or the online D1 table.
+  ratCityScoreSavedThisRun=true;
+  ratCitySave.disabled=true;
+  ratCitySave.textContent='SAVED';
+  ratCitySave.setAttribute('aria-disabled','true');
   game.leaderboard.push(entry);
   setRatCityLeaderboard(game.leaderboard);
   saveRatCityLeaderboard();
   renderRatCityLeaderboard();
-  showHint('RAT CITY ranking updated.',0.8);
   postRatCityOnlineScore(entry).then(ok=>{
-    if(ok)showHint('RAT CITY online ranking synced.',0.8);
-    else{
-      console.warn('[rat-city] saved locally but online sync failed:',ratCityLeaderboardState.lastError);
-      showHint('RAT CITY saved locally. Online sync failed.',1.2);
+    if(!ok){
+      console.warn('[rat-city] saved locally but ONLINE sync failed:',ratCityLeaderboardState.lastError);
     }
+    renderRatCityLeaderboard();
   });
 }
 
@@ -14021,35 +14051,35 @@ function spawnBuildingFacadeFire(host,side,x,z){
     '#111111','#1d160d','#35210b','#5a2508','#8b2309',
     '#c54511','#f06a18','#ff9b1f','#ffd04a','#ffe26b'
   ];
-  for(let i=0;i<42;i++){
+  for(let i=0;i<34;i++){
     const smokeColor=pick(smokePalette);
-    const xScale=rand(0.28,0.92);
-    const yScale=rand(2.25,6.20);
-    const baseSize=rand(0.34,1.18);
+    const baseSize=rand(0.52,1.72);
     const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
       map:smokeTex,transparent:true,depthWrite:false,fog:false,depthTest:false,
-      blending:THREE.NormalBlending,color:smokeColor,opacity:rand(0.22,0.46)
+      blending:THREE.NormalBlending,color:smokeColor,opacity:rand(0.16,0.36)
     }));
     sprite.renderOrder=42;
+    const layer=rand(-1,1);
     sprite.userData={
-      baseX:rand(-scorchW*0.60,scorchW*0.60),
-      baseY:rand(scorchH*0.08,scorchH*0.72),
-      baseZ:side*0.145,
+      baseX:rand(-scorchW*0.62,scorchW*0.62),
+      baseY:rand(scorchH*0.16,scorchH*0.78),
+      baseZ:side*(0.13+Math.abs(layer)*0.16),
+      depthLayer:layer,
       phase:Math.random()*Math.PI*2,
-      offset:rand(0,4.4),
-      cycle:rand(2.25,5.10),
+      offset:rand(0,4.8),
+      cycle:rand(3.2,6.6),
       size:baseSize,
-      sway:rand(0.05,0.42),
-      drift:rand(0.04,0.28),
-      spin:rand(-0.24,0.24),
-      xScale,
-      yScale,
-      riseHeight:rand(2.80,8.80),
-      opacityBase:rand(0.18,0.38),
-      opacityPulse:rand(0.03,0.12)
+      sway:rand(0.06,0.58),
+      drift:rand(0.08,0.54),
+      spin:rand(-0.12,0.12),
+      xScale:rand(0.82,1.95),
+      yScale:rand(0.70,1.72),
+      riseHeight:rand(2.2,7.2),
+      opacityBase:rand(0.12,0.30),
+      opacityPulse:rand(0.02,0.09)
     };
     sprite.position.set(sprite.userData.baseX,sprite.userData.baseY,sprite.userData.baseZ);
-    sprite.scale.set(baseSize*xScale,baseSize*yScale,1);
+    sprite.scale.set(baseSize*sprite.userData.xScale,baseSize*sprite.userData.yScale,1);
     root.add(sprite);
     smoke.push(sprite);
   }
