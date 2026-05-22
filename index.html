@@ -131,9 +131,9 @@
   #rat-city-panel{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:46;
     width:min(520px,calc(100vw - 28px));padding:44px 42px 38px;border-radius:22px;display:none;
     border:none;background:transparent;box-shadow:none;box-sizing:border-box}
-  #rat-city-panel::before{content:'';position:absolute;left:50%;top:50%;width:100%;height:100%;
+  #rat-city-panel::before{content:'';position:absolute;left:50%;top:50%;width:116%;height:132%;
     transform:translate(-50%,-50%);pointer-events:none;z-index:0;
-    background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/contain no-repeat}
+    background:url("./asset/game%20frame/%E5%A3%93%E7%B8%AE%E6%9D%BF%E5%9C%96%E6%A1%86/loading%E7%95%AB%E9%9D%A2%E7%9A%84%E8%A6%96%E7%AA%97.png") center/100% 100% no-repeat}
   #rat-city-panel > *{position:relative;z-index:1}
   #rat-city-panel > .rat-city-row{position:relative}
   #rat-city-panel.show{display:block}
@@ -146,7 +146,7 @@
     background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em}
   #rat-city-save,#rat-city-close,#rat-city-min{appearance:none;border:none;border-radius:10px;padding:10px 12px;cursor:pointer;
     font:700 11px/1 var(--ui-display-font);letter-spacing:0.14em;text-transform:uppercase}
-  #rat-city-save{background:#ffd166;color:#2a1320;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #rat-city-save{background:#ffd166;color:#2a1320}
   #rat-city-close{background:#ff8fb8;color:#351320}
   #rat-city-min{background:#9fd6ff;color:#17324b}
   #rat-city-close,#rat-city-min{position:absolute;top:34px;z-index:2}
@@ -157,16 +157,6 @@
   #rat-city-list li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border-radius:10px;
     background:rgba(255,255,255,0.04);font:11px/1.3 "Courier New",monospace;color:#fff7d3}
   #rat-city-list .rank-name{max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #rat-city-list li span:last-child{flex:0 0 auto;white-space:nowrap;text-align:right}
-  #rat-city-pager{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    font:700 10px/1 var(--ui-display-font);letter-spacing:0.14em;color:#fff1c2;text-transform:uppercase}
-  #rat-city-pager span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #rat-city-pager button{appearance:none;border:none;border-radius:8px;padding:8px 12px;
-    background:linear-gradient(180deg,#e5e5e5,#a9a9a9);color:#151515;
-    font:700 10px/1 var(--ui-display-font);letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;
-    white-space:nowrap}
-  #rat-city-pager button:disabled{opacity:0.45;cursor:not-allowed}
-  #rat-city-save:disabled{opacity:0.52;filter:grayscale(0.35);cursor:not-allowed}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:
@@ -625,14 +615,11 @@
     box-shadow:0 2px 8px rgba(0,0,0,0.18) !important;
   }
   #rat-city-panel{
-    aspect-ratio:3/2;
-    max-width:calc(100vw - 8px);
-    max-height:calc(100vh - 8px);
-    padding:0 !important;
+    padding:clamp(34px,4.2vw,58px) clamp(44px,5.4vw,76px) clamp(32px,4.0vw,54px) !important;
     min-height:0;
     overflow:hidden;
   }
-  #rat-city-panel::before{width:100% !important;height:100% !important;background-size:100% 100% !important;}
+  #rat-city-panel::before{width:112% !important;height:122% !important;}
   #rat-city-panel h3{
     margin:0 148px 18px 0 !important;
     font-size:clamp(20px,2.0vw,30px) !important;
@@ -646,16 +633,11 @@
     line-height:1.72 !important;
     letter-spacing:0.055em !important;
   }
-  #rat-city-panel .rat-city-row{gap:12px;margin:0;}
-  #rat-city-name{height:100%;box-sizing:border-box;}
-  #rat-city-save{min-width:0;height:100%;box-sizing:border-box;}
-  #rat-city-score{margin:0 !important;font-size:clamp(10px,1.1vw,15px) !important;line-height:1.2 !important;}
-  #rat-city-list{overflow:hidden;padding-right:0 !important;}
-  #rat-city-list li{
-    min-height:0;flex:1 1 0;align-items:center;padding:4px 8px !important;
-    border-radius:8px !important;line-height:1.15 !important;
-  }
-  #rat-city-list .rank-name{max-width:56%}
+  #rat-city-panel .rat-city-row{gap:16px;margin:0 0 18px;}
+  #rat-city-name{height:42px;box-sizing:border-box;}
+  #rat-city-score{margin:20px 0 16px !important;font-size:clamp(13px,1.1vw,16px) !important;line-height:1.45 !important;}
+  #rat-city-list{max-height:min(38vh,260px);overflow:auto;padding-right:6px !important;}
+  #rat-city-list li{padding:10px 12px !important;line-height:1.45 !important;}
   /* v9: the minimise control scales the complete ending card, not only its text. */
   #rat-city-panel.min{
     display:block !important;
@@ -676,14 +658,6 @@
   body.admin-stage-active.scene-ending #rat-city-panel{display:block !important;}
   body.admin-stage-active.scene-ending #rat-city-panel{pointer-events:auto;}
   body.admin-stage-active.scene-ending #rats-win{display:none !important;}
-  @media (max-width:900px){
-    #rat-city-btn .ui-art-label{line-height:1.05 !important;letter-spacing:0.08em}
-    #rat-city-list{gap:2px !important;}
-    #rat-city-list li{font-size:10px !important;padding:1px 6px !important;}
-    #rat-city-list .rank-name{max-width:52%}
-    #rat-city-pager{font-size:9px !important;gap:6px}
-    #rat-city-pager button{font-size:9px !important;padding:5px 8px}
-  }
 
 </style>
 </head>
@@ -711,9 +685,8 @@
     <input id="rat-city-name" type="text" maxlength="18" placeholder="Rat King Name:" />
     <button id="rat-city-save" type="button">Save</button>
   </div>
-  <div id="rat-city-score">CHAOS 0 / RATS 0</div>
+  <div id="rat-city-score">CHAOS 0 · SCORE 0</div>
   <ol id="rat-city-list"></ol>
-  <div id="rat-city-pager" aria-live="polite"></div>
 </div>
 <div id="hint"></div>
 <div id="bite-lock"><span>BITE!</span></div>
@@ -1210,13 +1183,6 @@ const HOST_PARASITE_TIME=30;
 const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
-// Hard-wired Cloudflare Workers + D1 endpoint restored from the known working leaderboard flow.
-// Do not read a browser-local override here: stale debug URLs were the reason later builds silently fell back to localStorage.
-const RAT_CITY_LEADERBOARD_API_URL='https://urban-legend-rat-leaderboard.zhenggdove-artist.workers.dev/api/leaderboard';
-const RAT_CITY_LEADERBOARD_LIMIT=20;
-const RAT_CITY_LEADERBOARD_PAGE_SIZE=5;
-const RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS=30000;
-const RAT_CITY_SCORE_MAX=10000000;
 const BROTH_POOL_GROWTH=2.8;
 const CHUNK_SIZE=24;
 const TEMPLE_CHUNK_IDX=6;
@@ -3619,41 +3585,6 @@ function makeFXBlobTexture(inner,outer){
   cx.beginPath();cx.arc(32,32,26,0,Math.PI*2);cx.fill();
   return pixelate(new THREE.CanvasTexture(c));
 }
-function makeSmokePlumeTexture(){
-  // v21: one sprite is an irregular soft smoke puff, not a vertical strip.
-  // Building smoke is composed from many of these puffs at different depths,
-  // so it reads as a volumetric cloud cluster instead of long flat bars.
-  const c=document.createElement('canvas');c.width=c.height=128;
-  const cx=c.getContext('2d');
-  cx.clearRect(0,0,c.width,c.height);
-  const blobs=[
-    [54,68,31,0.34],[72,61,28,0.30],[44,50,22,0.24],
-    [82,79,25,0.24],[55,88,24,0.22],[35,75,20,0.18],
-    [68,39,18,0.16],[92,55,16,0.13],[47,101,14,0.10]
-  ];
-  for(const [x,y,r,a] of blobs){
-    const g=cx.createRadialGradient(x,y,Math.max(2,r*0.10),x,y,r);
-    g.addColorStop(0,`rgba(255,255,255,${a})`);
-    g.addColorStop(0.46,`rgba(210,205,190,${a*0.58})`);
-    g.addColorStop(1,'rgba(0,0,0,0)');
-    cx.fillStyle=g;
-    cx.beginPath();
-    cx.ellipse(x,y,r*rand(0.70,1.35),r*rand(0.68,1.24),rand(-0.75,0.75),0,Math.PI*2);
-    cx.fill();
-  }
-  // Break the silhouette so the puff does not become a perfect oval at distance.
-  cx.globalCompositeOperation='destination-out';
-  for(let i=0;i<15;i++){
-    const x=rand(12,116),y=rand(12,116),r=rand(4,12);
-    const g=cx.createRadialGradient(x,y,0,x,y,r);
-    g.addColorStop(0,'rgba(0,0,0,0.10)');
-    g.addColorStop(1,'rgba(0,0,0,0)');
-    cx.fillStyle=g;
-    cx.beginPath();cx.arc(x,y,r,0,Math.PI*2);cx.fill();
-  }
-  cx.globalCompositeOperation='source-over';
-  return pixelate(new THREE.CanvasTexture(c));
-}
 
 // Cached textures and sprite materials.
 const TEX={},SPRITE_MAT={},FX_TEX={};
@@ -3698,9 +3629,6 @@ function initSharedTextures(){
   FX_TEX.fire =makeFXBlobTexture('#ffd84f','#ff5a1f');
   FX_TEX.ember=makeFXBlobTexture('#fff2a0','#ff8b22');
   FX_TEX.broth=makeFXBlobTexture('#ffe071','#e8a62f');
-  FX_TEX.magentaSmoke=makeFXBlobTexture('#ff4fd8','#3b1232');
-  // v20: vertical irregular plume texture; tint is assigned per-particle.
-  FX_TEX.smoke=makeSmokePlumeTexture();
 }
 
 // Graffiti textures loaded from the user-supplied asset/photos folder.
@@ -5628,13 +5556,6 @@ const CHUNK_WINDOW_A_SIDE=4;
 const CHUNK_PREFETCH_MARGIN=8;
 const CHUNK_PREFETCH_EXTRA=2;
 const chunks=new Map();
-// Building façade hit state. Each generated street-facing building face has a
-// stable id and can only react to host attacks a limited number of times.
-// This prevents infinite farming from one façade while preserving independent
-// damage states for the mirrored resident-ring street.
-const BUILDING_MAX_ATTACKS_PER_FACE=3;
-const buildingAttackFaces=[];
-const buildingDamageState=new Map();
 // Resident ring rebuild step 1:
 // Keep a complete, fixed street span resident and remove temple-as-portal
 // responsibilities from gameplay. The visible seam is pushed far outside
@@ -6288,12 +6209,7 @@ function generateChunk(idx){
         ledge.position.set(centreX+rand(-width*0.18,width*0.18),rand(2.7,4.8),frontZ-sign*0.30);
         addChunkObject(ledge);
       }
-      const buildingFace={
-        sign,xMin:cursor,xMax:cursor+width,frontZ,height,
-        id:`chunk:${idx}:side:${sign}:part:${partIdx}:x:${Math.round(cursor*10)}:${Math.round((cursor+width)*10)}`
-      };
-      buildingFaces.push(buildingFace);
-      buildingAttackFaces.push(buildingFace);
+      buildingFaces.push({sign,xMin:cursor,xMax:cursor+width,frontZ,height});
       if(!nearTempleApproach && Math.random()<0.34 && width>4.8){
         const stairX=clamp(centreX+rand(-width*0.18,width*0.18),cursor+0.9,cursor+width-0.9);
         buildFireEscapeStair(stairX,frontZ,sign,Math.max(3,Math.min(5,Math.round(height/3.8))));
@@ -8848,10 +8764,6 @@ function ensureBrothFX(prop){
   prop.brothFX={group,blobs,active:false,progress:0,angle:0,intensity:1,origin:new THREE.Vector3()};
   return prop.brothFX;
 }
-function getPropGroundFXY(prop){
-  if(prop?.kind==='soup-pot' || prop?.kind==='stall' || prop?.kind==='falling-sign') return 0.035;
-  return Math.max(0.035,Math.min(prop?.root?.position?.y??0,0.12));
-}
 function activateBrothFX(prop,angle,intensity=1){
   const fx=ensureBrothFX(prop);
   activeProps.add(prop);
@@ -8860,9 +8772,6 @@ function activateBrothFX(prop,angle,intensity=1){
   fx.angle=angle;
   fx.intensity=intensity;
   fx.origin.copy(prop.root.position);
-  // Soup pots can sit on top of stalls before being kicked. The spill is a
-  // ground effect, so do not inherit the pot/table height or the broth floats.
-  fx.origin.y=getPropGroundFXY(prop);
   fx.group.visible=true;
 }
 function ensureFireFX(prop){
@@ -8925,9 +8834,6 @@ function clearPropFX(prop){
   }
 }
 function tickPropFX(prop,dt){
-  if(prop.spillMesh?.visible){
-    prop.spillMesh.position.y=getPropGroundFXY(prop)-(prop.root?.position?.y??0);
-  }
   if(prop.brothFX?.active){
     const fx=prop.brothFX;
     fx.progress=Math.min(1,fx.progress+dt*0.85);
@@ -8946,39 +8852,8 @@ function tickPropFX(prop,dt){
     const fx=prop.fireFX;
     fx.time+=dt;
     fx.growth=Math.min(1,fx.growth+dt*0.42);
-    if(prop.kind==='building-fire' && prop.buildingBurnFX){
-      const burn=prop.buildingBurnFX;
-      burn.elapsed+=dt;
-      const nextStage=burn.elapsed>=10?2:(burn.elapsed>=5?1:0);
-      if(nextStage!==burn.stage){
-        burn.stage=nextStage;
-        fx.growth=1;
-        fx.stretch=Math.max(fx.stretch||1,3.05+burn.stage*1.15);
-        spawnComicImpact(prop.root.position,burn.stage===1?'BURNING!':'INFERNO!','#ff5af7',{yOffset:0.72+burn.stage*0.18,scaleX:1.18+burn.stage*0.24,scaleY:0.74+burn.stage*0.12});
-      }
-      const scorchScale=1+burn.stage*0.58+Math.min(1,burn.elapsed/10)*0.36;
-      if(burn.scorch){
-        burn.scorch.scale.set(scorchScale,scorchScale,1);
-        burn.scorch.material.opacity=clamp(0.72+burn.stage*0.13+burn.elapsed*0.018,0.72,0.98);
-        burn.scorch.material.color.set(burn.stage>=2?'#020000':(burn.stage>=1?'#070202':'#140909'));
-      }
-      if(burn.char){
-        const charScale=1+burn.stage*0.78+Math.min(1,burn.elapsed/10)*0.44;
-        burn.char.scale.set(charScale,charScale,1);
-        burn.char.material.opacity=clamp(0.48+burn.stage*0.20+burn.elapsed*0.024,0.48,0.98);
-        burn.char.material.color.set(burn.stage>=2?'#000000':'#050101');
-      }
-      if(Array.isArray(burn.cracks)){
-        for(const crack of burn.cracks){
-          const crackScale=1+burn.stage*0.38+Math.min(1,burn.elapsed/10)*0.22;
-          crack.scale.set(crackScale,crackScale,1);
-          crack.material.opacity=clamp(0.58+burn.stage*0.14,0.58,0.94);
-        }
-      }
-    }
     fx.group.position.copy(fx.origin);
-    const buildingStage=(prop.kind==='building-fire' && prop.buildingBurnFX)?prop.buildingBurnFX.stage:0;
-    const grow=(0.25+fx.growth*0.75)*(1+buildingStage*0.85);
+    const grow=0.25+fx.growth*0.75;
     for(const flame of fx.flames){
       const t=fx.time*3.6+flame.userData.phase;
       const along=Math.cos(fx.lean),side=Math.sin(fx.lean);
@@ -9005,32 +8880,6 @@ function tickPropFX(prop,dt){
       ember.position.set(px,0.2+((t+ember.userData.offset)%1.8)*grow,pz);
       ember.scale.setScalar(0.09+Math.abs(Math.sin(t))*0.05);
       ember.material.opacity=0.28+Math.abs(Math.cos(t))*0.25;
-    }
-    if(prop.kind==='building-fire' && prop.buildingBurnFX?.smoke?.length){
-      const burn=prop.buildingBurnFX;
-      const smokePower=0.85+burn.stage*0.82+Math.min(1,burn.elapsed/10)*0.55;
-      for(const smoke of burn.smoke){
-        const t=fx.time*0.72+smoke.userData.phase;
-        const cycle=smoke.userData.cycle||3.2;
-        const rise=((t+smoke.userData.offset)%cycle)/cycle;
-        const sway=Math.sin(t*1.35+smoke.userData.offset)*smoke.userData.sway*smokePower;
-        const drift=Math.cos(t*0.72+smoke.userData.phase)*smoke.userData.drift*smokePower;
-        const riseHeight=(smoke.userData.riseHeight||2.2)*(1+burn.stage*0.46);
-        smoke.position.set(
-          smoke.userData.baseX+sway*(0.55+rise*1.15),
-          smoke.userData.baseY+rise*riseHeight,
-          smoke.userData.baseZ+drift*(0.45+rise*1.25)
-        );
-        const sc=smoke.userData.size*(0.72+rise*1.55)*(1+burn.stage*0.42);
-        const cloudSpread=1+rise*0.85;
-        smoke.scale.set(
-          sc*(smoke.userData.xScale||1.25)*cloudSpread,
-          sc*(smoke.userData.yScale||1.15)*(0.86+rise*0.72),
-          1
-        );
-        smoke.material.opacity=(smoke.userData.opacityBase+smoke.userData.opacityPulse*Math.abs(Math.sin(t*1.1))+(0.035*burn.stage))*(1-rise*0.68);
-        smoke.material.rotation=(smoke.material.rotation||0)+dt*smoke.userData.spin;
-      }
     }
   }
 }
@@ -9072,167 +8921,13 @@ function tickDeathSpots(dt){
 function loadRatCityLeaderboard(){
   try{
     const raw=localStorage.getItem(RAT_CITY_STORAGE_KEY);
-    setRatCityLeaderboard(raw?JSON.parse(raw):[]);
+    game.leaderboard=raw?JSON.parse(raw):[];
   }catch(_){
     game.leaderboard=[];
   }
 }
 function saveRatCityLeaderboard(){
-  try{
-    localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,RAT_CITY_LEADERBOARD_LIMIT)));
-  }catch(err){
-    console.warn('[rat-city] local leaderboard save failed:',err?.message||err);
-  }
-}
-function sanitizeRatCityName(value){
-  const text=String(value||'ANON RAT')
-    .replace(/<[^>]*>/g,' ')
-    .replace(/[\u0000-\u001f\u007f<>]/g,' ')
-    .replace(/\s+/g,' ')
-    .trim();
-  return [...(text||'ANON RAT')].slice(0,18).join('')||'ANON RAT';
-}
-function normalizeRatCityEntry(entry){
-  if(!entry||typeof entry!=='object')return null;
-  const rawChaos=Number(entry.chaos ?? entry.chaosScore ?? entry.score ?? 0);
-  const rawScore=Number(entry.score ?? rawChaos ?? 0);
-  const rawRats=Number(entry.rats ?? entry.ratCount ?? 0);
-  const chaos=Math.round(Number.isFinite(rawChaos)?rawChaos:0);
-  const score=Math.round(Number.isFinite(rawScore)?rawScore:0);
-  const rats=Math.round(Number.isFinite(rawRats)?rawRats:0);
-  return {
-    name:sanitizeRatCityName(entry.name),
-    // The board records the visible HUD values: CHAOS BOX = game.chaosScore, RAT BOX = getTotalRatCount().
-    chaos:clamp(chaos,0,RAT_CITY_SCORE_MAX),
-    score:clamp(score,0,RAT_CITY_SCORE_MAX),
-    rats:clamp(rats,0,1000000),
-    date:typeof entry.date==='string'?entry.date:(typeof entry.created_at==='string'?entry.created_at:new Date().toISOString())
-  };
-}
-function sortRatCityEntries(entries){
-  return (Array.isArray(entries)?entries:[])
-    .map(normalizeRatCityEntry)
-    .filter(Boolean)
-    .sort((a,b)=>b.score-a.score||b.chaos-a.chaos||String(a.date).localeCompare(String(b.date)))
-    .slice(0,RAT_CITY_LEADERBOARD_LIMIT);
-}
-function getRatCityLeaderboardPageCount(){
-  return Math.max(1,Math.ceil((game.leaderboard?.length||0)/RAT_CITY_LEADERBOARD_PAGE_SIZE));
-}
-function clampRatCityLeaderboardPage(){
-  const maxPage=getRatCityLeaderboardPageCount()-1;
-  const page=Math.floor(Number(ratCityLeaderboardState.page)||0);
-  ratCityLeaderboardState.page=Math.max(0,Math.min(maxPage,page));
-}
-function setRatCityLeaderboardPage(page){
-  ratCityLeaderboardState.page=Math.max(0,Math.min(getRatCityLeaderboardPageCount()-1,Math.floor(Number(page)||0)));
-  renderRatCityLeaderboard();
-}
-function setRatCityLeaderboard(entries){
-  game.leaderboard=sortRatCityEntries(entries);
-  clampRatCityLeaderboardPage();
-}
-function parseRatCityLeaderboardPayload(data){
-  if(Array.isArray(data))return data;
-  if(data&&Array.isArray(data.entries))return data.entries;
-  if(data&&Array.isArray(data.leaderboard))return data.leaderboard;
-  if(data&&Array.isArray(data.scores))return data.scores;
-  return null;
-}
-const ratCityLeaderboardState={
-  refreshing:false,
-  onlineReady:false,
-  lastFetchAt:0,
-  lastError:'',
-  lastStatus:0,
-  lastUrl:RAT_CITY_LEADERBOARD_API_URL,
-  page:0
-};
-function getRatCityLeaderboardApiUrl(){
-  // Match the reference version's simple, deterministic save/render flow:
-  // one fixed online endpoint, no localStorage API override, no alternate debug URL.
-  return RAT_CITY_LEADERBOARD_API_URL;
-}
-function setRatCityLeaderboardOffline(error){
-  ratCityLeaderboardState.onlineReady=false;
-  ratCityLeaderboardState.lastError=error?.message||String(error||'online leaderboard unavailable');
-  console.warn('[rat-city] Cloudflare leaderboard failed:',ratCityLeaderboardState.lastError);
-}
-async function refreshRatCityOnlineLeaderboard(options={}){
-  const force=!!options.force;
-  const apiUrl=getRatCityLeaderboardApiUrl();
-  if(!apiUrl||ratCityLeaderboardState.refreshing)return false;
-  const now=Date.now();
-  if(!force&&now-ratCityLeaderboardState.lastFetchAt<RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS)return false;
-  ratCityLeaderboardState.refreshing=true;
-  ratCityLeaderboardState.lastFetchAt=now;
-  ratCityLeaderboardState.lastUrl=apiUrl;
-  try{
-    const res=await fetch(apiUrl,{method:'GET',mode:'cors',credentials:'omit',cache:'no-store'});
-    ratCityLeaderboardState.lastStatus=res.status||0;
-    if(!res.ok)throw new Error(`GET ${res.status}`);
-    const data=await res.json();
-    const entries=parseRatCityLeaderboardPayload(data);
-    if(!entries)throw new Error('Invalid leaderboard payload');
-    setRatCityLeaderboard(entries);
-    saveRatCityLeaderboard();
-    ratCityLeaderboardState.onlineReady=true;
-    ratCityLeaderboardState.lastError='';
-    renderRatCityLeaderboard();
-    return true;
-  }catch(err){
-    setRatCityLeaderboardOffline(err);
-    renderRatCityLeaderboard();
-    return false;
-  }finally{
-    ratCityLeaderboardState.refreshing=false;
-  }
-}
-async function postRatCityOnlineScore(entry){
-  const apiUrl=getRatCityLeaderboardApiUrl();
-  if(!apiUrl)return false;
-  const payload=normalizeRatCityEntry(entry);
-  if(!payload)return false;
-  const body=JSON.stringify(payload);
-  const attempts=[
-    {
-      label:'application/json',
-      init:{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',headers:{'Accept':'application/json','Content-Type':'application/json'},body}
-    },
-    {
-      // Fallback for Workers that accept the same JSON body but do not answer the OPTIONS preflight correctly.
-      // Request.json() in Workers can parse the body even when this is sent as text/plain.
-      label:'text/plain',
-      init:{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',headers:{'Accept':'application/json','Content-Type':'text/plain;charset=UTF-8'},body}
-    }
-  ];
-  let lastErr=null;
-  for(const attempt of attempts){
-    try{
-      const res=await fetch(apiUrl,attempt.init);
-      ratCityLeaderboardState.lastStatus=res.status||0;
-      if(!res.ok)throw new Error(`${attempt.label} POST ${res.status}`);
-      const data=await res.json().catch(()=>null);
-      const entries=parseRatCityLeaderboardPayload(data);
-      if(entries){
-        setRatCityLeaderboard(entries);
-      }else{
-        // Some Workers return {ok:true} after insert. Verify by immediately re-reading the shared board.
-        await refreshRatCityOnlineLeaderboard({force:true});
-      }
-      saveRatCityLeaderboard();
-      ratCityLeaderboardState.onlineReady=true;
-      ratCityLeaderboardState.lastError='';
-      renderRatCityLeaderboard();
-      return true;
-    }catch(err){
-      lastErr=err;
-      console.warn(`[rat-city] online ${attempt.label} write failed:`,err?.message||err);
-    }
-  }
-  setRatCityLeaderboardOffline(lastErr||new Error('POST failed'));
-  renderRatCityLeaderboard();
-  return false;
+  localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,8)));
 }
 function makeProgressBar3D(width=1.12,height=0.18){
   const root=new THREE.Group();
@@ -9842,27 +9537,28 @@ const UI_LAYOUT_DEFAULTS={
     "__beginButtonEditableApplied": true,
     "__endingScreenUnifiedV7": true,
     "rat-city-title": {
-      "x": 50,
-      "y": 24,
-      "w": 38,
-      "h": 5.5,
+      "x": 49.753,
+      "y": 31.377,
+      "w": 5.396,
+      "h": 4.53,
       "z": 48,
       "hidden": false,
-      "locked": false,
+      "locked": true,
       "fontSize": 28,
-      "text": "RAT KING",
-      "rot": 0
+      "text": "RAT",
+      "rot": 0,
+      "lineHeight": 1
     },
     "rat-city-desc": {
-      "x": 44.537,
-      "y": 31.291,
+      "x": 50,
+      "y": 31,
       "w": 48,
-      "h": 5.113,
+      "h": 5,
       "z": 48,
       "hidden": true,
       "locked": false,
       "fontSize": 12,
-      "lineHeight": 1.55,
+      "lineHeight": 1.4,
       "text": "Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.",
       "rot": 0
     },
@@ -9877,7 +9573,8 @@ const UI_LAYOUT_DEFAULTS={
       "fontSize": 13,
       "text": "-",
       "rot": 0,
-      "lineHeight": 1
+      "lineHeight": 1,
+      "letterSpacing": 0
     },
     "rat-city-close": {
       "x": 71,
@@ -9886,30 +9583,32 @@ const UI_LAYOUT_DEFAULTS={
       "h": 4.2,
       "z": 50,
       "hidden": false,
-      "locked": true,
+      "locked": false,
       "fontSize": 14,
-      "text": "↻",
+      "text": "â†»",
       "rot": 0,
       "lineHeight": 1,
       "letterSpacing": 0
     },
     "rat-city-name": {
-      "x": 43,
-      "y": 37,
-      "w": 36,
-      "h": 5.5,
+      "x": 51.51,
+      "y": 44.054,
+      "w": 52.077,
+      "h": 2.961,
       "z": 49,
       "hidden": false,
-      "locked": false,
+      "locked": true,
       "fontSize": 13,
       "text": "Rat King Name:",
-      "rot": 0
+      "rot": 0,
+      "lineHeight": "1.4",
+      "letterSpacing": 1.5
     },
     "rat-city-save": {
-      "x": 65,
-      "y": 37,
-      "w": 12,
-      "h": 5.5,
+      "x": 90.074,
+      "y": 43.855,
+      "w": 9.41,
+      "h": 2.961,
       "z": 49,
       "hidden": false,
       "locked": false,
@@ -9917,26 +9616,28 @@ const UI_LAYOUT_DEFAULTS={
       "text": "SAVE",
       "rot": 0,
       "lineHeight": 1,
-      "color": ""
+      "color": "",
+      "letterSpacing": 0
     },
     "rat-city-score": {
-      "x": 50,
-      "y": 45.5,
-      "w": 52,
-      "h": 3.8,
+      "x": 49.948,
+      "y": 45.764,
+      "w": 37.439,
+      "h": 4.55,
       "z": 48,
-      "hidden": false,
+      "hidden": true,
       "locked": false,
       "fontSize": 13,
       "text": "CHAOS 0 / RATS 0",
       "rot": 0,
-      "letterSpacing": 0
+      "letterSpacing": 0,
+      "lineHeight": 1.15
     },
     "rat-city-panel": {
       "x": 50,
-      "y": 50,
+      "y": 54.1,
       "w": 72,
-      "h": 48,
+      "h": 119.765,
       "z": 46,
       "hidden": false,
       "locked": true,
@@ -9944,13 +9645,13 @@ const UI_LAYOUT_DEFAULTS={
     },
     "__actualRatCityEndingV8": true,
     "rat-city-row": {
-      "x": 50,
-      "y": 37,
-      "w": 52,
-      "h": 5.8,
+      "x": 45.935,
+      "y": 44.141,
+      "w": 49.295,
+      "h": 25.956,
       "z": 48,
       "hidden": false,
-      "locked": false,
+      "locked": true,
       "rot": 0
     },
     "rat-city-list": {
@@ -9964,16 +9665,18 @@ const UI_LAYOUT_DEFAULTS={
       "rot": 0
     },
     "rat-city-pager": {
-      "x": 50,
-      "y": 70.5,
-      "w": 48,
-      "h": 5,
+      "x": 50.345,
+      "y": 71.063,
+      "w": 21.599,
+      "h": 7.17,
       "z": 48,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
-    "__actualRatCityEndingV9": true
+    "__actualRatCityEndingV9": true,
+    "__ratCityLeaderboardCardV10": true,
+    "__endingCardResizeFixV11": true
   },
   "mobile": {
     "viewport-frame-top": {
@@ -10455,27 +10158,28 @@ const UI_LAYOUT_DEFAULTS={
     "__beginButtonEditableApplied": true,
     "__endingScreenUnifiedV7": true,
     "rat-city-title": {
-      "x": 50,
-      "y": 19.2,
-      "w": 52,
-      "h": 7.2,
-      "z": 48,
+      "x": 52.152,
+      "y": 28.954,
+      "w": 19.647,
+      "h": 2.177,
+      "z": 11,
       "hidden": false,
       "locked": true,
-      "fontSize": 17,
-      "text": "RAT CITY",
-      "rot": 0
+      "fontSize": "6",
+      "text": "RAT",
+      "rot": 0,
+      "lineHeight": 1
     },
     "rat-city-desc": {
-      "x": 55.659,
-      "y": 37.833,
+      "x": 50,
+      "y": 39,
       "w": 70,
-      "h": 7,
-      "z": 9,
+      "h": 5,
+      "z": 10,
       "hidden": true,
       "locked": false,
       "fontSize": 10,
-      "lineHeight": 1.5,
+      "lineHeight": 1.35,
       "text": "Top-down surveillance mode. The alley rotates while you log the current chaos into the city board.",
       "rot": 0
     },
@@ -10484,24 +10188,25 @@ const UI_LAYOUT_DEFAULTS={
       "y": 19.6,
       "w": 8,
       "h": 7.2,
-      "z": 50,
+      "z": 15,
       "hidden": false,
       "locked": true,
       "fontSize": 13,
       "text": "-",
       "rot": 0,
-      "lineHeight": 1
+      "lineHeight": 1,
+      "letterSpacing": 0
     },
     "rat-city-close": {
-      "x": 80,
-      "y": 19.6,
+      "x": 79.5,
+      "y": 20,
       "w": 9,
-      "h": 7.2,
-      "z": 50,
+      "h": 8,
+      "z": 14,
       "hidden": false,
       "locked": true,
       "fontSize": 13,
-      "text": "↻",
+      "text": "â†»",
       "rot": 0,
       "letterSpacing": 0,
       "lineHeight": 1
@@ -10511,19 +10216,20 @@ const UI_LAYOUT_DEFAULTS={
       "y": 33.2,
       "w": 52,
       "h": 10.2,
-      "z": 49,
+      "z": 13,
       "hidden": false,
       "locked": true,
       "fontSize": 11,
       "text": "Rat King Name:",
-      "rot": 0
+      "rot": 0,
+      "lineHeight": 1
     },
     "rat-city-save": {
-      "x": 70.8,
-      "y": 33.2,
-      "w": 21.6,
-      "h": 10.2,
-      "z": 49,
+      "x": 79.389,
+      "y": 36.72,
+      "w": 16.662,
+      "h": 2.559,
+      "z": 12,
       "hidden": false,
       "locked": true,
       "fontSize": 8,
@@ -10533,44 +10239,46 @@ const UI_LAYOUT_DEFAULTS={
       "lineHeight": 1
     },
     "rat-city-score": {
-      "x": 50,
-      "y": 43.8,
-      "w": 76,
-      "h": 6.5,
-      "z": 48,
-      "hidden": false,
+      "x": 51.353,
+      "y": 41.444,
+      "w": 60.332,
+      "h": 2.38,
+      "z": 8,
+      "hidden": true,
       "locked": false,
-      "fontSize": 9,
+      "fontSize": 6,
       "text": "CHAOS 0 / RATS 0",
-      "rot": 0
+      "rot": 0,
+      "lineHeight": 1.1,
+      "letterSpacing": 0
     },
     "rat-city-panel": {
-      "x": 50,
-      "y": 50.6,
-      "w": 98,
-      "h": 65.333,
-      "z": 46,
+      "x": 49.496,
+      "y": 52.336,
+      "w": 101.505,
+      "h": 84.344,
+      "z": 6,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
     "__actualRatCityEndingV8": true,
     "rat-city-row": {
-      "x": 50,
-      "y": 33.2,
-      "w": 76,
-      "h": 10.2,
-      "z": 48,
+      "x": 50.871,
+      "y": 35.772,
+      "w": 71.68,
+      "h": 2.46,
+      "z": 9,
       "hidden": false,
       "locked": true,
       "rot": 0
     },
     "rat-city-list": {
-      "x": 50,
-      "y": 58.5,
-      "w": 80,
-      "h": 27.6,
-      "z": 48,
+      "x": 49.757,
+      "y": 51.179,
+      "w": 60.137,
+      "h": 25.944,
+      "z": 7,
       "hidden": false,
       "locked": true,
       "rot": 0
@@ -10580,14 +10288,16 @@ const UI_LAYOUT_DEFAULTS={
       "y": 79.2,
       "w": 76,
       "h": 8.2,
-      "z": 48,
-      "hidden": false,
+      "z": 5,
+      "hidden": true,
       "locked": true,
       "rot": 0
     },
-    "__actualRatCityEndingV9": true
+    "__actualRatCityEndingV9": true,
+    "__ratCityLeaderboardCardV10": true,
+    "__endingCardResizeFixV11": true
   }
-};
+};  
 // RESTORED constants & functions — an earlier auto-commit (4923786)
 // chopped 17+ top-level declarations out of this region in one stroke,
 // including UI_LAYOUT_TARGET_DEFS, UI_LAYOUT_ART_TARGETS,
@@ -10635,7 +10345,6 @@ const UI_LAYOUT_TARGET_DEFS=[
   {id:'rat-city-save',label:'Ending Save Button',isText:true,scene:'ending'},
   {id:'rat-city-score',label:'Ending Score Text',isText:true,scene:'ending'},
   {id:'rat-city-list',label:'Ending Ranking List',scene:'ending'},
-  {id:'rat-city-pager',label:'Ending Ranking Pager',scene:'ending'},
   {id:'rats-win',label:'Legacy Ending Card',scene:'ending'},
   {id:'rw-text',label:'Legacy Ending Title',isText:true,scene:'ending'},
   {id:'rw-sub',label:'Legacy Ending Subtitle',isText:true,scene:'ending'},
@@ -10650,7 +10359,7 @@ const UI_LAYOUT_ART_TARGETS={
   'pickup-btn':'pickup-btn-art',
   'exit-host-btn':'exit-host-btn-art'
 };
-const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rat-city-pager','rats-win','rw-text','rw-sub','rw-replay']);
+const UI_LAYOUT_STYLABLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn','joystick-zone','jump-btn','bite-btn','pickup-btn','exit-host-btn','intro-card','start-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','intro-progress-track','rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rats-win','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_STYLE_TARGETS=new Set(['chaos-box','rats-box','rat-city-btn']);
 const UI_LAYOUT_TEXT_TARGETS=new Set(['rat-city-btn','start-btn-label','intro-title','intro-tag','intro-copy','intro-progress-text','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-name','rat-city-save','rat-city-score','rw-text','rw-sub','rw-replay']);
 const UI_LAYOUT_TEXT_DEFAULTS={
@@ -10663,7 +10372,7 @@ const UI_LAYOUT_TEXT_DEFAULTS={
   'rat-city-close':'↻',
   'rat-city-name':'Rat King Name:',
   'rat-city-save':'SAVE',
-  'rat-city-score':'CHAOS 0 / RATS 0',
+  'rat-city-score':'CHAOS 0 · SCORE 0',
   'rw-text':'RATS WIN',
   'rw-sub':'THE ALLEY BELONGS TO THE SWARM',
   'rw-replay':'BACK TO THE STREET',
@@ -10730,8 +10439,7 @@ const UI_LAYOUT_INTRO_FALLBACK={
   'rat-city-name':{x:45.4,y:53,w:32,h:5.2,z:49,hidden:false,locked:false,fontSize:13},
   'rat-city-save':{x:65.3,y:53,w:7.6,h:5.4,z:49,hidden:false,locked:false,fontSize:13},
   'rat-city-score':{x:39.5,y:64,w:30,h:4.5,z:48,hidden:false,locked:false,fontSize:15},
-  'rat-city-list':{x:50,y:74,w:44,h:16,z:48,hidden:false,locked:false},
-  'rat-city-pager':{x:50,y:82,w:44,h:5,z:48,hidden:false,locked:false}
+  'rat-city-list':{x:50,y:74,w:44,h:16,z:48,hidden:false,locked:false}
 };
 const UI_LAYOUT_COMPARE_PAIRS={
   'viewport-frame-top':'viewport-frame-bottom',
@@ -10930,7 +10638,7 @@ function ensureUILayoutBuiltins(config){
             'rat-city-row':{x:50,y:48,w:70,h:8,z:48,hidden:false,locked:false,rot:0},
             'rat-city-name':{x:43,y:48,w:50,h:5.8,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'Rat King Name:'},
             'rat-city-save':{x:74,y:48,w:14,h:5.8,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'SAVE'},
-            'rat-city-score':{x:34,y:59,w:44,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:'CHAOS 0 / RATS 0'},
+            'rat-city-score':{x:34,y:59,w:44,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:'CHAOS 0 · SCORE 0'},
             'rat-city-list':{x:50,y:70,w:72,h:16,z:48,hidden:false,locked:false,rot:0}
           }
         : {
@@ -10942,7 +10650,7 @@ function ensureUILayoutBuiltins(config){
             'rat-city-row':{x:50,y:50.5,w:44,h:7,z:48,hidden:false,locked:false,rot:0},
             'rat-city-name':{x:45.5,y:50.5,w:33,h:5.2,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'Rat King Name:'},
             'rat-city-save':{x:66,y:50.5,w:8,h:5.4,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'SAVE'},
-            'rat-city-score':{x:39.5,y:61.5,w:32,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:15,text:'CHAOS 0 / RATS 0'},
+            'rat-city-score':{x:39.5,y:61.5,w:32,h:4.5,z:48,hidden:false,locked:false,rot:0,fontSize:15,text:'CHAOS 0 · SCORE 0'},
             'rat-city-list':{x:50,y:72,w:46,h:16,z:48,hidden:false,locked:false,rot:0}
           };
       for(const [id,next] of Object.entries(endingDefaults)){
@@ -10951,52 +10659,6 @@ function ensureUILayoutBuiltins(config){
       }
       store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
       store.__actualRatCityEndingV9=true;
-    }
-    if(!store.__ratCityLeaderboardCardV10){
-      const endingDefaults=(mode==='mobile')
-        ? {
-            'rat-city-btn':{x:50,y:4.8,w:44,h:6.4,z:24,hidden:false,locked:true,rot:0,fontSize:11,lineHeight:1.05,letterSpacing:0.08,color:'#FFFFAA',bgColor:''},
-            'rat-city-panel':{x:50,y:50.6,w:98,h:65.333,z:46,hidden:false,locked:true,rot:0},
-            'rat-city-title':{x:50,y:19.2,w:52,h:7.2,z:48,hidden:false,locked:true,rot:0,fontSize:17,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-title'],lineHeight:1},
-            'rat-city-desc':{x:50,y:39,w:70,h:5,z:48,hidden:true,locked:false,rot:0,fontSize:10,lineHeight:1.35,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-desc']},
-            'rat-city-min':{x:70,y:19.6,w:8,h:7.2,z:50,hidden:false,locked:true,rot:0,fontSize:13,text:'-',lineHeight:1,letterSpacing:0},
-            'rat-city-close':{x:79.5,y:20,w:9,h:8,z:50,hidden:false,locked:true,rot:0,fontSize:13,text:'â†»',lineHeight:1,letterSpacing:0},
-            'rat-city-row':{x:50,y:33.2,w:76,h:10.2,z:48,hidden:false,locked:true,rot:0},
-            'rat-city-name':{x:39,y:33.2,w:52,h:10.2,z:49,hidden:false,locked:true,rot:0,fontSize:11,text:'Rat King Name:',lineHeight:1},
-            'rat-city-save':{x:70.8,y:33.2,w:21.6,h:10.2,z:49,hidden:false,locked:true,rot:0,fontSize:8,text:'SAVE',lineHeight:1,letterSpacing:0},
-            'rat-city-score':{x:50,y:43.8,w:76,h:6.5,z:48,hidden:false,locked:false,rot:0,fontSize:9,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-score'],lineHeight:1.1,letterSpacing:0},
-            'rat-city-list':{x:50,y:58.5,w:80,h:27.6,z:48,hidden:false,locked:true,rot:0},
-            'rat-city-pager':{x:50,y:79.2,w:76,h:8.2,z:48,hidden:false,locked:true,rot:0}
-          }
-        : {
-            'rat-city-btn':{x:50,y:7,w:18,h:7,z:20,hidden:false,locked:false,rot:0,fontSize:18,lineHeight:1.05,letterSpacing:0.12,color:'#FFFFAA',bgColor:''},
-            'rat-city-panel':{x:50,y:50,w:72,h:48,z:46,hidden:false,locked:true,rot:0},
-            'rat-city-title':{x:50,y:24,w:38,h:5.5,z:48,hidden:false,locked:false,rot:0,fontSize:28,text:'RAT KING',lineHeight:1},
-            'rat-city-desc':{x:50,y:31,w:48,h:5,z:48,hidden:true,locked:false,rot:0,fontSize:12,lineHeight:1.4,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-desc']},
-            'rat-city-min':{x:65,y:21,w:5,h:4.2,z:50,hidden:false,locked:true,rot:0,fontSize:13,text:'-',lineHeight:1,letterSpacing:0},
-            'rat-city-close':{x:71,y:21,w:5,h:4.2,z:50,hidden:false,locked:true,rot:0,fontSize:14,text:'â†»',lineHeight:1,letterSpacing:0},
-            'rat-city-row':{x:50,y:37,w:52,h:5.8,z:48,hidden:false,locked:false,rot:0},
-            'rat-city-name':{x:43,y:37,w:36,h:5.5,z:49,hidden:false,locked:false,rot:0,fontSize:13,text:'Rat King Name:',lineHeight:1},
-            'rat-city-save':{x:65,y:37,w:12,h:5.5,z:49,hidden:false,locked:false,rot:0,fontSize:12,text:'SAVE',lineHeight:1,letterSpacing:0,color:''},
-            'rat-city-score':{x:50,y:45.5,w:52,h:3.8,z:48,hidden:false,locked:false,rot:0,fontSize:13,text:UI_LAYOUT_TEXT_DEFAULTS['rat-city-score'],lineHeight:1.15,letterSpacing:0},
-            'rat-city-list':{x:50,y:57.5,w:58,h:19,z:48,hidden:false,locked:true,rot:0},
-            'rat-city-pager':{x:50,y:70.5,w:48,h:5,z:48,hidden:false,locked:true,rot:0}
-          };
-      for(const [id,next] of Object.entries(endingDefaults)){
-        const current=store[id]||{};
-        const keepText=(typeof current.text==='string' && current.text.trim() && !['rat-city-save','rat-city-score','rat-city-name','rat-city-min','rat-city-close'].includes(id))
-          ? {text:current.text}
-          : {};
-        store[id]={...current,...next,...keepText,hidden:next.hidden,locked:next.locked};
-      }
-      store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
-      store.__ratCityLeaderboardCardV10=true;
-    }
-    if(!store.__endingCardResizeFixV11){
-      if(store['rat-city-panel']){
-        store['rat-city-panel']={...store['rat-city-panel'],locked:false};
-      }
-      store.__endingCardResizeFixV11=true;
     }
     if(!store['host-life-box']){
       const frame=store.__customFrames.find(entry=>entry?.id==='builtin-frame-host-life');
@@ -11549,22 +11211,6 @@ function applyUILayoutMetrics(def,metrics){
   }
   el.style.right='auto';
   el.style.bottom='auto';
-  if(def.id==='rat-city-panel'){
-    el.style.aspectRatio='auto';
-    el.style.width=`${metrics.w}%`;
-    el.style.height=`${metrics.h}%`;
-    el.style.maxWidth='none';
-    el.style.maxHeight='none';
-    el.style.minWidth='0';
-    el.style.minHeight='0';
-  }
-  if(def.id==='chaos-box' || def.id==='rats-box'){
-    // Mobile CSS used to impose a fixed min-width that was not active in
-    // the desktop editor's mobile preview, so live mobile drifted from the
-    // saved layout. Let the layout metrics fully control these HUD boxes.
-    el.style.minWidth='0';
-    el.style.minHeight='0';
-  }
   el.style.transform=getUILayoutTransform(metrics);
   el.style.zIndex=String(getUILayoutLayer(def,metrics));
   applyUILayoutVisual(def,metrics,el);
@@ -11661,7 +11307,10 @@ function buildUILayoutMetricsFromRect(def,metrics,rect){
   metrics.w=+((rect.width/Math.max(bounds.width,1))*100).toFixed(3);
   metrics.h=+((rect.height/Math.max(bounds.height,1))*100).toFixed(3);
 }
-function getUILayoutElementRect(def){
+function measureUILayoutRect(def,metrics){
+  if(uiLayoutState.active){
+    return getUILayoutBoxRect(def,metrics);
+  }
   const el=def.isCustomFrame
     ? document.getElementById(getUILayoutCustomFrameElementId(def.id))
     : document.getElementById(def.id);
@@ -11671,14 +11320,6 @@ function getUILayoutElementRect(def){
       return {left:r.left,top:r.top,width:r.width,height:r.height};
     }
   }
-  return null;
-}
-function measureUILayoutRect(def,metrics){
-  if(uiLayoutState.active && def?.isCustomFrame){
-    return getUILayoutBoxRect(def,metrics);
-  }
-  const domRect=getUILayoutElementRect(def);
-  if(domRect) return domRect;
   return getUILayoutBoxRect(def,metrics);
 }
 function getUILayoutOrderedDefs(desc=true){
@@ -12586,7 +12227,7 @@ function getLoadingTextTargets(){
   const scene=getActiveLayoutScene();
   const textTargets=UI_LAYOUT_TARGET_DEFS.filter(def=>UI_LAYOUT_TEXT_TARGETS.has(def.id) && (def.scene||'game')===scene);
   if(scene==='ending'){
-    const editableIds=['rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list','rat-city-pager'];
+    const editableIds=['rat-city-panel','rat-city-title','rat-city-desc','rat-city-min','rat-city-close','rat-city-row','rat-city-name','rat-city-save','rat-city-score','rat-city-list'];
     return editableIds.map(id=>getUILayoutDef(id)).filter(Boolean);
   }
   return textTargets;
@@ -12694,7 +12335,7 @@ function refreshLoadingTextPanel(){
     const metrics=ensureUILayoutMetrics(def);
     const fallback=document.getElementById(def.id);
     const fallbackText=fallback?(def.multiline?fallback.innerText:(fallback.textContent||'')):'';
-    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel' || def.id==='rat-city-row' || def.id==='rat-city-list' || def.id==='rat-city-pager';
+    const layoutOnly=def.id==='rats-win' || def.id==='rat-city-panel' || def.id==='rat-city-row' || def.id==='rat-city-list';
     const text=(typeof metrics.text==='string')?metrics.text:fallbackText;
     const fontSize=metrics.fontSize||'';
     const fontFamily=metrics.fontFamily||'';
@@ -13647,8 +13288,6 @@ const ratCityMin=document.getElementById('rat-city-min');
 const ratCityClose=document.getElementById('rat-city-close');
 const ratCityScore=document.getElementById('rat-city-score');
 const ratCityList=document.getElementById('rat-city-list');
-const ratCityPager=document.getElementById('rat-city-pager');
-let ratCityScoreSavedThisRun=false;
 const hintEl=document.getElementById('hint');
 const biteLockEl=document.getElementById('bite-lock');
 let hintTimer=0;
@@ -13779,69 +13418,27 @@ function handleActionPress(){
   }else exitHost();
 }
 function getRatCityScore(){
-  return Math.round(game.chaosScore||0);
-}
-function getRatCityChaosValue(){
-  return Math.round(game.chaosScore||0);
-}
-function getRatCityRatValue(){
-  return Math.round(getTotalRatCount());
+  return Math.round(game.chaos*1000);
 }
 function renderRatCityLeaderboard(){
-  const compact=window.matchMedia?.('(max-width: 900px)').matches;
-  const status=ratCityLeaderboardState.onlineReady?' | ONLINE':(ratCityLeaderboardState.lastError?' | LOCAL ONLY':'');
-  ratCityScore.textContent=compact
-    ? `C ${getRatCityChaosValue()} / R ${getRatCityRatValue()}${status}`
-    : `CHAOS ${getRatCityChaosValue()} / RATS ${getRatCityRatValue()}${status}`;
-  ratCityScore.title=ratCityLeaderboardState.lastError||ratCityLeaderboardState.lastUrl||'';
+  ratCityScore.textContent=`CHAOS ${Math.round(game.chaos*100)} · SCORE ${getRatCityScore()}`;
   ratCityList.innerHTML='';
-  if(ratCityPager) ratCityPager.innerHTML='';
-  clampRatCityLeaderboardPage();
   if(!game.leaderboard.length){
     const li=document.createElement('li');
-    li.textContent=ratCityLeaderboardState.lastError?'No online rankings loaded.':'No rankings logged yet.';
+    li.textContent='No rankings logged yet.';
     ratCityList.appendChild(li);
-    if(ratCityPager){
-      const pageLabel=document.createElement('span');
-      pageLabel.textContent='PAGE 0/0';
-      const next=document.createElement('button');
-      next.type='button';
-      next.textContent='NEXT PAGE';
-      next.disabled=true;
-      ratCityPager.append(pageLabel,next);
-    }
     return;
   }
-  const pageCount=getRatCityLeaderboardPageCount();
-  const page=ratCityLeaderboardState.page;
-  const start=page*RAT_CITY_LEADERBOARD_PAGE_SIZE;
-  const pageEntries=game.leaderboard.slice(start,start+RAT_CITY_LEADERBOARD_PAGE_SIZE);
-  pageEntries.forEach((entry,idx)=>{
+  game.leaderboard.slice(0,8).forEach((entry,idx)=>{
     const li=document.createElement('li');
     const left=document.createElement('span');
     left.className='rank-name';
-    left.textContent=`#${start+idx+1} ${entry.name}`;
+    left.textContent=`#${idx+1} ${entry.name}`;
     const right=document.createElement('span');
-    const entryChaos=Math.round(entry.chaos||entry.score||0);
-    const entryRats=Math.round(entry.rats||0);
-    right.textContent=compact?`C${entryChaos} R${entryRats}`:`CHAOS ${entryChaos} / RATS ${entryRats}`;
+    right.textContent=`CHAOS ${entry.chaos}% · ${entry.score}`;
     li.append(left,right);
     ratCityList.appendChild(li);
   });
-  if(ratCityPager){
-    const pageLabel=document.createElement('span');
-    const end=Math.min(start+pageEntries.length,game.leaderboard.length);
-    pageLabel.textContent=`PAGE ${page+1}/${pageCount} - ${start+1}-${end} OF ${game.leaderboard.length}`;
-    const next=document.createElement('button');
-    next.type='button';
-    next.textContent='NEXT PAGE';
-    next.disabled=pageCount<=1;
-    next.addEventListener('pointerdown',e=>{
-      e.preventDefault();
-      setRatCityLeaderboardPage((ratCityLeaderboardState.page+1)%pageCount);
-    });
-    ratCityPager.append(pageLabel,next);
-  }
 }
 function setRatCityMode(enabled){
   game.ratCityMode=enabled;
@@ -13850,46 +13447,27 @@ function setRatCityMode(enabled){
   if(!enabled) ratCityPanel.classList.remove('min');
   setUIArtHostLabel(ratCityBtn,enabled?'BACK TO\nTHE STREET':'RAT CITY');
   if(enabled){
-    ratCityLeaderboardState.page=0;
     game.ratCityAngle=camYaw;
     ratCityPitch=0.58;
     ratCityZoom=26;
     ratCityAutoRotate=true;
     renderRatCityLeaderboard();
-    refreshRatCityOnlineLeaderboard({force:true});
   }
 }
 function submitRatCityScore(){
-  if(ratCityScoreSavedThisRun){
-    renderRatCityLeaderboard();
-    return;
-  }
-  const hudChaos=getRatCityChaosValue();
-  const hudRats=getRatCityRatValue();
-  const entry=normalizeRatCityEntry({
-    name:sanitizeRatCityName(ratCityName.value||'ANON RAT'),
-    chaos:hudChaos,
-    score:hudChaos,
-    rats:hudRats,
+  const name=(ratCityName.value||'ANON RAT').trim().slice(0,18)||'ANON RAT';
+  game.leaderboard.push({
+    name,
+    chaos:Math.round(game.chaos*100),
+    score:getRatCityScore(),
+    rats:getTotalRatCount(),
     date:new Date().toISOString()
   });
-  if(!entry)return;
-  ratCityScoreSavedThisRun=true;
-  ratCitySave.disabled=true;
-  ratCitySave.textContent='SAVING';
-  ratCitySave.setAttribute('aria-disabled','true');
-  game.leaderboard.push(entry);
-  setRatCityLeaderboard(game.leaderboard);
-  ratCityLeaderboardState.page=0;
+  game.leaderboard.sort((a,b)=>b.score-a.score||b.chaos-a.chaos);
+  game.leaderboard=game.leaderboard.slice(0,8);
   saveRatCityLeaderboard();
   renderRatCityLeaderboard();
-  postRatCityOnlineScore(entry).then(ok=>{
-    ratCitySave.textContent=ok?'ONLINE':'LOCAL';
-    if(!ok){
-      console.warn('[rat-city] score saved locally but Cloudflare sync failed:',ratCityLeaderboardState.lastError);
-    }
-    renderRatCityLeaderboard();
-  });
+  showHint('RAT CITY ranking updated.',0.8);
 }
 
 modeBadge.style.cursor='pointer';
@@ -13927,7 +13505,7 @@ function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   let best=null,bestD=maxDist;
   const near=getPropsNear(host.root.position.x,host.root.position.z,maxDist+0.8);
   for(const p of near){
-    if(p.heldBy||p.throwVel||p.noPickup)continue;
+    if(p.heldBy||p.throwVel)continue;
     const dx=p.root.position.x-host.root.position.x;
     const dz=p.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
@@ -14014,335 +13592,6 @@ function chooseHostAttackAction(host,requested='kick'){
     ? (actions.punchcombo?'punchcombo':'punch')
     : (actions.kick?'kick':null);
 }
-
-function findHostBuildingFacadeTarget(host){
-  if(!host?.root) return null;
-  const fz=Math.cos(host.yaw);
-  if(Math.abs(fz)<0.34) return null;
-  const side=fz>=0?1:-1;
-  const frontZ=host.root.position.z+fz*2.4;
-  // v17: do not require the host to stand directly beside the wall.
-  // Facing either side of the street should be enough to damage the facade;
-  // otherwise most attacks hit only props and the building-fire layer never appears.
-  const hx=host.root.position.x;
-  let best=null;
-  let bestScore=Infinity;
-  for(const face of buildingAttackFaces){
-    if(!face || face.sign!==side) continue;
-    if(pointInsideTempleZone((face.xMin+face.xMax)*0.5,face.frontZ,Math.max((face.xMax-face.xMin)*0.5,2.2))) continue;
-    const inSpan=hx>=face.xMin-1.2 && hx<=face.xMax+1.2;
-    const cx=clamp(hx,face.xMin,face.xMax);
-    const dx=Math.abs(hx-cx);
-    const dz=Math.abs(frontZ-face.frontZ);
-    const score=dx*dx*0.85+dz*dz+(inSpan?0:8.0);
-    if(score<bestScore){ bestScore=score; best=face; }
-  }
-  if(best && bestScore<58) return best;
-  const cellSize=5.2;
-  const cell=Math.floor(hx/cellSize);
-  const xMin=cell*cellSize;
-  const xMax=xMin+cellSize;
-  const fallback={
-    sign,frontZ:clamp(side*6.15,ALLEY_Z_MIN+0.75,ALLEY_Z_MAX-0.75),
-    xMin,xMax,height:7.0,
-    id:`fallback:${side}:${cell}`
-  };
-  if(pointInsideTempleZone((fallback.xMin+fallback.xMax)*0.5,fallback.frontZ,3.8)) return null;
-  return fallback;
-}
-function getBuildingDamageState(face){
-  if(!face?.id) return null;
-  let state=buildingDamageState.get(face.id);
-  if(!state){
-    state={hits:0,lastHitAt:-999,firePatches:0};
-    buildingDamageState.set(face.id,state);
-  }
-  return state;
-}
-function pickBuildingDamageX(face,host){
-  if(!face) return host?.root?.position?.x??0;
-  const hx=host?.root?.position?.x??((face.xMin+face.xMax)*0.5);
-  const pad=Math.min(0.75,Math.max(0.25,(face.xMax-face.xMin)*0.12));
-  return clamp(hx+rand(-0.85,0.85),face.xMin+pad,face.xMax-pad);
-}
-function buildFallingFireEscapePiece(x,y,z,side=1,scale=1){
-  const root=new THREE.Group();
-  root.position.set(x,y,z);
-  root.rotation.y=side>0?Math.PI:0;
-  const frameMat=new THREE.MeshBasicMaterial({color:'#3d424a'});
-  const treadMat=new THREE.MeshBasicMaterial({color:'#7c838b'});
-  const railMat=new THREE.MeshBasicMaterial({color:'#1f2429'});
-  const width=1.15*scale;
-  const depth=0.78*scale;
-  const landing=new THREE.Mesh(new THREE.BoxGeometry(width,0.10*scale,depth),treadMat);
-  landing.position.y=0.28*scale;
-  root.add(landing);
-  for(const sx of [-0.50,0.50]){
-    const rail=new THREE.Mesh(new THREE.BoxGeometry(0.06*scale,0.72*scale,0.06*scale),railMat);
-    rail.position.set(sx*scale,0.68*scale,side*0.30*scale);
-    root.add(rail);
-  }
-  const topRail=new THREE.Mesh(new THREE.BoxGeometry(width,0.06*scale,0.05*scale),railMat);
-  topRail.position.set(0,1.05*scale,side*0.30*scale);
-  root.add(topRail);
-  for(let i=0;i<6;i++){
-    const step=new THREE.Mesh(new THREE.BoxGeometry(0.72*scale,0.07*scale,0.16*scale),frameMat);
-    step.position.set(0,0.08*scale+i*0.17*scale,-side*(0.34*scale+i*0.12*scale));
-    step.rotation.x=side*0.18;
-    root.add(step);
-  }
-  const prop=registerProp(root,0.90*scale,3.2);
-  prop.kind='fire-stair';
-  prop.tipOffset=0.92*scale;
-  prop.spawnRatsOnTip=2;
-  prop.groundRestY=0.08;
-  prop.throwSpin=(Math.random()<0.5?-1:1)*rand(5.5,9.5);
-  return prop;
-}
-function buildFallingGlassWindow(x,y,z,side=1,scale=1){
-  const root=new THREE.Group();
-  root.position.set(x,y,z);
-  root.rotation.y=side>0?Math.PI:0;
-  const frameMat=new THREE.MeshBasicMaterial({color:'#d7d3c4'});
-  const glassMat=new THREE.MeshBasicMaterial({color:'#bde5ff',transparent:true,opacity:0.62,side:THREE.DoubleSide});
-  const w=rand(0.74,1.45)*scale;
-  const h=rand(0.70,1.32)*scale;
-  const panel=new THREE.Mesh(new THREE.PlaneGeometry(w,h),glassMat);
-  panel.position.z=side*0.012;
-  root.add(panel);
-  const top=new THREE.Mesh(new THREE.BoxGeometry(w+0.10*scale,0.06*scale,0.06*scale),frameMat);
-  top.position.y=h*0.5;root.add(top);
-  const bottom=top.clone();bottom.position.y=-h*0.5;root.add(bottom);
-  const left=new THREE.Mesh(new THREE.BoxGeometry(0.06*scale,h+0.08*scale,0.06*scale),frameMat);
-  left.position.x=-w*0.5;root.add(left);
-  const right=left.clone();right.position.x=w*0.5;root.add(right);
-  const mullion=new THREE.Mesh(new THREE.BoxGeometry(0.04*scale,h*0.92,0.045*scale),frameMat);
-  root.add(mullion);
-  const cross=new THREE.Mesh(new THREE.BoxGeometry(w*0.92,0.04*scale,0.045*scale),frameMat);
-  root.add(cross);
-  const prop=registerProp(root,Math.max(w,h)*0.45,2.0);
-  prop.kind='glass-window';
-  prop.tipOffset=Math.max(0.34,w*0.42);
-  prop.spawnRatsOnTip=1;
-  prop.groundRestY=0.06;
-  return prop;
-}
-function spawnFallingBuildingSign(host,opts={}){
-  if(!host?.root) return null;
-  if(!opts.ignoreCooldown && Number.isFinite(host._lastBuildingSignDropAt) && gameTime-host._lastBuildingSignDropAt<0.42) return null;
-  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
-  const origin=host.root.position;
-  const side=opts.side??(fz>=0?1:-1);
-  const facingSide=Math.abs(fz)>0.34 && Math.sign(fz)===side;
-  const frontZ=origin.z+fz*2.4;
-  if(!opts.force && (!facingSide || Math.abs(frontZ)<4.8)) return null;
-  const x=opts.x??(origin.x+fx*1.8+rand(-0.55,0.55));
-  const z=opts.z??clamp(side*6.15,ALLEY_Z_MIN+0.8,ALLEY_Z_MAX-0.8);
-  if(pointInsideTempleZone(x,z,2.2)) return null;
-  const tex=pick([TEX.signRed,TEX.signBlue,TEX.signYellow,TEX.signGreen,TEX.signPink,TEX.signPurple,TEX.signWhite]);
-  const root=new THREE.Group();
-  root.position.set(x,opts.y??rand(2.65,4.25),z);
-  root.rotation.y=side>0?Math.PI:0;
-  const signW=rand(0.68,2.45);
-  const signH=rand(0.26,0.78);
-  const signMesh=new THREE.Mesh(
-    new THREE.BoxGeometry(signW,signH,0.10),
-    new THREE.MeshBasicMaterial({map:tex||null,color:tex?0xffffff:'#d43a3a'})
-  );
-  root.add(signMesh);
-  const bracketMat=new THREE.MeshBasicMaterial({color:'#211817'});
-  const bracketSpread=Math.min(signW*0.38,0.78);
-  for(const sx of [-bracketSpread,bracketSpread]){
-    const bracket=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.08,rand(0.42,0.82)),bracketMat);
-    bracket.position.set(sx,0,side*-0.28);
-    root.add(bracket);
-  }
-  const prop=registerProp(root,Math.max(0.42,signW*0.42),1.55);
-  prop.kind='falling-sign';
-  prop.tipOffset=Math.max(0.42,signW*0.36);
-  prop.spawnRatsOnTip=1;
-  prop.groundRestY=0.08;
-  host._lastBuildingSignDropAt=gameTime;
-  triggerPropTip(prop,host.yaw,1.0,'host');
-  spawnComicImpact(root.position,'SIGN!','#fff2a6',{yOffset:0.35,scaleX:1.2+signW*0.18,scaleY:0.62+signH*0.18});
-  return prop;
-}
-function spawnBuildingFacadeFire(host,side,x,z){
-  if(!host?.root) return null;
-  if(Number.isFinite(host._lastBuildingFireAt) && gameTime-host._lastBuildingFireAt<0.45) return null;
-  const root=new THREE.Group();
-  root.position.set(x,rand(1.65,3.55),z);
-  root.rotation.y=side>0?Math.PI:0;
-  const scorchW=rand(2.25,4.45);
-  const scorchH=rand(2.55,5.10);
-
-  // The facade itself gets a large, visible black burn layer. This is not a falling prop.
-  const scorch=new THREE.Mesh(
-    new THREE.PlaneGeometry(scorchW,scorchH),
-    new THREE.MeshBasicMaterial({color:'#120303',transparent:true,opacity:0.72,depthWrite:false,side:THREE.DoubleSide})
-  );
-  scorch.position.set(0,0.08,side*0.030);
-  root.add(scorch);
-
-  const charMat=new THREE.MeshBasicMaterial({color:'#050000',transparent:true,opacity:0.48,depthWrite:false,side:THREE.DoubleSide});
-  const char=new THREE.Mesh(new THREE.PlaneGeometry(scorchW*0.86,scorchH*0.80),charMat);
-  char.position.set(0,0.13,side*0.034);
-  root.add(char);
-
-  const crackMat=new THREE.MeshBasicMaterial({color:'#000000',transparent:true,opacity:0.58,depthWrite:false});
-  const cracks=[];
-  for(let i=0;i<9;i++){
-    const crack=new THREE.Mesh(new THREE.BoxGeometry(rand(0.04,0.09),rand(0.85,2.1),0.025),crackMat.clone());
-    crack.position.set(rand(-scorchW*0.42,scorchW*0.42),rand(-scorchH*0.30,scorchH*0.36),side*0.052);
-    crack.rotation.z=rand(-0.55,0.55);
-    root.add(crack);
-    cracks.push(crack);
-  }
-
-  const emberMat=new THREE.SpriteMaterial({
-    map:FX_TEX.fire,transparent:true,depthWrite:false,fog:false,
-    blending:THREE.AdditiveBlending,color:'#ff7a1f',opacity:0.90
-  });
-  for(let i=0;i<12;i++){
-    const ember=new THREE.Sprite(emberMat.clone());
-    ember.position.set(rand(-scorchW*0.46,scorchW*0.46),rand(-scorchH*0.38,scorchH*0.46),side*0.075);
-    const size=rand(0.42,1.15);
-    ember.scale.set(size,size*rand(1.45,2.75),1);
-    root.add(ember);
-  }
-
-  const smoke=[];
-  const smokeTex=FX_TEX.smoke||FX_TEX.magentaSmoke||FX_TEX.fire;
-  const smokePalette=[
-    '#111111','#1d160d','#35210b','#5a2508','#8b2309',
-    '#c54511','#f06a18','#ff9b1f','#ffd04a','#ffe26b'
-  ];
-  for(let i=0;i<34;i++){
-    const smokeColor=pick(smokePalette);
-    const baseSize=rand(0.52,1.72);
-    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
-      map:smokeTex,transparent:true,depthWrite:false,fog:false,depthTest:false,
-      blending:THREE.NormalBlending,color:smokeColor,opacity:rand(0.16,0.36)
-    }));
-    sprite.renderOrder=42;
-    const layer=rand(-1,1);
-    sprite.userData={
-      baseX:rand(-scorchW*0.62,scorchW*0.62),
-      baseY:rand(scorchH*0.16,scorchH*0.78),
-      baseZ:side*(0.13+Math.abs(layer)*0.16),
-      depthLayer:layer,
-      phase:Math.random()*Math.PI*2,
-      offset:rand(0,4.8),
-      cycle:rand(3.2,6.6),
-      size:baseSize,
-      sway:rand(0.06,0.58),
-      drift:rand(0.08,0.54),
-      spin:rand(-0.12,0.12),
-      xScale:rand(0.82,1.95),
-      yScale:rand(0.70,1.72),
-      riseHeight:rand(2.2,7.2),
-      opacityBase:rand(0.12,0.30),
-      opacityPulse:rand(0.02,0.09)
-    };
-    sprite.position.set(sprite.userData.baseX,sprite.userData.baseY,sprite.userData.baseZ);
-    sprite.scale.set(baseSize*sprite.userData.xScale,baseSize*sprite.userData.yScale,1);
-    root.add(sprite);
-    smoke.push(sprite);
-  }
-
-  const prop=registerProp(root,Math.max(0.82,scorchW*0.48),2.6);
-  prop.kind='building-fire';
-  prop.spawnRatsOnTip=0;
-  prop.groundRestY=root.position.y;
-  prop.noPickup=true;
-  prop.noAutoCleanup=true;
-  prop.buildingBurnFX={
-    elapsed:0,
-    stage:0,
-    scorch,
-    char,
-    cracks,
-    smoke,
-    baseScorchW:scorchW,
-    baseScorchH:scorchH
-  };
-  activateFireFX(prop,host.yaw,'impact');
-  if(prop.fireFX){
-    prop.fireFX.shape='line';
-    prop.fireFX.stretch=Math.max(prop.fireFX.stretch||1,3.05);
-    prop.fireFX.growth=0.72;
-  }
-  registerChaosSpot(x,z,2.8,13.0);
-  awardChaosScore(root.position,CHAOS_PER_TIP*1.35,4.8);
-  host._lastBuildingFireAt=gameTime;
-  spawnComicImpact(root.position,'FIRE!','#ffcf5a',{yOffset:0.45,scaleX:1.25,scaleY:0.78});
-  return prop;
-}
-function spawnFallingRoofObject(host,side,x,z,opts={}){
-  if(!host?.root) return null;
-  if(!opts.ignoreCooldown && Number.isFinite(host._lastRoofDropAt) && gameTime-host._lastRoofDropAt<0.58) return null;
-  const roofY=opts.y??rand(4.2,6.8);
-  const roll=Math.random();
-  let prop=null;
-  if(roll<0.28){
-    prop=buildRoofWaterTank(x+rand(-0.6,0.6),roofY,z-side*rand(0.05,0.35),rand(0.82,1.28));
-  }else if(roll<0.54){
-    prop=buildLaundryRack(x+rand(-0.7,0.7),roofY,z-side*rand(0.05,0.42),side,rand(0.82,1.22));
-  }else if(roll<0.78){
-    prop=buildFallingFireEscapePiece(x+rand(-0.55,0.55),roofY-rand(0.35,1.2),z-side*rand(0.08,0.36),side,rand(0.82,1.22));
-  }else{
-    prop=buildFallingGlassWindow(x+rand(-0.65,0.65),roofY-rand(1.0,2.7),z-side*rand(0.04,0.26),side,rand(0.88,1.35));
-  }
-  if(!prop) return null;
-  prop.groundRestY=0.08;
-  prop.spawnRatsOnTip=Math.max(prop.spawnRatsOnTip||0,1);
-  prop.tipOffset=Math.max(prop.tipOffset||0.24,prop.kind==='fire-stair'?1.0:0.7);
-  triggerPropTip(prop,host.yaw,1.15,'host');
-  if(prop.kind==='fire-stair' && prop.tipAnim){
-    prop.tipAnim.endRot.y+=(Math.random()<0.5?-1:1)*rand(2.1,4.8);
-    prop.tipAnim.duration=0.42;
-  }
-  host._lastRoofDropAt=gameTime;
-  const label=prop.kind==='tank'?'TANK!':(prop.kind==='laundry'?'RACK!':(prop.kind==='fire-stair'?'STAIRS!':'GLASS!'));
-  spawnComicImpact(prop.root.position,label,prop.kind==='glass-window'?'#dff8ff':'#dff5ff',{yOffset:0.36,scaleX:1.35,scaleY:0.7});
-  return prop;
-}
-function triggerBuildingFacadeDamage(host){
-  if(!host?.root) return false;
-  const face=findHostBuildingFacadeTarget(host);
-  if(!face) return false;
-  const state=getBuildingDamageState(face);
-  if(!state || state.hits>=BUILDING_MAX_ATTACKS_PER_FACE){
-    if(!host._lastBuildingSpentHintAt || gameTime-host._lastBuildingSpentHintAt>1.1){
-      spawnComicImpact(host.root.position,'EMPTY!','#c9c9c9',{yOffset:1.1,scaleX:0.8,scaleY:0.55});
-      host._lastBuildingSpentHintAt=gameTime;
-    }
-    return false;
-  }
-  if(gameTime-state.lastHitAt<0.12) return false;
-  state.hits++;
-  state.lastHitAt=gameTime;
-  const side=face.sign;
-  const x=pickBuildingDamageX(face,host);
-  const z=clamp(face.frontZ || side*6.15,ALLEY_Z_MIN+0.75,ALLEY_Z_MAX-0.75);
-  if(pointInsideTempleZone(x,z,2.4)) return false;
-  let triggered=false;
-  const hitLevel=state.hits;
-  const signCount=1+(Math.random()<0.58?1:0)+(hitLevel>=2 && Math.random()<0.28?1:0);
-  for(let i=0;i<signCount;i++){
-    if(spawnFallingBuildingSign(host,{force:true,ignoreCooldown:i>0,side,x:x+rand(-0.95,0.95),z,y:rand(2.35,4.85)})) triggered=true;
-  }
-  if((hitLevel>=1 || Math.random()<0.72) && spawnBuildingFacadeFire(host,side,x+rand(-0.85,0.85),z-side*0.10)){
-    triggered=true;
-    state.firePatches++;
-  }
-  const dropCount=1+(hitLevel>=3?1:0);
-  for(let i=0;i<dropCount;i++){
-    if(spawnFallingRoofObject(host,side,x+rand(-1.0,1.0),z,{ignoreCooldown:i>0,y:rand(3.7,Math.min(7.0,Math.max(4.4,face.height-0.6)))})) triggered=true;
-  }
-  spawnComicImpact(new THREE.Vector3(x,Math.min(5.2,2.7+hitLevel*0.85),z),'HIT '+hitLevel+'/'+BUILDING_MAX_ATTACKS_PER_FACE,'#fff2a6',{yOffset:0.28,scaleX:1.05,scaleY:0.58});
-  return triggered;
-}
 function getHostAttackTimeScale(actionName){
   if(actionName==='punch') return HOST_PUNCH_TIME_SCALE;
   if(actionName==='punchcombo') return HOST_PUNCHCOMBO_TIME_SCALE;
@@ -14425,7 +13674,7 @@ function doHostAttack(requested='kick',opts={}){
   let bestPropScore=-Infinity;
   const nearbyProps=getPropsNear(host.root.position.x,host.root.position.z,HOST_ATTACK_RADIUS+2.2);
   for(const p of nearbyProps){
-    if(p.heldBy||p.throwVel||p.noPickup)continue;
+    if(p.heldBy||p.throwVel)continue;
     const dx=p.root.position.x-host.root.position.x;
     const dz=p.root.position.z-host.root.position.z;
     const d=Math.hypot(dx,dz);
@@ -14445,11 +13694,7 @@ function doHostAttack(requested='kick',opts={}){
     }
   }
   if(bestProp){
-    if(bestProp.tipTriggered){
-      playPropImpactFeedback(bestProp,host.yaw,{text:'CLANG!',volume:0.62});
-    }else{
-      triggerPropTip(bestProp,host.yaw,1.2,'host');
-    }
+    triggerPropTip(bestProp,host.yaw,1.2,'host');
     struck=true;
   }
   for(const h of game.humans){
@@ -14465,10 +13710,6 @@ function doHostAttack(requested='kick',opts={}){
     knockHumanDown(h,host.yaw);
     struck=true;
   }
-  // Building facade damage is a parallel layer: hitting a sign / vehicle / NPC near the wall
-  // should not prevent the building itself from catching fire. Each facade still has
-  // BUILDING_MAX_ATTACKS_PER_FACE, so this cannot be farmed infinitely.
-  if(triggerBuildingFacadeDamage(host)) struck=true;
   if(struck) showHint(actionName==='kick'?'Kick landed.':(actionName==='punchcombo'?'Combo landed.':'Punch landed.'),0.28);
 }
 function tickControllableHostState(dt){
@@ -14956,38 +14197,6 @@ function shiftNearbySeamDependentsForLeader(ent,fromX,shifted){
     }
   }
 }
-function continueTempleIdolForwardAfterRingWrap(idol,shifted){
-  const oldIndex=idol?.processIndex||0;
-  if(!idol?.root){
-    return {oldIndex,newIndex:oldIndex,pathLength:idol?.processionPath?.length||0};
-  }
-  // Crossing the resident-ring seam is not a command to replay the temple
-  // procession route. The previous implementation realigned the idol to the
-  // nearest point on its temple path after wrapping; near the seam this could
-  // choose an old doorway/altar segment, so the statue turned around and cut
-  // through the shrine. After a seam wrap, force it into forward roam.
-  const forwardSign=shifted<0?1:-1;
-  idol._roamForwardSign=forwardSign;
-  idol.behaviour='procession';
-  idol.actionName='walk';
-  idol.actionTimer=999999;
-  idol.curSpeed=Math.max(idol.curSpeed||0,HOST_MAX_SPEED*0.62);
-  idol.roamIdleTimer=0;
-  idol.roamTimer=rand(1.8,3.2);
-  idol.roamTarget=new THREE.Vector3(
-    idol.root.position.x+forwardSign*rand(12,22),
-    GROUND_Y_OFFSET+0.12,
-    clamp(idol.root.position.z+rand(-1.4,1.4),ALLEY_Z_MIN+2.2,ALLEY_Z_MAX-2.2)
-  );
-  idol._processionStuckTimer=0;
-  idol._roamStuckTimer=0;
-  if(game.templeEvent?.idol===idol){
-    game.templeEvent.phase='roam';
-  }
-  const len=idol.processionPath?.length||0;
-  if(len) idol.processIndex=len-1;
-  return {oldIndex,newIndex:idol.processIndex||oldIndex,pathLength:len};
-}
 function wrapResidentRingEntity(ent){
   if(!RESIDENT_RING_MODE || !ent?.root || ent._noRingWrap) return false;
   const p=ent.root.position;
@@ -14998,12 +14207,11 @@ function wrapResidentRingEntity(ent){
   if(!shifted) return false;
   const fromX=p.x;
   p.x+=shifted;
-  const templeIdolWrap=isTempleIdolEntity(ent);
   shiftNearbySeamDependentsForLeader(ent,fromX,shifted);
-  if(ent.targetPos?.x!==undefined && !templeIdolWrap) ent.targetPos.x+=shifted;
-  if(ent.roamTarget?.x!==undefined && !templeIdolWrap) ent.roamTarget.x+=shifted;
-  if(ent.followOffset?.x!==undefined && !templeIdolWrap) ent.followOffset.x+=shifted;
-  if(ent.processionPath?.length && !templeIdolWrap){ for(const q of ent.processionPath){ if(q?.x!==undefined) q.x+=shifted; } }
+  if(ent.targetPos?.x!==undefined) ent.targetPos.x+=shifted;
+  if(ent.roamTarget?.x!==undefined) ent.roamTarget.x+=shifted;
+  if(ent.followOffset?.x!==undefined) ent.followOffset.x+=shifted;
+  if(ent.processionPath?.length){ for(const q of ent.processionPath){ if(q?.x!==undefined) q.x+=shifted; } }
   if(ent===player || ent===game.controlled || ent.controllable){
     ringSeamLastWrapTime=gameTime;
     ringSeamVisualHoldUntil=gameTime+0.72;
@@ -15015,9 +14223,9 @@ function wrapResidentRingEntity(ent){
   const proxyStatus=clearRingMirrorForEntity(ent);
   if(isTempleIdolEntity(ent)){
     const mixerStatus=resyncActorMixerAfterWarp(ent);
-    const pathSync=continueTempleIdolForwardAfterRingWrap(ent,shifted);
+    const pathSync=realignIdolPath(ent,p,shifted);
     dispatchIdolRefreshed(ent,{fromX,toX:p.x,shifted,oldIndex:pathSync.oldIndex,newIndex:pathSync.newIndex,proxyStatus});
-    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; ForwardRoam: ${ent._roamForwardSign}; PathIndex: ${pathSync.oldIndex}->${pathSync.newIndex}; Rat handover: dispatched`);
+    console.log(`Idol Warp: From ${fromX.toFixed(2)} To ${p.x.toFixed(2)}, Proxy cleanup: ${proxyStatus}; Mixer: ${mixerStatus}; PathIndex: ${pathSync.oldIndex}->${pathSync.newIndex}; Rat handover: dispatched`);
   }
   return true;
 }
@@ -15084,11 +14292,7 @@ function syncRingSeamDynamicMirrors(){
   const candidates=[];
   if(game.controlled?.root) candidates.push(game.controlled);
   for(const h of game.humans){
-    // Transformed idol NPCs are still dynamic skinned actors. Excluding
-    // h.transformedToIdol was the reason the small statue NPCs vanished
-    // at the resident-ring seam: only their source side existed, with no
-    // live mirror on the landing side.
-    if(h?.root && h!==game.controlled) candidates.push(h);
+    if(h?.root && h!==game.controlled && !h.transformedToIdol) candidates.push(h);
   }
   if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
   let mirroredRatCandidates=0;
@@ -15559,22 +14763,8 @@ function addRatSwarm(count,origin=player?.root?.position||new THREE.Vector3()){
 function getPropBreakSFXKey(p){
   if(!p) return 'glassBreak';
   if(p.kind==='bin') return 'binFall';
-  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry' || p.kind==='building-fire' || p.kind==='fire-stair' || p.kind==='glass-window') return 'vehicleBreak';
+  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole') return 'vehicleBreak';
   return 'glassBreak';
-}
-function getPropTipRestY(p){
-  if(!p) return 0.08;
-  if(Number.isFinite(p.groundRestY)) return Math.max(0.035,p.groundRestY);
-  if(p.kind==='soup-pot' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry' || p.kind==='fire-stair' || p.kind==='glass-window') return 0.08;
-  if(p.kind==='building-fire') return Math.max(0.08,p.root?.position?.y??0.08);
-  return Math.max(0.08,(p.root?.userData?.baseY??p.basePosition?.y??0)*0.45);
-}
-function playPropImpactFeedback(p,angle=0,{text=null,volume=0.84}={}){
-  if(!p?.root) return;
-  spawnHitFlash(p.root.position);
-  playSFX(getPropBreakSFXKey(p),{volume,cooldown:0.08,source:p});
-  spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
-  spawnComicImpact(p.root.position,text||(p.kind==='stall'?'WHAM!':(p.kind==='falling-sign'?'CRASH!':(p.kind==='fire-stair'?'STAIRS!':(p.kind==='glass-window'?'GLASS!':'POW!')))),p.kind==='stall'?'#fff2a6':'#fff7c2');
 }
 function findRingTwinProp(prop){
   if(!RESIDENT_RING_MODE || !prop?.root || !prop.basePosition || RING_SEAM_LENGTH<=0) return null;
@@ -15663,7 +14853,10 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     }
   }
   if(!silentSync){
-    playPropImpactFeedback(p,angle);
+    spawnHitFlash(p.root.position);
+    playSFX(getPropBreakSFXKey(p),{volume:0.84,cooldown:0.08,source:p});
+    spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
+    spawnComicImpact(p.root.position,p.kind==='stall'?'WHAM!':'POW!',p.kind==='stall'?'#fff2a6':'#fff7c2');
   }
   const fallDirX=Math.sin(angle);
   const fallDirZ=Math.cos(angle);
@@ -15676,7 +14869,7 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     startRot:p.root.rotation.clone(),
     endPos:new THREE.Vector3(
       p.root.position.x+fallDirX*fallDistance,
-      getPropTipRestY(p),
+      Math.max(0.08,p.root.userData.baseY*0.45),
       p.root.position.z+fallDirZ*fallDistance
     ),
     endRot:new THREE.Euler(
@@ -15692,7 +14885,6 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     p.spillMesh.visible=true;
     p.spillMesh.scale.set(1.9,1.3,1.9);
     p.spillMesh.position.x=Math.cos(angle)*0.48;
-    p.spillMesh.position.y=-Math.max(0,p.root.position.y-getPropGroundFXY(p));
     p.spillMesh.position.z=Math.sin(angle)*0.48;
   }
   if(p.kind==='soup-pot') activateBrothFX(p,angle,1.05);
@@ -17740,20 +16932,12 @@ window.__debugHooks={
   idolClearBlockingProp,
   findRingTwinProp,
   syncRingTwinPropTip,
-  spawnFallingBuildingSign,
-  getPropGroundFXY,
-  getPropTipRestY,
   syncRingSeamBloodMirrors,
   shiftEscortRatAcrossIdolWarp,
   ensureRingMirrorForEntity,
   clearRingMirrorForEntity,
   playSFX,
   startLoopSFX,
-  submitRatCityScore,
-  refreshRatCityOnlineLeaderboard,
-  postRatCityOnlineScore,
-  getRatCityLeaderboardApiUrl,
-  getRatCityLeaderboardState:()=>({...ratCityLeaderboardState}),
   playLayeredRatSwarmBurst,
   syncStreetAmbienceLayered,
   triggerRatsWin,
@@ -17958,8 +17142,6 @@ async function init(){
     onProgress:(done,total)=>setIntroProgress(8+(total?done/total:0)*10,'AUDIO')
   });
   loadRatCityLeaderboard();
-  // Load the shared Cloudflare/D1 board immediately; Rat City also force-refreshes when opened.
-  refreshRatCityOnlineLeaderboard({force:true});
   initSharedTextures();
   buildTaipeiSkyline();
   setIntroProgress(6,'TEXTURES');
