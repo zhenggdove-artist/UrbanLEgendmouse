@@ -1183,6 +1183,11 @@ const HOST_PARASITE_TIME=30;
 const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
+const RAT_CITY_LEADERBOARD_API_URL='https://urban-legend-rat-leaderboard.zhenggdove-artist.workers.dev/api/leaderboard';
+const RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY='urbanLegendRatLeaderboardApiUrl';
+const RAT_CITY_LEADERBOARD_LIMIT=20;
+const RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS=30000;
+const RAT_CITY_SCORE_MAX=10000000;
 const BROTH_POOL_GROWTH=2.8;
 const CHUNK_SIZE=24;
 const TEMPLE_CHUNK_IDX=6;
@@ -8921,13 +8926,113 @@ function tickDeathSpots(dt){
 function loadRatCityLeaderboard(){
   try{
     const raw=localStorage.getItem(RAT_CITY_STORAGE_KEY);
-    game.leaderboard=raw?JSON.parse(raw):[];
+    setRatCityLeaderboard(raw?JSON.parse(raw):[]);
   }catch(_){
     game.leaderboard=[];
   }
 }
 function saveRatCityLeaderboard(){
-  localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,8)));
+  try{
+    localStorage.setItem(RAT_CITY_STORAGE_KEY,JSON.stringify(game.leaderboard.slice(0,RAT_CITY_LEADERBOARD_LIMIT)));
+  }catch(err){
+    console.warn('[rat-city] local leaderboard save failed:',err?.message||err);
+  }
+}
+function sanitizeRatCityName(value){
+  const text=String(value||'ANON RAT')
+    .replace(/[\u0000-\u001f\u007f<>]/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+  return [...(text||'ANON RAT')].slice(0,18).join('')||'ANON RAT';
+}
+function normalizeRatCityEntry(entry){
+  if(!entry||typeof entry!=='object')return null;
+  const score=Math.round(Number(entry.score));
+  if(!Number.isFinite(score))return null;
+  const chaos=Math.round(Number(entry.chaos??0));
+  const rats=Math.round(Number(entry.rats??0));
+  return {
+    name:sanitizeRatCityName(entry.name),
+    chaos:clamp(Number.isFinite(chaos)?chaos:0,0,100),
+    score:clamp(score,0,RAT_CITY_SCORE_MAX),
+    rats:clamp(Number.isFinite(rats)?rats:0,0,1000000),
+    date:typeof entry.date==='string'?entry.date:(entry.created_at||new Date().toISOString())
+  };
+}
+function sortRatCityEntries(entries){
+  return (Array.isArray(entries)?entries:[])
+    .map(normalizeRatCityEntry)
+    .filter(Boolean)
+    .sort((a,b)=>b.score-a.score||b.chaos-a.chaos||String(a.date).localeCompare(String(b.date)))
+    .slice(0,RAT_CITY_LEADERBOARD_LIMIT);
+}
+function setRatCityLeaderboard(entries){
+  game.leaderboard=sortRatCityEntries(entries);
+}
+const ratCityLeaderboardState={
+  refreshing:false,
+  onlineReady:false,
+  lastFetchAt:0,
+  lastError:''
+};
+function getRatCityLeaderboardApiUrl(){
+  let override='';
+  try{override=localStorage.getItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY)||'';}catch(_){}
+  const configured=String(window.URBAN_LEGEND_RAT_LEADERBOARD_API_URL||override||RAT_CITY_LEADERBOARD_API_URL||'').trim();
+  if(!configured||configured.includes('YOUR_WORKERS_SUBDOMAIN'))return '';
+  return configured;
+}
+async function refreshRatCityOnlineLeaderboard(options={}){
+  const force=!!options.force;
+  const apiUrl=getRatCityLeaderboardApiUrl();
+  if(!apiUrl||ratCityLeaderboardState.refreshing)return false;
+  const now=Date.now();
+  if(!force&&now-ratCityLeaderboardState.lastFetchAt<RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS)return false;
+  ratCityLeaderboardState.refreshing=true;
+  ratCityLeaderboardState.lastFetchAt=now;
+  try{
+    const res=await fetch(apiUrl,{method:'GET',headers:{'Accept':'application/json'},cache:'no-store'});
+    if(!res.ok)throw new Error(`GET ${res.status}`);
+    const data=await res.json();
+    if(!data||!Array.isArray(data.entries))throw new Error('Invalid leaderboard payload');
+    setRatCityLeaderboard(data.entries);
+    saveRatCityLeaderboard();
+    ratCityLeaderboardState.onlineReady=true;
+    ratCityLeaderboardState.lastError='';
+    renderRatCityLeaderboard();
+    return true;
+  }catch(err){
+    ratCityLeaderboardState.lastError=err?.message||String(err);
+    console.warn('[rat-city] online leaderboard read failed; using localStorage fallback:',ratCityLeaderboardState.lastError);
+    return false;
+  }finally{
+    ratCityLeaderboardState.refreshing=false;
+  }
+}
+async function postRatCityOnlineScore(entry){
+  const apiUrl=getRatCityLeaderboardApiUrl();
+  if(!apiUrl)return false;
+  try{
+    const res=await fetch(apiUrl,{
+      method:'POST',
+      headers:{'Accept':'application/json','Content-Type':'application/json'},
+      body:JSON.stringify(entry)
+    });
+    if(!res.ok)throw new Error(`POST ${res.status}`);
+    const data=await res.json();
+    if(data&&Array.isArray(data.entries)){
+      setRatCityLeaderboard(data.entries);
+      saveRatCityLeaderboard();
+      ratCityLeaderboardState.onlineReady=true;
+      ratCityLeaderboardState.lastError='';
+      renderRatCityLeaderboard();
+    }
+    return true;
+  }catch(err){
+    ratCityLeaderboardState.lastError=err?.message||String(err);
+    console.warn('[rat-city] online leaderboard write failed; score kept in localStorage fallback:',ratCityLeaderboardState.lastError);
+    return false;
+  }
 }
 function makeProgressBar3D(width=1.12,height=0.18){
   const root=new THREE.Group();
@@ -13390,7 +13495,7 @@ function renderRatCityLeaderboard(){
     ratCityList.appendChild(li);
     return;
   }
-  game.leaderboard.slice(0,8).forEach((entry,idx)=>{
+  game.leaderboard.slice(0,RAT_CITY_LEADERBOARD_LIMIT).forEach((entry,idx)=>{
     const li=document.createElement('li');
     const left=document.createElement('span');
     left.className='rank-name';
@@ -13413,22 +13518,26 @@ function setRatCityMode(enabled){
     ratCityZoom=26;
     ratCityAutoRotate=true;
     renderRatCityLeaderboard();
+    refreshRatCityOnlineLeaderboard();
   }
 }
 function submitRatCityScore(){
-  const name=(ratCityName.value||'ANON RAT').trim().slice(0,18)||'ANON RAT';
-  game.leaderboard.push({
-    name,
+  const entry=normalizeRatCityEntry({
+    name:sanitizeRatCityName(ratCityName.value||'ANON RAT'),
     chaos:Math.round(game.chaos*100),
     score:getRatCityScore(),
     rats:getTotalRatCount(),
     date:new Date().toISOString()
   });
-  game.leaderboard.sort((a,b)=>b.score-a.score||b.chaos-a.chaos);
-  game.leaderboard=game.leaderboard.slice(0,8);
+  if(!entry)return;
+  game.leaderboard.push(entry);
+  setRatCityLeaderboard(game.leaderboard);
   saveRatCityLeaderboard();
   renderRatCityLeaderboard();
   showHint('RAT CITY ranking updated.',0.8);
+  postRatCityOnlineScore(entry).then(ok=>{
+    if(ok)showHint('RAT CITY online ranking synced.',0.8);
+  });
 }
 
 modeBadge.style.cursor='pointer';
@@ -16936,6 +17045,9 @@ window.__debugHooks={
   clearRingMirrorForEntity,
   playSFX,
   startLoopSFX,
+  submitRatCityScore,
+  refreshRatCityOnlineLeaderboard,
+  getRatCityLeaderboardApiUrl,
   playLayeredRatSwarmBurst,
   syncStreetAmbienceLayered,
   triggerRatsWin,
