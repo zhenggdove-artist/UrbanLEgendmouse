@@ -3731,6 +3731,62 @@ function addDynamicChunkObject(root){
   if(_activeChunk)_activeChunk.meshes.push(root);
   return root;
 }
+function objectBoxIntersectsTempleZone(root,margin=0){
+  if(!root) return false;
+  root.updateMatrixWorld?.(true);
+  const box=new THREE.Box3().setFromObject(root);
+  if(!Number.isFinite(box.min.x)||!Number.isFinite(box.max.x)||!Number.isFinite(box.min.z)||!Number.isFinite(box.max.z)) return false;
+  for(const zone of TEMPLE_KEEP_OUT_ZONES){
+    if(box.max.x < zone.minX-margin) continue;
+    if(box.min.x > zone.maxX+margin) continue;
+    if(box.max.z < zone.minZ-margin) continue;
+    if(box.min.z > zone.maxZ+margin) continue;
+    return true;
+  }
+  return false;
+}
+function unregisterPropCompletely(prop){
+  if(!prop) return;
+  gridRemove(propsGrid,prop);
+  const pi=game.props.indexOf(prop);
+  if(pi>=0) game.props.splice(pi,1);
+  const linked=Array.isArray(prop.linkedStallParts)?prop.linkedStallParts:[];
+  for(const chunk of chunks.values()){
+    const ci=chunk.props?.indexOf(prop)??-1;
+    if(ci>=0) chunk.props.splice(ci,1);
+    const mi=chunk.meshes?.indexOf(prop.root)??-1;
+    if(mi>=0) chunk.meshes.splice(mi,1);
+    for(const part of linked){
+      const li=chunk.meshes?.indexOf(part)??-1;
+      if(li>=0) chunk.meshes.splice(li,1);
+    }
+  }
+  if(_activeChunk){
+    const ci=_activeChunk.props?.indexOf(prop)??-1;
+    if(ci>=0) _activeChunk.props.splice(ci,1);
+    const mi=_activeChunk.meshes?.indexOf(prop.root)??-1;
+    if(mi>=0) _activeChunk.meshes.splice(mi,1);
+    for(const part of linked){
+      const li=_activeChunk.meshes?.indexOf(part)??-1;
+      if(li>=0) _activeChunk.meshes.splice(li,1);
+    }
+  }
+  for(const part of linked){ part?.parent?.remove(part); }
+  prop.root?.parent?.remove(prop.root);
+}
+function purgeTempleStreetPropsFromChunk(chunk){
+  if(!chunk?.props?.length) return 0;
+  let removed=0;
+  const props=[...chunk.props];
+  for(const prop of props){
+    if(!prop?.root) continue;
+    if(prop.root.userData?.allowTempleInterior) continue;
+    if(!objectBoxIntersectsTempleZone(prop.root,1.15)) continue;
+    unregisterPropCompletely(prop);
+    removed++;
+  }
+  return removed;
+}
 function registerBlocker(root,radius=0.6,opts={}){
   const bbox=new THREE.Box3().setFromObject(root);
   const centerX=(bbox.min.x+bbox.max.x)*0.5;
@@ -6270,7 +6326,7 @@ function generateChunk(idx){
       const px=xBase+1.1+i*((CHUNK_SIZE-2.2)/(poleCount-1))+rand(-0.28,0.28);
       const pz=sign*rand(6.9,8.2);
       const ph=rand(5.9,7.6);
-      if(pointInsideTempleZone(px,pz,1.2)) continue;
+      if(pointInsideTempleZone(px,pz,3.8)) continue;
       poles.push(buildPowerPole(px,pz,sign,ph));
       const glow=new THREE.Sprite(SPRITE_MAT.lampGlow.clone());
       glow.scale.set(1.15,1.15,1);
@@ -6281,7 +6337,7 @@ function generateChunk(idx){
       const a=poles[i],b=poles[i+1];
       const midX=(a.high[0].x+b.high[0].x)*0.5;
       const midZ=(a.high[0].z+b.high[0].z)*0.5;
-      if(pointInsideTempleZone(midX,midZ,0.4)) continue;
+      if(pointInsideTempleZone(midX,midZ,3.0)) continue;
       for(let k=0;k<3;k++){
         const sag=rand(0.35,0.85);
         buildCableCurve([
@@ -6313,10 +6369,13 @@ function generateChunk(idx){
   // --- Props scattered through the central walking area + edges.
   const stoolColours=['#d04545','#3577c4','#e69825','#5cae53','#a64ba6','#cf6b8c'];
   const tryPlaceAt=(fn,xRange,zRange,...args)=>{
-    for(let tries=0;tries<6;tries++){
+    for(let tries=0;tries<10;tries++){
       const px=xBase+rand(xRange[0],CHUNK_SIZE-xRange[1]);
       const pz=rand(zRange[0],zRange[1]);
-      if(!pointInsideTempleZone(px,pz,0.8)){return fn(px,pz,...args)}
+      // Street props have real width/depth; a centre-point test with 0.8 m
+      // let cars, vending machines and poles protrude into the temple hall.
+      // Reserve a wider apron around both temples before any prop builder runs.
+      if(!pointInsideTempleZone(px,pz,3.8)){return fn(px,pz,...args)}
     }
     return null;
   };
@@ -6385,6 +6444,8 @@ function generateChunk(idx){
     }
   }
 
+  const purgedTempleProps=purgeTempleStreetPropsFromChunk(chunk);
+  if(purgedTempleProps) console.log('[temple-keepout] removed street props from temple zone',idx,purgedTempleProps);
   chunks.set(idx,chunk);_activeChunk=null;
 }
 
@@ -11049,7 +11110,8 @@ function applyUILayoutTextStyleForTarget(def,metrics){
     if(!score) return;
     score.style.color=metrics.color||'';
     score.style.fontFamily=metrics.fontFamily?`"${metrics.fontFamily}",sans-serif`:'';
-    score.style.fontSize=metrics.fontSize?`${metrics.fontSize}px`:'';
+    const autoFontSize=metrics.fontSize || Math.max(8,Math.round(getUILayoutViewportBounds().height*(metrics.h||6)/100*0.52));
+    score.style.fontSize=`${autoFontSize}px`;
     score.style.letterSpacing=metrics.letterSpacing?`${metrics.letterSpacing}px`:'';
     score.style.lineHeight=metrics.lineHeight||'';
     return;
@@ -11059,7 +11121,8 @@ function applyUILayoutTextStyleForTarget(def,metrics){
     if(!score) return;
     score.style.color=metrics.color||'';
     score.style.fontFamily=metrics.fontFamily?`"${metrics.fontFamily}",sans-serif`:'';
-    score.style.fontSize=metrics.fontSize?`${metrics.fontSize}px`:'';
+    const autoFontSize=metrics.fontSize || Math.max(8,Math.round(getUILayoutViewportBounds().height*(metrics.h||6)/100*0.52));
+    score.style.fontSize=`${autoFontSize}px`;
     score.style.letterSpacing=metrics.letterSpacing?`${metrics.letterSpacing}px`:'';
     score.style.lineHeight=metrics.lineHeight||'';
     return;
@@ -13741,10 +13804,25 @@ function shiftedObjectIntersectsTempleKeepOut(obj,shiftX,margin=2.4){
   }
   return false;
 }
+function isDynamicObjectUnsafeForStaticRingPreview(obj){
+  if(!obj) return true;
+  if(obj.userData?.dynamicChunkObject || obj.userData?.noRingSeamPreview) return true;
+  let unsafe=false;
+  obj.traverse?.(n=>{
+    if(n.isSkinnedMesh || n.isBone || n.userData?.dynamicChunkObject || n.userData?.noRingSeamPreview) unsafe=true;
+  });
+  return unsafe;
+}
 function cloneRingSeamPreviewObject(obj,shiftX,label){
-  // v9: do not filter destination objects out of the shifted preview.
-  // The preview must be a real-time copy of exactly what exists at the other end;
-  // filtering by temple keep-out zones was the main source of visible mismatch.
+  // Static preview is only for buildings / props / street set-dressing.
+  // Dynamic actors must be mirrored by syncRingSeamDynamicMirrors(); cloning
+  // them here produces frozen humans/rats on the far side of the seam.
+  if(isDynamicObjectUnsafeForStaticRingPreview(obj)) return null;
+  // Do not let shifted street clutter appear inside either temple. If a
+  // preview copy would land in the temple footprint, it is not a valid
+  // continuation of the street and must be culled instead of becoming a
+  // transparent, non-interactive ghost object.
+  if(shiftedObjectIntersectsTempleKeepOut(obj,shiftX,0.9)) return null;
   const clone=obj.clone(true);
   clone.name=`${obj.name||'chunkObject'}_ringPreview_${label}`;
   clone.position.x+=shiftX;
@@ -13781,6 +13859,20 @@ function syncRingSeamPreviewClonesLive(){
       clone.position.x+=shift;
       clone.quaternion.copy(source.quaternion);
       clone.scale.copy(source.scale);
+      // Keep child transforms live as well. Tipped stalls, vehicle parts,
+      // flashing signs and other grouped props can animate below the root;
+      // root-only sync was why one side of the seam looked like a static wall.
+      const srcChildren=[];
+      const dstChildren=[];
+      source.traverse?.(o=>srcChildren.push(o));
+      clone.traverse?.(o=>dstChildren.push(o));
+      const n=Math.min(srcChildren.length,dstChildren.length);
+      for(let i=1;i<n;i++){
+        dstChildren[i].visible=srcChildren[i].visible!==false;
+        dstChildren[i].position.copy(srcChildren[i].position);
+        dstChildren[i].quaternion.copy(srcChildren[i].quaternion);
+        dstChildren[i].scale.copy(srcChildren[i].scale);
+      }
       clone.updateMatrixWorld(true);
     }
   }
@@ -13954,6 +14046,24 @@ function syncRingMirrorPose(ent,shift){
   mirror.position.x+=shift;
   mirror.rotation.copy(ent.root.rotation);
   mirror.scale.copy(ent.root.scale);
+  const srcNodes=[];
+  const dstNodes=[];
+  ent.root.traverse?.(o=>srcNodes.push(o));
+  mirror.traverse?.(o=>dstNodes.push(o));
+  for(let i=1;i<Math.min(srcNodes.length,dstNodes.length);i++){
+    dstNodes[i].visible=srcNodes[i].visible!==false;
+    if(srcNodes[i].isSprite && dstNodes[i].isSprite && srcNodes[i].material && dstNodes[i].material){
+      dstNodes[i].material.map=srcNodes[i].material.map;
+      dstNodes[i].material.rotation=srcNodes[i].material.rotation||0;
+      dstNodes[i].material.opacity=srcNodes[i].material.opacity;
+      dstNodes[i].material.needsUpdate=true;
+    }
+    if(!dstNodes[i].isBone){
+      dstNodes[i].position.copy(srcNodes[i].position);
+      dstNodes[i].quaternion.copy(srcNodes[i].quaternion);
+      dstNodes[i].scale.copy(srcNodes[i].scale);
+    }
+  }
   const pairs=mirror.userData.ringMirrorBonePairs || buildRingMirrorBonePairs(ent.root,mirror);
   for(let i=0;i<pairs.length;i++){
     const src=pairs[i][0];
@@ -14142,7 +14252,7 @@ function syncRingSeamDynamicMirrors(){
   const candidates=[];
   if(game.controlled?.root) candidates.push(game.controlled);
   for(const h of game.humans){
-    if(h?.root && h!==game.controlled && !h.dead && !h.transformedToIdol) candidates.push(h);
+    if(h?.root && h!==game.controlled && !h.transformedToIdol) candidates.push(h);
   }
   if(game.templeEvent?.idol?.root) candidates.push(game.templeEvent.idol);
   let mirroredRatCandidates=0;
@@ -14151,7 +14261,7 @@ function syncRingSeamDynamicMirrors(){
     // All visible follower rats, including newly spawned street rats, need a
     // seam mirror. Otherwise they appear to vanish on the landing side and
     // reappear only after walking back across the loop.
-    if(mirroredRatCandidates++<90) candidates.push(r);
+    if(mirroredRatCandidates++<(IS_MOBILE_DEVICE?120:220)) candidates.push(r);
   }
   const keep=new Set();
   for(const ent of candidates){
@@ -14161,7 +14271,7 @@ function syncRingSeamDynamicMirrors(){
       continue;
     }
     const shift=ringShiftNearestToReference(ent.root.position.x,focus.x);
-    const shouldMirror=shift!==0 && Math.abs((ent.root.position.x+shift)-focus.x)<90;
+    const shouldMirror=shift!==0 && Math.abs((ent.root.position.x+shift)-focus.x)<130;
     if(!shouldMirror){
       if(ent._ringMirrorRoot) ent._ringMirrorRoot.visible=false;
       continue;
@@ -14171,6 +14281,14 @@ function syncRingSeamDynamicMirrors(){
   }
   syncRingSeamBloodMirrors();
 }
+window.auditRingSeamSync=()=>{
+  const focus=getGameplayFocusPosition?.()||player?.root?.position;
+  const report={focusX:focus?.x,humans:0,humanMirrors:0,rats:0,ratMirrors:0,bloodPools:0,staticPreviewMin:ringSeamPreviewMinGroup?.children?.length||0,staticPreviewMax:ringSeamPreviewMaxGroup?.children?.length||0};
+  for(const h of game.humans){ if(h?.root){ report.humans++; if(h._ringMirrorRoot?.visible) report.humanMirrors++; if(h.bloodPool?.visible) report.bloodPools++; } }
+  for(const r of game.rats){ if(r?.root){ report.rats++; if(r._ringMirrorRoot?.visible) report.ratMirrors++; } }
+  console.table(report);
+  return report;
+};
 function softClampZ(p){
   if(p.z<ALLEY_Z_MIN)p.z=ALLEY_Z_MIN;
   else if(p.z>ALLEY_Z_MAX)p.z=ALLEY_Z_MAX;
@@ -15051,7 +15169,7 @@ function tickHumans(dt){
       // existing flee-from-environment logic handles the movement.
       if(game.templeEvent.idol && game.templeEvent.awakened && !h.dead && !h.transformedToIdol && !h.idolWanderer && !h.parasitised && h!==game.parasitisedHost && h!==game.controlled){
         const idol=game.templeEvent.idol;
-        const idx=h.root.position.x-idol.root.position.x;
+        const idx=nearestRingDelta(h.root.position.x,idol.root.position.x);
         const idz=h.root.position.z-idol.root.position.z;
         if(idx*idx+idz*idz<14*14){
           h.panicTimer=Math.max(h.panicTimer||0,1.6);
@@ -15446,7 +15564,7 @@ function shouldSimulateHumanEntity(human,focusPos){
       return true;
     }
   }
-  const dx=human.root.position.x-focusPos.x;
+  const dx=nearestRingDelta(human.root.position.x,focusPos.x);
   const dz=human.root.position.z-focusPos.z;
   const d2=dx*dx+dz*dz;
   // Hysteresis: an active human stays active until it drifts past
