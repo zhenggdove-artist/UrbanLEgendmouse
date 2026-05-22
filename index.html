@@ -5561,6 +5561,13 @@ const CHUNK_WINDOW_A_SIDE=4;
 const CHUNK_PREFETCH_MARGIN=8;
 const CHUNK_PREFETCH_EXTRA=2;
 const chunks=new Map();
+// Building façade hit state. Each generated street-facing building face has a
+// stable id and can only react to host attacks a limited number of times.
+// This prevents infinite farming from one façade while preserving independent
+// damage states for the mirrored resident-ring street.
+const BUILDING_MAX_ATTACKS_PER_FACE=3;
+const buildingAttackFaces=[];
+const buildingDamageState=new Map();
 // Resident ring rebuild step 1:
 // Keep a complete, fixed street span resident and remove temple-as-portal
 // responsibilities from gameplay. The visible seam is pushed far outside
@@ -6214,7 +6221,12 @@ function generateChunk(idx){
         ledge.position.set(centreX+rand(-width*0.18,width*0.18),rand(2.7,4.8),frontZ-sign*0.30);
         addChunkObject(ledge);
       }
-      buildingFaces.push({sign,xMin:cursor,xMax:cursor+width,frontZ,height});
+      const buildingFace={
+        sign,xMin:cursor,xMax:cursor+width,frontZ,height,
+        id:`chunk:${idx}:side:${sign}:part:${partIdx}:x:${Math.round(cursor*10)}:${Math.round((cursor+width)*10)}`
+      };
+      buildingFaces.push(buildingFace);
+      buildingAttackFaces.push(buildingFace);
       if(!nearTempleApproach && Math.random()<0.34 && width>4.8){
         const stairX=clamp(centreX+rand(-width*0.18,width*0.18),cursor+0.9,cursor+width-0.9);
         buildFireEscapeStair(stairX,frontZ,sign,Math.max(3,Math.min(5,Math.round(height/3.8))));
@@ -13693,6 +13705,117 @@ function chooseHostAttackAction(host,requested='kick'){
     ? (actions.punchcombo?'punchcombo':'punch')
     : (actions.kick?'kick':null);
 }
+
+function findHostBuildingFacadeTarget(host){
+  if(!host?.root) return null;
+  const fz=Math.cos(host.yaw);
+  if(Math.abs(fz)<0.34) return null;
+  const side=fz>=0?1:-1;
+  const frontZ=host.root.position.z+fz*2.4;
+  if(Math.abs(frontZ)<4.75) return null;
+  const hx=host.root.position.x;
+  let best=null;
+  let bestScore=Infinity;
+  for(const face of buildingAttackFaces){
+    if(!face || face.sign!==side) continue;
+    if(pointInsideTempleZone((face.xMin+face.xMax)*0.5,face.frontZ,Math.max((face.xMax-face.xMin)*0.5,2.2))) continue;
+    const inSpan=hx>=face.xMin-1.2 && hx<=face.xMax+1.2;
+    const cx=clamp(hx,face.xMin,face.xMax);
+    const dx=Math.abs(hx-cx);
+    const dz=Math.abs(frontZ-face.frontZ);
+    const score=dx*dx*0.85+dz*dz+(inSpan?0:8.0);
+    if(score<bestScore){ bestScore=score; best=face; }
+  }
+  if(best && bestScore<32) return best;
+  const cellSize=5.2;
+  const cell=Math.floor(hx/cellSize);
+  const xMin=cell*cellSize;
+  const xMax=xMin+cellSize;
+  const fallback={
+    sign,frontZ:clamp(side*6.15,ALLEY_Z_MIN+0.75,ALLEY_Z_MAX-0.75),
+    xMin,xMax,height:7.0,
+    id:`fallback:${side}:${cell}`
+  };
+  if(pointInsideTempleZone((fallback.xMin+fallback.xMax)*0.5,fallback.frontZ,3.8)) return null;
+  return fallback;
+}
+function getBuildingDamageState(face){
+  if(!face?.id) return null;
+  let state=buildingDamageState.get(face.id);
+  if(!state){
+    state={hits:0,lastHitAt:-999,firePatches:0};
+    buildingDamageState.set(face.id,state);
+  }
+  return state;
+}
+function pickBuildingDamageX(face,host){
+  if(!face) return host?.root?.position?.x??0;
+  const hx=host?.root?.position?.x??((face.xMin+face.xMax)*0.5);
+  const pad=Math.min(0.75,Math.max(0.25,(face.xMax-face.xMin)*0.12));
+  return clamp(hx+rand(-0.85,0.85),face.xMin+pad,face.xMax-pad);
+}
+function buildFallingFireEscapePiece(x,y,z,side=1,scale=1){
+  const root=new THREE.Group();
+  root.position.set(x,y,z);
+  root.rotation.y=side>0?Math.PI:0;
+  const frameMat=new THREE.MeshBasicMaterial({color:'#3d424a'});
+  const treadMat=new THREE.MeshBasicMaterial({color:'#7c838b'});
+  const railMat=new THREE.MeshBasicMaterial({color:'#1f2429'});
+  const width=1.15*scale;
+  const depth=0.78*scale;
+  const landing=new THREE.Mesh(new THREE.BoxGeometry(width,0.10*scale,depth),treadMat);
+  landing.position.y=0.28*scale;
+  root.add(landing);
+  for(const sx of [-0.50,0.50]){
+    const rail=new THREE.Mesh(new THREE.BoxGeometry(0.06*scale,0.72*scale,0.06*scale),railMat);
+    rail.position.set(sx*scale,0.68*scale,side*0.30*scale);
+    root.add(rail);
+  }
+  const topRail=new THREE.Mesh(new THREE.BoxGeometry(width,0.06*scale,0.05*scale),railMat);
+  topRail.position.set(0,1.05*scale,side*0.30*scale);
+  root.add(topRail);
+  for(let i=0;i<6;i++){
+    const step=new THREE.Mesh(new THREE.BoxGeometry(0.72*scale,0.07*scale,0.16*scale),frameMat);
+    step.position.set(0,0.08*scale+i*0.17*scale,-side*(0.34*scale+i*0.12*scale));
+    step.rotation.x=side*0.18;
+    root.add(step);
+  }
+  const prop=registerProp(root,0.90*scale,3.2);
+  prop.kind='fire-stair';
+  prop.tipOffset=0.92*scale;
+  prop.spawnRatsOnTip=2;
+  prop.groundRestY=0.08;
+  prop.throwSpin=(Math.random()<0.5?-1:1)*rand(5.5,9.5);
+  return prop;
+}
+function buildFallingGlassWindow(x,y,z,side=1,scale=1){
+  const root=new THREE.Group();
+  root.position.set(x,y,z);
+  root.rotation.y=side>0?Math.PI:0;
+  const frameMat=new THREE.MeshBasicMaterial({color:'#d7d3c4'});
+  const glassMat=new THREE.MeshBasicMaterial({color:'#bde5ff',transparent:true,opacity:0.62,side:THREE.DoubleSide});
+  const w=rand(0.74,1.45)*scale;
+  const h=rand(0.70,1.32)*scale;
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(w,h),glassMat);
+  panel.position.z=side*0.012;
+  root.add(panel);
+  const top=new THREE.Mesh(new THREE.BoxGeometry(w+0.10*scale,0.06*scale,0.06*scale),frameMat);
+  top.position.y=h*0.5;root.add(top);
+  const bottom=top.clone();bottom.position.y=-h*0.5;root.add(bottom);
+  const left=new THREE.Mesh(new THREE.BoxGeometry(0.06*scale,h+0.08*scale,0.06*scale),frameMat);
+  left.position.x=-w*0.5;root.add(left);
+  const right=left.clone();right.position.x=w*0.5;root.add(right);
+  const mullion=new THREE.Mesh(new THREE.BoxGeometry(0.04*scale,h*0.92,0.045*scale),frameMat);
+  root.add(mullion);
+  const cross=new THREE.Mesh(new THREE.BoxGeometry(w*0.92,0.04*scale,0.045*scale),frameMat);
+  root.add(cross);
+  const prop=registerProp(root,Math.max(w,h)*0.45,2.0);
+  prop.kind='glass-window';
+  prop.tipOffset=Math.max(0.34,w*0.42);
+  prop.spawnRatsOnTip=1;
+  prop.groundRestY=0.06;
+  return prop;
+}
 function spawnFallingBuildingSign(host,opts={}){
   if(!host?.root) return null;
   if(!opts.ignoreCooldown && Number.isFinite(host._lastBuildingSignDropAt) && gameTime-host._lastBuildingSignDropAt<0.42) return null;
@@ -13737,54 +13860,108 @@ function spawnBuildingFacadeFire(host,side,x,z){
   if(!host?.root) return null;
   if(Number.isFinite(host._lastBuildingFireAt) && gameTime-host._lastBuildingFireAt<0.9) return null;
   const root=new THREE.Group();
-  root.position.set(x,rand(1.15,2.65),z);
+  root.position.set(x,rand(1.25,3.25),z);
   root.rotation.y=side>0?Math.PI:0;
-  const prop=registerProp(root,0.46,1.8);
+  const scorchW=rand(1.25,2.65);
+  const scorchH=rand(1.45,3.10);
+  const scorch=new THREE.Mesh(
+    new THREE.PlaneGeometry(scorchW,scorchH),
+    new THREE.MeshBasicMaterial({color:'#140909',transparent:true,opacity:0.58,depthWrite:false,side:THREE.DoubleSide})
+  );
+  scorch.position.set(0,0.12,side*0.018);
+  root.add(scorch);
+  const emberMat=new THREE.SpriteMaterial({
+    map:FX_TEX.fire,transparent:true,depthWrite:false,fog:false,
+    blending:THREE.AdditiveBlending,color:'#ff8a1f',opacity:0.72
+  });
+  for(let i=0;i<5;i++){
+    const ember=new THREE.Sprite(emberMat.clone());
+    ember.position.set(rand(-scorchW*0.42,scorchW*0.42),rand(-scorchH*0.32,scorchH*0.42),side*0.035);
+    const size=rand(0.34,0.82);
+    ember.scale.set(size,size*rand(1.25,2.2),1);
+    root.add(ember);
+  }
+  const prop=registerProp(root,Math.max(0.62,scorchW*0.42),2.2);
   prop.kind='building-fire';
   prop.spawnRatsOnTip=0;
   prop.groundRestY=root.position.y;
   prop.noPickup=true;
+  prop.noAutoCleanup=true;
   activateFireFX(prop,host.yaw,'impact');
-  registerChaosSpot(x,z,1.8,8.0);
-  awardChaosScore(root.position,CHAOS_PER_TIP*1.15,4.2);
+  if(prop.fireFX){
+    prop.fireFX.shape='line';
+    prop.fireFX.stretch=Math.max(prop.fireFX.stretch||1,2.35);
+    prop.fireFX.growth=0.38;
+  }
+  registerChaosSpot(x,z,2.1,9.5);
+  awardChaosScore(root.position,CHAOS_PER_TIP*1.35,4.8);
   host._lastBuildingFireAt=gameTime;
   spawnComicImpact(root.position,'FIRE!','#ffcf5a',{yOffset:0.45,scaleX:1.25,scaleY:0.78});
   return prop;
 }
-function spawnFallingRoofObject(host,side,x,z){
+function spawnFallingRoofObject(host,side,x,z,opts={}){
   if(!host?.root) return null;
-  if(Number.isFinite(host._lastRoofDropAt) && gameTime-host._lastRoofDropAt<0.58) return null;
-  const roofY=rand(4.2,6.8);
-  const prop=Math.random()<0.52
-    ? buildRoofWaterTank(x+rand(-0.6,0.6),roofY,z-side*rand(0.05,0.35),rand(0.82,1.28))
-    : buildLaundryRack(x+rand(-0.7,0.7),roofY,z-side*rand(0.05,0.42),side,rand(0.82,1.22));
+  if(!opts.ignoreCooldown && Number.isFinite(host._lastRoofDropAt) && gameTime-host._lastRoofDropAt<0.58) return null;
+  const roofY=opts.y??rand(4.2,6.8);
+  const roll=Math.random();
+  let prop=null;
+  if(roll<0.28){
+    prop=buildRoofWaterTank(x+rand(-0.6,0.6),roofY,z-side*rand(0.05,0.35),rand(0.82,1.28));
+  }else if(roll<0.54){
+    prop=buildLaundryRack(x+rand(-0.7,0.7),roofY,z-side*rand(0.05,0.42),side,rand(0.82,1.22));
+  }else if(roll<0.78){
+    prop=buildFallingFireEscapePiece(x+rand(-0.55,0.55),roofY-rand(0.35,1.2),z-side*rand(0.08,0.36),side,rand(0.82,1.22));
+  }else{
+    prop=buildFallingGlassWindow(x+rand(-0.65,0.65),roofY-rand(1.0,2.7),z-side*rand(0.04,0.26),side,rand(0.88,1.35));
+  }
   if(!prop) return null;
   prop.groundRestY=0.08;
   prop.spawnRatsOnTip=Math.max(prop.spawnRatsOnTip||0,1);
-  prop.tipOffset=Math.max(prop.tipOffset||0.24,0.7);
+  prop.tipOffset=Math.max(prop.tipOffset||0.24,prop.kind==='fire-stair'?1.0:0.7);
   triggerPropTip(prop,host.yaw,1.15,'host');
+  if(prop.kind==='fire-stair' && prop.tipAnim){
+    prop.tipAnim.endRot.y+=(Math.random()<0.5?-1:1)*rand(2.1,4.8);
+    prop.tipAnim.duration=0.42;
+  }
   host._lastRoofDropAt=gameTime;
-  spawnComicImpact(prop.root.position,prop.kind==='tank'?'TANK!':'RACK!','#dff5ff',{yOffset:0.36,scaleX:1.35,scaleY:0.7});
+  const label=prop.kind==='tank'?'TANK!':(prop.kind==='laundry'?'RACK!':(prop.kind==='fire-stair'?'STAIRS!':'GLASS!'));
+  spawnComicImpact(prop.root.position,label,prop.kind==='glass-window'?'#dff8ff':'#dff5ff',{yOffset:0.36,scaleX:1.35,scaleY:0.7});
   return prop;
 }
 function triggerBuildingFacadeDamage(host){
   if(!host?.root) return false;
-  const fz=Math.cos(host.yaw);
-  if(Math.abs(fz)<0.34) return false;
-  const side=fz>=0?1:-1;
-  const frontZ=host.root.position.z+fz*2.4;
-  if(Math.abs(frontZ)<4.75) return false;
-  const fx=Math.sin(host.yaw);
-  const x=host.root.position.x+fx*rand(0.6,2.0)+rand(-0.45,0.45);
-  const z=clamp(side*6.15,ALLEY_Z_MIN+0.75,ALLEY_Z_MAX-0.75);
+  const face=findHostBuildingFacadeTarget(host);
+  if(!face) return false;
+  const state=getBuildingDamageState(face);
+  if(!state || state.hits>=BUILDING_MAX_ATTACKS_PER_FACE){
+    if(!host._lastBuildingSpentHintAt || gameTime-host._lastBuildingSpentHintAt>1.1){
+      spawnComicImpact(host.root.position,'EMPTY!','#c9c9c9',{yOffset:1.1,scaleX:0.8,scaleY:0.55});
+      host._lastBuildingSpentHintAt=gameTime;
+    }
+    return false;
+  }
+  if(gameTime-state.lastHitAt<0.12) return false;
+  state.hits++;
+  state.lastHitAt=gameTime;
+  const side=face.sign;
+  const x=pickBuildingDamageX(face,host);
+  const z=clamp(face.frontZ || side*6.15,ALLEY_Z_MIN+0.75,ALLEY_Z_MAX-0.75);
   if(pointInsideTempleZone(x,z,2.4)) return false;
   let triggered=false;
-  const signCount=1+(Math.random()<0.45?1:0)+(Math.random()<0.18?1:0);
+  const hitLevel=state.hits;
+  const signCount=1+(Math.random()<0.58?1:0)+(hitLevel>=2 && Math.random()<0.28?1:0);
   for(let i=0;i<signCount;i++){
-    if(spawnFallingBuildingSign(host,{force:true,ignoreCooldown:i>0,side,x:x+rand(-0.8,0.8),z,y:rand(2.55,4.55)})) triggered=true;
+    if(spawnFallingBuildingSign(host,{force:true,ignoreCooldown:i>0,side,x:x+rand(-0.95,0.95),z,y:rand(2.35,4.85)})) triggered=true;
   }
-  if(Math.random()<0.72 && spawnBuildingFacadeFire(host,side,x+rand(-0.8,0.8),z-side*0.10)) triggered=true;
-  if(Math.random()<0.62 && spawnFallingRoofObject(host,side,x+rand(-0.9,0.9),z)) triggered=true;
+  if((hitLevel>=1 || Math.random()<0.72) && spawnBuildingFacadeFire(host,side,x+rand(-0.85,0.85),z-side*0.10)){
+    triggered=true;
+    state.firePatches++;
+  }
+  const dropCount=1+(hitLevel>=3?1:0);
+  for(let i=0;i<dropCount;i++){
+    if(spawnFallingRoofObject(host,side,x+rand(-1.0,1.0),z,{ignoreCooldown:i>0,y:rand(3.7,Math.min(7.0,Math.max(4.4,face.height-0.6)))})) triggered=true;
+  }
+  spawnComicImpact(new THREE.Vector3(x,Math.min(5.2,2.7+hitLevel*0.85),z),'HIT '+hitLevel+'/'+BUILDING_MAX_ATTACKS_PER_FACE,'#fff2a6',{yOffset:0.28,scaleX:1.05,scaleY:0.58});
   return triggered;
 }
 function getHostAttackTimeScale(actionName){
@@ -15002,13 +15179,13 @@ function addRatSwarm(count,origin=player?.root?.position||new THREE.Vector3()){
 function getPropBreakSFXKey(p){
   if(!p) return 'glassBreak';
   if(p.kind==='bin') return 'binFall';
-  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry' || p.kind==='building-fire') return 'vehicleBreak';
+  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry' || p.kind==='building-fire' || p.kind==='fire-stair' || p.kind==='glass-window') return 'vehicleBreak';
   return 'glassBreak';
 }
 function getPropTipRestY(p){
   if(!p) return 0.08;
   if(Number.isFinite(p.groundRestY)) return Math.max(0.035,p.groundRestY);
-  if(p.kind==='soup-pot' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry') return 0.08;
+  if(p.kind==='soup-pot' || p.kind==='falling-sign' || p.kind==='tank' || p.kind==='laundry' || p.kind==='fire-stair' || p.kind==='glass-window') return 0.08;
   if(p.kind==='building-fire') return Math.max(0.08,p.root?.position?.y??0.08);
   return Math.max(0.08,(p.root?.userData?.baseY??p.basePosition?.y??0)*0.45);
 }
@@ -15017,7 +15194,7 @@ function playPropImpactFeedback(p,angle=0,{text=null,volume=0.84}={}){
   spawnHitFlash(p.root.position);
   playSFX(getPropBreakSFXKey(p),{volume,cooldown:0.08,source:p});
   spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
-  spawnComicImpact(p.root.position,text||(p.kind==='stall'?'WHAM!':(p.kind==='falling-sign'?'CRASH!':'POW!')),p.kind==='stall'?'#fff2a6':'#fff7c2');
+  spawnComicImpact(p.root.position,text||(p.kind==='stall'?'WHAM!':(p.kind==='falling-sign'?'CRASH!':(p.kind==='fire-stair'?'STAIRS!':(p.kind==='glass-window'?'GLASS!':'POW!')))),p.kind==='stall'?'#fff2a6':'#fff7c2');
 }
 function findRingTwinProp(prop){
   if(!RESIDENT_RING_MODE || !prop?.root || !prop.basePosition || RING_SEAM_LENGTH<=0) return null;
