@@ -1183,7 +1183,7 @@ const HOST_PARASITE_TIME=30;
 const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
-const RAT_CITY_LEADERBOARD_API_URL='https://urban-legend-rat-leaderboard.zhenggdove-artist.workers.dev/leaderboard';
+const RAT_CITY_LEADERBOARD_API_URL='https://urban-legend-rat-leaderboard.zhenggdove-artist.workers.dev/api/leaderboard';
 const RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY='urbanLegendRatLeaderboardApiUrl';
 const RAT_CITY_LEADERBOARD_LIMIT=20;
 const RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS=30000;
@@ -3635,6 +3635,8 @@ function initSharedTextures(){
   FX_TEX.ember=makeFXBlobTexture('#fff2a0','#ff8b22');
   FX_TEX.broth=makeFXBlobTexture('#ffe071','#e8a62f');
   FX_TEX.magentaSmoke=makeFXBlobTexture('#ff4fd8','#3b1232');
+  // v18: neutral smoke base; every building smoke particle receives its own random color.
+  FX_TEX.smoke=makeFXBlobTexture('#ffffff','#5f5f5f');
 }
 
 // Graffiti textures loaded from the user-supplied asset/photos folder.
@@ -8945,17 +8947,19 @@ function tickPropFX(prop,dt){
       const smokePower=0.85+burn.stage*0.82+Math.min(1,burn.elapsed/10)*0.55;
       for(const smoke of burn.smoke){
         const t=fx.time*0.72+smoke.userData.phase;
-        const rise=((t+smoke.userData.offset)%3.2)/3.2;
-        const sway=Math.sin(t*1.35)*smoke.userData.sway*smokePower;
-        const drift=Math.cos(t*0.72)*smoke.userData.drift*smokePower;
+        const cycle=smoke.userData.cycle||3.2;
+        const rise=((t+smoke.userData.offset)%cycle)/cycle;
+        const sway=Math.sin(t*1.35+smoke.userData.offset)*smoke.userData.sway*smokePower;
+        const drift=Math.cos(t*0.72+smoke.userData.phase)*smoke.userData.drift*smokePower;
+        const riseHeight=(smoke.userData.riseHeight||2.2)*(1+burn.stage*0.46);
         smoke.position.set(
-          smoke.userData.baseX+sway,
-          smoke.userData.baseY+rise*(1.75+burn.stage*1.25),
-          smoke.userData.baseZ+drift
+          smoke.userData.baseX+sway*(0.55+rise*1.15),
+          smoke.userData.baseY+rise*riseHeight,
+          smoke.userData.baseZ+drift*(0.45+rise*1.25)
         );
-        const sc=smoke.userData.size*(1.05+rise*1.92)*(1+burn.stage*0.78);
-        smoke.scale.set(sc,sc*smoke.userData.yScale,1);
-        smoke.material.opacity=(0.32+0.13*burn.stage)*(1-rise*0.55);
+        const sc=smoke.userData.size*(0.72+rise*2.35)*(1+burn.stage*0.52);
+        smoke.scale.set(sc*(smoke.userData.xScale||1),sc*(smoke.userData.yScale||1.25),1);
+        smoke.material.opacity=(smoke.userData.opacityBase+smoke.userData.opacityPulse*Math.abs(Math.sin(t*1.1))+(0.07*burn.stage))*(1-rise*0.62);
         smoke.material.rotation=(smoke.material.rotation||0)+dt*smoke.userData.spin;
       }
     }
@@ -9053,11 +9057,27 @@ const ratCityLeaderboardState={
   lastError:'',
   activeUrl:''
 };
+function normaliseRatCityLeaderboardApiUrl(value){
+  const raw=String(value||'').trim();
+  if(!raw || raw.includes('YOUR_WORKERS_SUBDOMAIN'))return '';
+  try{
+    const withProtocol=/^https?:\/\//i.test(raw)?raw:`https://${raw}`;
+    const u=new URL(withProtocol);
+    return `${u.origin}${u.pathname}`.replace(/\/+$/,'');
+  }catch(_){
+    return raw.replace(/\/+$/,'');
+  }
+}
+function rememberRatCityLeaderboardApiUrlFromQuery(){
+  // v19: URL-query / localStorage API overrides are intentionally disabled.
+  // They caused stale local debug URLs to override the production Cloudflare Worker
+  // and made the game silently fall back to localStorage on other devices.
+  try{localStorage.removeItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY);}catch(_){}
+}
 function getRatCityLeaderboardConfiguredUrl(){
-  let override='';
-  try{override=localStorage.getItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY)||'';}catch(_){}
-  const configured=String(window.URBAN_LEGEND_RAT_LEADERBOARD_API_URL||override||RAT_CITY_LEADERBOARD_API_URL||'').trim();
-  if(!configured||configured.includes('YOUR_WORKERS_SUBDOMAIN'))return '';
+  rememberRatCityLeaderboardApiUrlFromQuery();
+  const configured=normaliseRatCityLeaderboardApiUrl(window.URBAN_LEGEND_RAT_LEADERBOARD_API_URL||RAT_CITY_LEADERBOARD_API_URL||'');
+  if(!configured)return '';
   return configured;
 }
 function getRatCityLeaderboardApiUrl(){
@@ -9065,30 +9085,34 @@ function getRatCityLeaderboardApiUrl(){
 }
 function getRatCityLeaderboardApiUrlCandidates(){
   const configured=getRatCityLeaderboardConfiguredUrl();
-  if(!configured)return [];
   const urls=[];
   const add=url=>{
-    const cleaned=String(url||'').trim().replace(/\/+$/,'');
+    const cleaned=normaliseRatCityLeaderboardApiUrl(url);
     if(cleaned && !urls.includes(cleaned))urls.push(cleaned);
   };
+  // v19: use the known working Cloudflare Worker endpoint first. This restores
+  // the v14 online path and prevents same-origin GitHub Pages 404s or stale
+  // local overrides from taking priority.
   add(configured);
+  if(configured){
+    try{
+      const u=new URL(configured);
+      const base=`${u.origin}`;
+      const path=u.pathname.replace(/\/+$/,'');
+      if(path==='/api/leaderboard'){
+        add(`${base}/leaderboard`);
+      }else if(path==='/leaderboard'){
+        add(`${base}/api/leaderboard`);
+      }else if(path===''||path==='/'){
+        add(`${base}/api/leaderboard`);
+        add(`${base}/leaderboard`);
+      }
+    }catch(_){}
+  }
   try{
-    const u=new URL(configured);
-    const base=`${u.origin}`;
-    const path=u.pathname.replace(/\/+$/,'');
-    // Workers written from different Codex passes used both /leaderboard and /api/leaderboard.
-    // Try both instead of silently falling back to localStorage on a path mismatch.
-    if(path==='/api/leaderboard'){
-      add(`${base}/leaderboard`);
-    }else if(path==='/leaderboard'){
-      add(`${base}/api/leaderboard`);
-    }else if(path===''||path==='/'){
-      add(`${base}/leaderboard`);
-      add(`${base}/api/leaderboard`);
-    }else{
-      add(`${base}/leaderboard`);
-      add(`${base}/api/leaderboard`);
-    }
+    // Same-origin candidates are kept only as a last-resort local-dev fallback.
+    add(new URL('/api/leaderboard',window.location.origin).href);
+    add(new URL('/leaderboard',window.location.origin).href);
   }catch(_){}
   return urls;
 }
@@ -9179,9 +9203,73 @@ async function postRatCityOnlineScore(entry){
   ratCityLeaderboardState.lastError=lastError||'all online leaderboard URLs failed';
   ratCityLeaderboardState.onlineReady=false;
   console.warn('[rat-city] online leaderboard write failed; score kept in localStorage fallback:',ratCityLeaderboardState.lastError);
+  console.warn('[rat-city] run await ratCityLeaderboardDebug() in DevTools to see exact GET/CORS/404/500 status for every candidate URL.');
   renderRatCityLeaderboard();
   return false;
 }
+function setRatCityLeaderboardOnlineStatus(ok,error=''){
+  ratCityLeaderboardState.onlineReady=!!ok;
+  ratCityLeaderboardState.lastError=error||'';
+  renderRatCityLeaderboard();
+}
+async function probeRatCityLeaderboardApiUrl(apiUrl,method='GET',sampleEntry=null){
+  const url=normaliseRatCityLeaderboardApiUrl(apiUrl);
+  if(!url) return {url,ok:false,error:'EMPTY_URL'};
+  const started=performance.now();
+  try{
+    const options=method==='POST'
+      ? {method:'POST',headers:{'Accept':'application/json','Content-Type':'application/json'},body:JSON.stringify(sampleEntry||{name:'DEBUG',score:1,chaos:1,rats:1}),cache:'no-store'}
+      : {method:'GET',headers:{'Accept':'application/json'},cache:'no-store'};
+    const res=await fetch(url,options);
+    const raw=await res.text();
+    let json=null;
+    try{json=raw?JSON.parse(raw):null;}catch(_){}
+    const entries=extractRatCityLeaderboardEntriesPayload(json);
+    return {
+      url,method,ok:res.ok,status:res.status,
+      elapsedMs:Math.round(performance.now()-started),
+      contentType:res.headers.get('content-type')||'',
+      payloadShape:Array.isArray(entries)?'leaderboard-array':(json&&typeof json==='object'?Object.keys(json).join(','):'non-json'),
+      bodyPreview:String(raw||'').slice(0,220)
+    };
+  }catch(err){
+    return {
+      url,method,ok:false,status:0,
+      elapsedMs:Math.round(performance.now()-started),
+      error:err?.message||String(err)
+    };
+  }
+}
+window.setRatCityLeaderboardApiUrl=function(){
+  console.warn('[rat-city] manual leaderboard API override is disabled in v19. The game always uses the bundled Cloudflare Worker endpoint:',RAT_CITY_LEADERBOARD_API_URL);
+  try{localStorage.removeItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY);}catch(_){}
+  refreshRatCityOnlineLeaderboard({force:true});
+  return RAT_CITY_LEADERBOARD_API_URL;
+};
+window.clearRatCityLeaderboardApiUrl=function(){
+  try{localStorage.removeItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY);}catch(_){}
+  refreshRatCityOnlineLeaderboard({force:true});
+};
+window.ratCityLeaderboardDebug=async function(){
+  const candidates=getRatCityLeaderboardApiUrlCandidates();
+  const sample={
+    name:'DEBUG',
+    score:getRatCityChaosValue(),
+    chaos:getRatCityChaosValue(),
+    rats:getRatCityRatValue()
+  };
+  const results=[];
+  for(const url of candidates){
+    results.push(await probeRatCityLeaderboardApiUrl(url,'GET'));
+  }
+  console.table(results);
+  console.info('[rat-city] configured default =',RAT_CITY_LEADERBOARD_API_URL);
+  console.info('[rat-city] stale override ignored =',(()=>{try{return localStorage.getItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY)||'';}catch(_){return ''}})());
+  console.info('[rat-city] sample POST payload =',sample);
+  console.info('[rat-city] if GET status is 404, the front-end URL/path is wrong; if status is 0 or Failed to fetch, CORS/worker-domain is blocking; if 500, Worker/D1 failed server-side.');
+  return results;
+};
+
 function makeProgressBar3D(width=1.12,height=0.18){
   const root=new THREE.Group();
   const bg=new THREE.Mesh(
@@ -13650,6 +13738,7 @@ function getRatCityRatValue(){
 function renderRatCityLeaderboard(){
   const onlineSuffix=ratCityLeaderboardState.onlineReady?' · ONLINE':(ratCityLeaderboardState.lastError?' · LOCAL ONLY':'');
   ratCityScore.textContent=`CHAOS ${getRatCityChaosValue()} · RATS ${getRatCityRatValue()}${onlineSuffix}`;
+  ratCityScore.title=ratCityLeaderboardState.lastError||ratCityLeaderboardState.activeUrl||'';
   ratCityList.innerHTML='';
   if(!game.leaderboard.length){
     const li=document.createElement('li');
@@ -14028,27 +14117,40 @@ function spawnBuildingFacadeFire(host,side,x,z){
   }
 
   const smoke=[];
-  const smokeTex=FX_TEX.magentaSmoke||FX_TEX.fire;
-  for(let i=0;i<26;i++){
+  const smokeTex=FX_TEX.smoke||FX_TEX.magentaSmoke||FX_TEX.fire;
+  const smokePalette=[
+    '#ff2fd3','#ff7a2f','#ffe45a','#7cff6b','#55d9ff',
+    '#8d6bff','#ffffff','#ff5a76','#39ffcf','#b8ff4a'
+  ];
+  for(let i=0;i<34;i++){
+    const smokeColor=pick(smokePalette);
+    const xScale=rand(0.48,2.85);
+    const yScale=rand(0.60,3.45);
+    const baseSize=rand(0.40,1.58);
     const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
       map:smokeTex,transparent:true,depthWrite:false,fog:false,depthTest:false,
-      blending:THREE.NormalBlending,color:pick(['#ff2fd3','#ff51df','#ff74ea','#d716c4','#ff94f0']),opacity:0.36
+      blending:THREE.NormalBlending,color:smokeColor,opacity:rand(0.22,0.46)
     }));
     sprite.renderOrder=42;
     sprite.userData={
-      baseX:rand(-scorchW*0.54,scorchW*0.54),
-      baseY:rand(scorchH*0.02,scorchH*0.58),
+      baseX:rand(-scorchW*0.60,scorchW*0.60),
+      baseY:rand(-scorchH*0.04,scorchH*0.64),
       baseZ:side*0.145,
       phase:Math.random()*Math.PI*2,
-      offset:rand(0,3.2),
-      size:rand(0.55,1.28),
-      sway:rand(0.16,0.48),
-      drift:rand(0.06,0.22),
-      spin:rand(-0.42,0.42),
-      yScale:rand(0.95,1.55)
+      offset:rand(0,4.4),
+      cycle:rand(2.25,5.10),
+      size:baseSize,
+      sway:rand(0.10,0.80),
+      drift:rand(0.04,0.42),
+      spin:rand(-0.82,0.82),
+      xScale,
+      yScale,
+      riseHeight:rand(1.15,6.80),
+      opacityBase:rand(0.20,0.42),
+      opacityPulse:rand(0.04,0.18)
     };
     sprite.position.set(sprite.userData.baseX,sprite.userData.baseY,sprite.userData.baseZ);
-    sprite.scale.set(sprite.userData.size,sprite.userData.size*sprite.userData.yScale,1);
+    sprite.scale.set(baseSize*xScale,baseSize*yScale,1);
     root.add(sprite);
     smoke.push(sprite);
   }
