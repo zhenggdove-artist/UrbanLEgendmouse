@@ -3634,6 +3634,7 @@ function initSharedTextures(){
   FX_TEX.fire =makeFXBlobTexture('#ffd84f','#ff5a1f');
   FX_TEX.ember=makeFXBlobTexture('#fff2a0','#ff8b22');
   FX_TEX.broth=makeFXBlobTexture('#ffe071','#e8a62f');
+  FX_TEX.magentaSmoke=makeFXBlobTexture('#ff4fd8','#3b1232');
 }
 
 // Graffiti textures loaded from the user-supplied asset/photos folder.
@@ -8879,8 +8880,32 @@ function tickPropFX(prop,dt){
     const fx=prop.fireFX;
     fx.time+=dt;
     fx.growth=Math.min(1,fx.growth+dt*0.42);
+    if(prop.kind==='building-fire' && prop.buildingBurnFX){
+      const burn=prop.buildingBurnFX;
+      burn.elapsed+=dt;
+      const nextStage=burn.elapsed>=10?2:(burn.elapsed>=5?1:0);
+      if(nextStage!==burn.stage){
+        burn.stage=nextStage;
+        fx.growth=1;
+        fx.stretch=Math.max(fx.stretch||1,2.35+burn.stage*0.92);
+        spawnComicImpact(prop.root.position,burn.stage===1?'BURNING!':'INFERNO!','#ff5af7',{yOffset:0.72+burn.stage*0.18,scaleX:1.18+burn.stage*0.24,scaleY:0.74+burn.stage*0.12});
+      }
+      const scorchScale=1+burn.stage*0.42+Math.min(1,burn.elapsed/10)*0.24;
+      if(burn.scorch){
+        burn.scorch.scale.set(scorchScale,scorchScale,1);
+        burn.scorch.material.opacity=clamp(0.56+burn.stage*0.16+burn.elapsed*0.018,0.56,0.94);
+        burn.scorch.material.color.set(burn.stage>=2?'#020000':(burn.stage>=1?'#070202':'#140909'));
+      }
+      if(burn.char){
+        const charScale=1+burn.stage*0.62+Math.min(1,burn.elapsed/10)*0.32;
+        burn.char.scale.set(charScale,charScale,1);
+        burn.char.material.opacity=clamp(0.32+burn.stage*0.22+burn.elapsed*0.02,0.32,0.96);
+        burn.char.material.color.set(burn.stage>=2?'#000000':'#050101');
+      }
+    }
     fx.group.position.copy(fx.origin);
-    const grow=0.25+fx.growth*0.75;
+    const buildingStage=(prop.kind==='building-fire' && prop.buildingBurnFX)?prop.buildingBurnFX.stage:0;
+    const grow=(0.25+fx.growth*0.75)*(1+buildingStage*0.85);
     for(const flame of fx.flames){
       const t=fx.time*3.6+flame.userData.phase;
       const along=Math.cos(fx.lean),side=Math.sin(fx.lean);
@@ -8907,6 +8932,25 @@ function tickPropFX(prop,dt){
       ember.position.set(px,0.2+((t+ember.userData.offset)%1.8)*grow,pz);
       ember.scale.setScalar(0.09+Math.abs(Math.sin(t))*0.05);
       ember.material.opacity=0.28+Math.abs(Math.cos(t))*0.25;
+    }
+    if(prop.kind==='building-fire' && prop.buildingBurnFX?.smoke?.length){
+      const burn=prop.buildingBurnFX;
+      const smokePower=0.55+burn.stage*0.55+Math.min(1,burn.elapsed/10)*0.35;
+      for(const smoke of burn.smoke){
+        const t=fx.time*0.72+smoke.userData.phase;
+        const rise=((t+smoke.userData.offset)%3.2)/3.2;
+        const sway=Math.sin(t*1.35)*smoke.userData.sway*smokePower;
+        const drift=Math.cos(t*0.72)*smoke.userData.drift*smokePower;
+        smoke.position.set(
+          smoke.userData.baseX+sway,
+          smoke.userData.baseY+rise*(1.25+burn.stage*0.95),
+          smoke.userData.baseZ+drift
+        );
+        const sc=smoke.userData.size*(0.88+rise*1.55)*(1+burn.stage*0.62);
+        smoke.scale.set(sc,sc*smoke.userData.yScale,1);
+        smoke.material.opacity=(0.18+0.09*burn.stage)*(1-rise*0.62);
+        smoke.material.rotation=(smoke.material.rotation||0)+dt*smoke.userData.spin;
+      }
     }
   }
 }
@@ -13862,31 +13906,75 @@ function spawnBuildingFacadeFire(host,side,x,z){
   const root=new THREE.Group();
   root.position.set(x,rand(1.25,3.25),z);
   root.rotation.y=side>0?Math.PI:0;
-  const scorchW=rand(1.25,2.65);
-  const scorchH=rand(1.45,3.10);
+  const scorchW=rand(1.55,2.95);
+  const scorchH=rand(1.85,3.45);
   const scorch=new THREE.Mesh(
     new THREE.PlaneGeometry(scorchW,scorchH),
     new THREE.MeshBasicMaterial({color:'#140909',transparent:true,opacity:0.58,depthWrite:false,side:THREE.DoubleSide})
   );
   scorch.position.set(0,0.12,side*0.018);
   root.add(scorch);
+
+  // A darker secondary burn stain sits behind the flames so the building
+  // itself visibly burns and blackens; the staged tick below scales it up
+  // after 5s and 10s instead of only animating the falling debris.
+  const charMat=new THREE.MeshBasicMaterial({color:'#050101',transparent:true,opacity:0.32,depthWrite:false,side:THREE.DoubleSide});
+  const char=new THREE.Mesh(new THREE.PlaneGeometry(scorchW*0.72,scorchH*0.70),charMat);
+  char.position.set(0,0.16,side*0.016);
+  root.add(char);
+
   const emberMat=new THREE.SpriteMaterial({
     map:FX_TEX.fire,transparent:true,depthWrite:false,fog:false,
     blending:THREE.AdditiveBlending,color:'#ff8a1f',opacity:0.72
   });
-  for(let i=0;i<5;i++){
+  for(let i=0;i<6;i++){
     const ember=new THREE.Sprite(emberMat.clone());
     ember.position.set(rand(-scorchW*0.42,scorchW*0.42),rand(-scorchH*0.32,scorchH*0.42),side*0.035);
     const size=rand(0.34,0.82);
     ember.scale.set(size,size*rand(1.25,2.2),1);
     root.add(ember);
   }
+
+  const smoke=[];
+  const smokeTex=FX_TEX.magentaSmoke||FX_TEX.fire;
+  for(let i=0;i<13;i++){
+    const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
+      map:smokeTex,transparent:true,depthWrite:false,fog:false,
+      blending:THREE.NormalBlending,color:pick(['#ff47d6','#ff6be8','#d728c9','#ff91f2']),opacity:0.20
+    }));
+    sprite.userData={
+      baseX:rand(-scorchW*0.46,scorchW*0.46),
+      baseY:rand(scorchH*0.08,scorchH*0.52),
+      baseZ:side*0.052,
+      phase:Math.random()*Math.PI*2,
+      offset:rand(0,3.2),
+      size:rand(0.34,0.84),
+      sway:rand(0.10,0.28),
+      drift:rand(0.03,0.11),
+      spin:rand(-0.25,0.25),
+      yScale:rand(0.82,1.18)
+    };
+    sprite.position.set(sprite.userData.baseX,sprite.userData.baseY,sprite.userData.baseZ);
+    sprite.scale.setScalar(sprite.userData.size);
+    root.add(sprite);
+    smoke.push(sprite);
+  }
+
   const prop=registerProp(root,Math.max(0.62,scorchW*0.42),2.2);
   prop.kind='building-fire';
   prop.spawnRatsOnTip=0;
   prop.groundRestY=root.position.y;
   prop.noPickup=true;
   prop.noAutoCleanup=true;
+  prop.buildingBurnFX={
+    elapsed:0,
+    stage:0,
+    scorch,
+    char,
+    smoke,
+    baseScorchW:scorchW,
+    baseScorchH:scorchH
+  };
   activateFireFX(prop,host.yaw,'impact');
   if(prop.fireFX){
     prop.fireFX.shape='line';
