@@ -632,7 +632,7 @@
     min-height:0;
     overflow:hidden;
   }
-  #rat-city-panel::before{width:100% !important;height:100% !important;background-size:contain !important;}
+  #rat-city-panel::before{width:100% !important;height:100% !important;background-size:100% 100% !important;}
   #rat-city-panel h3{
     margin:0 148px 18px 0 !important;
     font-size:clamp(20px,2.0vw,30px) !important;
@@ -10992,6 +10992,12 @@ function ensureUILayoutBuiltins(config){
       store['rats-win']={...(store['rats-win']||{}),hidden:true,locked:false};
       store.__ratCityLeaderboardCardV10=true;
     }
+    if(!store.__endingCardResizeFixV11){
+      if(store['rat-city-panel']){
+        store['rat-city-panel']={...store['rat-city-panel'],locked:false};
+      }
+      store.__endingCardResizeFixV11=true;
+    }
     if(!store['host-life-box']){
       const frame=store.__customFrames.find(entry=>entry?.id==='builtin-frame-host-life');
       store['host-life-box']=getHostLifeBarMetricsFromFrame(frame,mode);
@@ -11544,11 +11550,13 @@ function applyUILayoutMetrics(def,metrics){
   el.style.right='auto';
   el.style.bottom='auto';
   if(def.id==='rat-city-panel'){
-    el.style.aspectRatio='3 / 2';
-    el.style.width=`min(${metrics.w}%, calc(100vw - 8px), calc(150vh - 12px))`;
-    el.style.height='auto';
-    el.style.maxWidth='calc(100vw - 8px)';
-    el.style.maxHeight='calc(100vh - 8px)';
+    el.style.aspectRatio='auto';
+    el.style.width=`${metrics.w}%`;
+    el.style.height=`${metrics.h}%`;
+    el.style.maxWidth='none';
+    el.style.maxHeight='none';
+    el.style.minWidth='0';
+    el.style.minHeight='0';
   }
   if(def.id==='chaos-box' || def.id==='rats-box'){
     // Mobile CSS used to impose a fixed min-width that was not active in
@@ -11653,10 +11661,7 @@ function buildUILayoutMetricsFromRect(def,metrics,rect){
   metrics.w=+((rect.width/Math.max(bounds.width,1))*100).toFixed(3);
   metrics.h=+((rect.height/Math.max(bounds.height,1))*100).toFixed(3);
 }
-function measureUILayoutRect(def,metrics){
-  if(uiLayoutState.active){
-    return getUILayoutBoxRect(def,metrics);
-  }
+function getUILayoutElementRect(def){
   const el=def.isCustomFrame
     ? document.getElementById(getUILayoutCustomFrameElementId(def.id))
     : document.getElementById(def.id);
@@ -11666,6 +11671,14 @@ function measureUILayoutRect(def,metrics){
       return {left:r.left,top:r.top,width:r.width,height:r.height};
     }
   }
+  return null;
+}
+function measureUILayoutRect(def,metrics){
+  if(uiLayoutState.active && def?.isCustomFrame){
+    return getUILayoutBoxRect(def,metrics);
+  }
+  const domRect=getUILayoutElementRect(def);
+  if(domRect) return domRect;
   return getUILayoutBoxRect(def,metrics);
 }
 function getUILayoutOrderedDefs(desc=true){
