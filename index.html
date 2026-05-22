@@ -1184,8 +1184,9 @@ const HOST_PARASITE_TIME=30;
 const STALL_FIRE_CHANCE=0.30;
 const STALL_SOUP_CHANCE=0.30;
 const RAT_CITY_STORAGE_KEY='urbanLegendRatCityScoresV1';
+// Hard-wired Cloudflare Workers + D1 endpoint restored from the known working leaderboard flow.
+// Do not read a browser-local override here: stale debug URLs were the reason later builds silently fell back to localStorage.
 const RAT_CITY_LEADERBOARD_API_URL='https://urban-legend-rat-leaderboard.zhenggdove-artist.workers.dev/api/leaderboard';
-const RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY='urbanLegendRatLeaderboardApiUrl';
 const RAT_CITY_LEADERBOARD_LIMIT=20;
 const RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS=30000;
 const RAT_CITY_SCORE_MAX=10000000;
@@ -9058,6 +9059,7 @@ function saveRatCityLeaderboard(){
 }
 function sanitizeRatCityName(value){
   const text=String(value||'ANON RAT')
+    .replace(/<[^>]*>/g,' ')
     .replace(/[\u0000-\u001f\u007f<>]/g,' ')
     .replace(/\s+/g,' ')
     .trim();
@@ -9065,20 +9067,19 @@ function sanitizeRatCityName(value){
 }
 function normalizeRatCityEntry(entry){
   if(!entry||typeof entry!=='object')return null;
-  const rawScore=Number(entry.score ?? entry.chaos ?? 0);
-  const score=Math.round(rawScore);
-  if(!Number.isFinite(score))return null;
   const rawChaos=Number(entry.chaos ?? entry.chaosScore ?? entry.score ?? 0);
-  const chaos=Math.round(rawChaos);
-  const rats=Math.round(Number(entry.rats ?? entry.ratCount ?? 0));
+  const rawScore=Number(entry.score ?? rawChaos ?? 0);
+  const rawRats=Number(entry.rats ?? entry.ratCount ?? 0);
+  const chaos=Math.round(Number.isFinite(rawChaos)?rawChaos:0);
+  const score=Math.round(Number.isFinite(rawScore)?rawScore:0);
+  const rats=Math.round(Number.isFinite(rawRats)?rawRats:0);
   return {
     name:sanitizeRatCityName(entry.name),
-    // v14: leaderboard records the visible HUD numbers, not the decaying chaos meter.
-    // chaos = the right-top CHAOS BOX value (game.chaosScore), which can be far above 100.
-    chaos:clamp(Number.isFinite(chaos)?chaos:0,0,RAT_CITY_SCORE_MAX),
+    // The board records the visible HUD values: CHAOS BOX = game.chaosScore, RAT BOX = getTotalRatCount().
+    chaos:clamp(chaos,0,RAT_CITY_SCORE_MAX),
     score:clamp(score,0,RAT_CITY_SCORE_MAX),
-    rats:clamp(Number.isFinite(rats)?rats:0,0,1000000),
-    date:typeof entry.date==='string'?entry.date:(entry.created_at||new Date().toISOString())
+    rats:clamp(rats,0,1000000),
+    date:typeof entry.date==='string'?entry.date:(typeof entry.created_at==='string'?entry.created_at:new Date().toISOString())
   };
 }
 function sortRatCityEntries(entries){
@@ -9091,20 +9092,30 @@ function sortRatCityEntries(entries){
 function setRatCityLeaderboard(entries){
   game.leaderboard=sortRatCityEntries(entries);
 }
+function parseRatCityLeaderboardPayload(data){
+  if(Array.isArray(data))return data;
+  if(data&&Array.isArray(data.entries))return data.entries;
+  if(data&&Array.isArray(data.leaderboard))return data.leaderboard;
+  if(data&&Array.isArray(data.scores))return data.scores;
+  return null;
+}
 const ratCityLeaderboardState={
   refreshing:false,
   onlineReady:false,
   lastFetchAt:0,
-  lastError:''
+  lastError:'',
+  lastStatus:0,
+  lastUrl:RAT_CITY_LEADERBOARD_API_URL
 };
 function getRatCityLeaderboardApiUrl(){
-  // Restored from the known-working leaderboard version: use the project
-  // Cloudflare Worker endpoint directly. Do not read a browser-local debug
-  // override here; a stale override can silently disconnect other devices
-  // from the shared D1 leaderboard.
-  const configured=String(window.URBAN_LEGEND_RAT_LEADERBOARD_API_URL||RAT_CITY_LEADERBOARD_API_URL||'').trim();
-  if(!configured||configured.includes('YOUR_WORKERS_SUBDOMAIN'))return '';
-  return configured;
+  // Match the reference version's simple, deterministic save/render flow:
+  // one fixed online endpoint, no localStorage API override, no alternate debug URL.
+  return RAT_CITY_LEADERBOARD_API_URL;
+}
+function setRatCityLeaderboardOffline(error){
+  ratCityLeaderboardState.onlineReady=false;
+  ratCityLeaderboardState.lastError=error?.message||String(error||'online leaderboard unavailable');
+  console.warn('[rat-city] Cloudflare leaderboard failed:',ratCityLeaderboardState.lastError);
 }
 async function refreshRatCityOnlineLeaderboard(options={}){
   const force=!!options.force;
@@ -9114,20 +9125,23 @@ async function refreshRatCityOnlineLeaderboard(options={}){
   if(!force&&now-ratCityLeaderboardState.lastFetchAt<RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS)return false;
   ratCityLeaderboardState.refreshing=true;
   ratCityLeaderboardState.lastFetchAt=now;
+  ratCityLeaderboardState.lastUrl=apiUrl;
   try{
-    const res=await fetch(apiUrl,{method:'GET',headers:{'Accept':'application/json'},cache:'no-store'});
+    const res=await fetch(apiUrl,{method:'GET',mode:'cors',credentials:'omit',cache:'no-store'});
+    ratCityLeaderboardState.lastStatus=res.status||0;
     if(!res.ok)throw new Error(`GET ${res.status}`);
     const data=await res.json();
-    if(!data||!Array.isArray(data.entries))throw new Error('Invalid leaderboard payload');
-    setRatCityLeaderboard(data.entries);
+    const entries=parseRatCityLeaderboardPayload(data);
+    if(!entries)throw new Error('Invalid leaderboard payload');
+    setRatCityLeaderboard(entries);
     saveRatCityLeaderboard();
     ratCityLeaderboardState.onlineReady=true;
     ratCityLeaderboardState.lastError='';
     renderRatCityLeaderboard();
     return true;
   }catch(err){
-    ratCityLeaderboardState.lastError=err?.message||String(err);
-    console.warn('[rat-city] online leaderboard read failed; using localStorage fallback:',ratCityLeaderboardState.lastError);
+    setRatCityLeaderboardOffline(err);
+    renderRatCityLeaderboard();
     return false;
   }finally{
     ratCityLeaderboardState.refreshing=false;
@@ -9136,27 +9150,48 @@ async function refreshRatCityOnlineLeaderboard(options={}){
 async function postRatCityOnlineScore(entry){
   const apiUrl=getRatCityLeaderboardApiUrl();
   if(!apiUrl)return false;
-  try{
-    const res=await fetch(apiUrl,{
-      method:'POST',
-      headers:{'Accept':'application/json','Content-Type':'application/json'},
-      body:JSON.stringify(entry)
-    });
-    if(!res.ok)throw new Error(`POST ${res.status}`);
-    const data=await res.json();
-    if(data&&Array.isArray(data.entries)){
-      setRatCityLeaderboard(data.entries);
+  const payload=normalizeRatCityEntry(entry);
+  if(!payload)return false;
+  const body=JSON.stringify(payload);
+  const attempts=[
+    {
+      label:'application/json',
+      init:{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',headers:{'Accept':'application/json','Content-Type':'application/json'},body}
+    },
+    {
+      // Fallback for Workers that accept the same JSON body but do not answer the OPTIONS preflight correctly.
+      // Request.json() in Workers can parse the body even when this is sent as text/plain.
+      label:'text/plain',
+      init:{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',headers:{'Accept':'application/json','Content-Type':'text/plain;charset=UTF-8'},body}
+    }
+  ];
+  let lastErr=null;
+  for(const attempt of attempts){
+    try{
+      const res=await fetch(apiUrl,attempt.init);
+      ratCityLeaderboardState.lastStatus=res.status||0;
+      if(!res.ok)throw new Error(`${attempt.label} POST ${res.status}`);
+      const data=await res.json().catch(()=>null);
+      const entries=parseRatCityLeaderboardPayload(data);
+      if(entries){
+        setRatCityLeaderboard(entries);
+      }else{
+        // Some Workers return {ok:true} after insert. Verify by immediately re-reading the shared board.
+        await refreshRatCityOnlineLeaderboard({force:true});
+      }
       saveRatCityLeaderboard();
       ratCityLeaderboardState.onlineReady=true;
       ratCityLeaderboardState.lastError='';
       renderRatCityLeaderboard();
+      return true;
+    }catch(err){
+      lastErr=err;
+      console.warn(`[rat-city] online ${attempt.label} write failed:`,err?.message||err);
     }
-    return true;
-  }catch(err){
-    ratCityLeaderboardState.lastError=err?.message||String(err);
-    console.warn('[rat-city] online leaderboard write failed; score kept in localStorage fallback:',ratCityLeaderboardState.lastError);
-    return false;
   }
+  setRatCityLeaderboardOffline(lastErr||new Error('POST failed'));
+  renderRatCityLeaderboard();
+  return false;
 }
 function makeProgressBar3D(width=1.12,height=0.18){
   const root=new THREE.Group();
@@ -13625,13 +13660,13 @@ function getRatCityRatValue(){
   return Math.round(getTotalRatCount());
 }
 function renderRatCityLeaderboard(){
-  const onlineSuffix=ratCityLeaderboardState.onlineReady?' · ONLINE':(ratCityLeaderboardState.lastError?' · LOCAL ONLY':'');
-  ratCityScore.textContent=`CHAOS ${getRatCityChaosValue()} · RATS ${getRatCityRatValue()}${onlineSuffix}`;
-  ratCityScore.title=ratCityLeaderboardState.lastError||'';
+  const status=ratCityLeaderboardState.onlineReady?' · ONLINE':(ratCityLeaderboardState.lastError?' · LOCAL ONLY':'');
+  ratCityScore.textContent=`CHAOS ${getRatCityChaosValue()} · RATS ${getRatCityRatValue()}${status}`;
+  ratCityScore.title=ratCityLeaderboardState.lastError||ratCityLeaderboardState.lastUrl||'';
   ratCityList.innerHTML='';
   if(!game.leaderboard.length){
     const li=document.createElement('li');
-    li.textContent='No rankings logged yet.';
+    li.textContent=ratCityLeaderboardState.lastError?'No online rankings loaded.':'No rankings logged yet.';
     ratCityList.appendChild(li);
     return;
   }
@@ -13658,7 +13693,7 @@ function setRatCityMode(enabled){
     ratCityZoom=26;
     ratCityAutoRotate=true;
     renderRatCityLeaderboard();
-    refreshRatCityOnlineLeaderboard();
+    refreshRatCityOnlineLeaderboard({force:true});
   }
 }
 function submitRatCityScore(){
@@ -13676,19 +13711,18 @@ function submitRatCityScore(){
     date:new Date().toISOString()
   });
   if(!entry)return;
-  // One game run can write only once. Lock immediately so repeated pointerdown
-  // or Enter spam cannot flood either localStorage or the online D1 table.
   ratCityScoreSavedThisRun=true;
   ratCitySave.disabled=true;
-  ratCitySave.textContent='SAVED';
+  ratCitySave.textContent='SAVING';
   ratCitySave.setAttribute('aria-disabled','true');
   game.leaderboard.push(entry);
   setRatCityLeaderboard(game.leaderboard);
   saveRatCityLeaderboard();
   renderRatCityLeaderboard();
   postRatCityOnlineScore(entry).then(ok=>{
+    ratCitySave.textContent=ok?'SAVED ONLINE':'SAVED LOCAL';
     if(!ok){
-      console.warn('[rat-city] saved locally but ONLINE sync failed:',ratCityLeaderboardState.lastError);
+      console.warn('[rat-city] score saved locally but Cloudflare sync failed:',ratCityLeaderboardState.lastError);
     }
     renderRatCityLeaderboard();
   });
@@ -17553,7 +17587,9 @@ window.__debugHooks={
   startLoopSFX,
   submitRatCityScore,
   refreshRatCityOnlineLeaderboard,
+  postRatCityOnlineScore,
   getRatCityLeaderboardApiUrl,
+  getRatCityLeaderboardState:()=>({...ratCityLeaderboardState}),
   playLayeredRatSwarmBurst,
   syncStreetAmbienceLayered,
   triggerRatsWin,
@@ -17758,6 +17794,8 @@ async function init(){
     onProgress:(done,total)=>setIntroProgress(8+(total?done/total:0)*10,'AUDIO')
   });
   loadRatCityLeaderboard();
+  // Load the shared Cloudflare/D1 board immediately; Rat City also force-refreshes when opened.
+  refreshRatCityOnlineLeaderboard({force:true});
   initSharedTextures();
   buildTaipeiSkyline();
   setIntroProgress(6,'TEXTURES');
