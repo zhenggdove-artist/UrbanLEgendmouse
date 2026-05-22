@@ -3590,6 +3590,25 @@ function makeFXBlobTexture(inner,outer){
   cx.beginPath();cx.arc(32,32,26,0,Math.PI*2);cx.fill();
   return pixelate(new THREE.CanvasTexture(c));
 }
+function makeSmokePlumeTexture(){
+  const c=document.createElement('canvas');c.width=96;c.height=160;
+  const cx=c.getContext('2d');
+  cx.clearRect(0,0,c.width,c.height);
+  const blobs=[
+    [48,128,24,0.50],[38,108,22,0.42],[58,101,26,0.46],
+    [46,82,25,0.38],[34,66,20,0.32],[62,58,23,0.34],
+    [48,38,19,0.24],[40,24,13,0.16],[58,20,15,0.14]
+  ];
+  for(const [x,y,r,a] of blobs){
+    const g=cx.createRadialGradient(x,y,Math.max(2,r*0.12),x,y,r);
+    g.addColorStop(0,`rgba(255,255,255,${a})`);
+    g.addColorStop(0.48,`rgba(220,220,220,${a*0.46})`);
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    cx.fillStyle=g;
+    cx.beginPath();cx.ellipse(x,y,r*rand(0.72,1.08),r*rand(0.86,1.32),rand(-0.5,0.5),0,Math.PI*2);cx.fill();
+  }
+  return pixelate(new THREE.CanvasTexture(c));
+}
 
 // Cached textures and sprite materials.
 const TEX={},SPRITE_MAT={},FX_TEX={};
@@ -3635,8 +3654,8 @@ function initSharedTextures(){
   FX_TEX.ember=makeFXBlobTexture('#fff2a0','#ff8b22');
   FX_TEX.broth=makeFXBlobTexture('#ffe071','#e8a62f');
   FX_TEX.magentaSmoke=makeFXBlobTexture('#ff4fd8','#3b1232');
-  // v18: neutral smoke base; every building smoke particle receives its own random color.
-  FX_TEX.smoke=makeFXBlobTexture('#ffffff','#5f5f5f');
+  // v20: vertical irregular plume texture; tint is assigned per-particle.
+  FX_TEX.smoke=makeSmokePlumeTexture();
 }
 
 // Graffiti textures loaded from the user-supplied asset/photos folder.
@@ -8957,9 +8976,10 @@ function tickPropFX(prop,dt){
           smoke.userData.baseY+rise*riseHeight,
           smoke.userData.baseZ+drift*(0.45+rise*1.25)
         );
-        const sc=smoke.userData.size*(0.72+rise*2.35)*(1+burn.stage*0.52);
-        smoke.scale.set(sc*(smoke.userData.xScale||1),sc*(smoke.userData.yScale||1.25),1);
-        smoke.material.opacity=(smoke.userData.opacityBase+smoke.userData.opacityPulse*Math.abs(Math.sin(t*1.1))+(0.07*burn.stage))*(1-rise*0.62);
+        const sc=smoke.userData.size*(0.78+rise*1.75)*(1+burn.stage*0.46);
+        const narrow=1-Math.min(0.38,rise*0.24);
+        smoke.scale.set(sc*(smoke.userData.xScale||0.65)*narrow,sc*(smoke.userData.yScale||3.2)*(0.88+rise*0.42),1);
+        smoke.material.opacity=(smoke.userData.opacityBase+smoke.userData.opacityPulse*Math.abs(Math.sin(t*1.1))+(0.05*burn.stage))*(1-rise*0.58);
         smoke.material.rotation=(smoke.material.rotation||0)+dt*smoke.userData.spin;
       }
     }
@@ -9057,64 +9077,13 @@ const ratCityLeaderboardState={
   lastError:'',
   activeUrl:''
 };
-function normaliseRatCityLeaderboardApiUrl(value){
-  const raw=String(value||'').trim();
-  if(!raw || raw.includes('YOUR_WORKERS_SUBDOMAIN'))return '';
-  try{
-    const withProtocol=/^https?:\/\//i.test(raw)?raw:`https://${raw}`;
-    const u=new URL(withProtocol);
-    return `${u.origin}${u.pathname}`.replace(/\/+$/,'');
-  }catch(_){
-    return raw.replace(/\/+$/,'');
-  }
-}
-function rememberRatCityLeaderboardApiUrlFromQuery(){
-  // v19: URL-query / localStorage API overrides are intentionally disabled.
-  // They caused stale local debug URLs to override the production Cloudflare Worker
-  // and made the game silently fall back to localStorage on other devices.
-  try{localStorage.removeItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY);}catch(_){}
-}
-function getRatCityLeaderboardConfiguredUrl(){
-  rememberRatCityLeaderboardApiUrlFromQuery();
-  const configured=normaliseRatCityLeaderboardApiUrl(window.URBAN_LEGEND_RAT_LEADERBOARD_API_URL||RAT_CITY_LEADERBOARD_API_URL||'');
-  if(!configured)return '';
-  return configured;
-}
 function getRatCityLeaderboardApiUrl(){
-  return getRatCityLeaderboardApiUrlCandidates()[0]||'';
-}
-function getRatCityLeaderboardApiUrlCandidates(){
-  const configured=getRatCityLeaderboardConfiguredUrl();
-  const urls=[];
-  const add=url=>{
-    const cleaned=normaliseRatCityLeaderboardApiUrl(url);
-    if(cleaned && !urls.includes(cleaned))urls.push(cleaned);
-  };
-  // v19: use the known working Cloudflare Worker endpoint first. This restores
-  // the v14 online path and prevents same-origin GitHub Pages 404s or stale
-  // local overrides from taking priority.
-  add(configured);
-  if(configured){
-    try{
-      const u=new URL(configured);
-      const base=`${u.origin}`;
-      const path=u.pathname.replace(/\/+$/,'');
-      if(path==='/api/leaderboard'){
-        add(`${base}/leaderboard`);
-      }else if(path==='/leaderboard'){
-        add(`${base}/api/leaderboard`);
-      }else if(path===''||path==='/'){
-        add(`${base}/api/leaderboard`);
-        add(`${base}/leaderboard`);
-      }
-    }catch(_){}
-  }
-  try{
-    // Same-origin candidates are kept only as a last-resort local-dev fallback.
-    add(new URL('/api/leaderboard',window.location.origin).href);
-    add(new URL('/leaderboard',window.location.origin).href);
-  }catch(_){}
-  return urls;
+  // v20: production leaderboard is hardwired again. No localStorage override,
+  // no query-string override, no same-origin fallback. Later versions broke the
+  // v14 path by trying multiple debug candidates and silently falling back to local.
+  const configured=String(window.URBAN_LEGEND_RAT_LEADERBOARD_API_URL||RAT_CITY_LEADERBOARD_API_URL||'').trim();
+  if(!configured||configured.includes('YOUR_WORKERS_SUBDOMAIN'))return '';
+  return configured.replace(/\/+$/,'');
 }
 function extractRatCityLeaderboardEntriesPayload(data){
   if(Array.isArray(data))return data;
@@ -9124,44 +9093,31 @@ function extractRatCityLeaderboardEntriesPayload(data){
   if(Array.isArray(data?.results))return data.results;
   return null;
 }
-function makeRatCityOnlineError(prefix,url,err){
-  const msg=err?.message||String(err);
-  return `${prefix} ${url ? url.replace(/^https?:\/\//,'') : 'NO_URL'}: ${msg}`;
-}
 async function refreshRatCityOnlineLeaderboard(options={}){
   const force=!!options.force;
-  const apiUrls=getRatCityLeaderboardApiUrlCandidates();
-  if(!apiUrls.length||ratCityLeaderboardState.refreshing)return false;
+  const apiUrl=getRatCityLeaderboardApiUrl();
+  if(!apiUrl||ratCityLeaderboardState.refreshing)return false;
   const now=Date.now();
   if(!force&&now-ratCityLeaderboardState.lastFetchAt<RAT_CITY_LEADERBOARD_FETCH_INTERVAL_MS)return false;
   ratCityLeaderboardState.refreshing=true;
   ratCityLeaderboardState.lastFetchAt=now;
-  let lastError='';
   try{
-    for(const apiUrl of apiUrls){
-      try{
-        const res=await fetch(apiUrl,{method:'GET',headers:{'Accept':'application/json'},cache:'no-store'});
-        if(!res.ok)throw new Error(`GET ${res.status}`);
-        const data=await res.json();
-        const entries=extractRatCityLeaderboardEntriesPayload(data);
-        if(!Array.isArray(entries))throw new Error('Invalid leaderboard payload');
-        setRatCityLeaderboard(entries);
-        saveRatCityLeaderboard();
-        ratCityLeaderboardState.onlineReady=true;
-        ratCityLeaderboardState.lastError='';
-        ratCityLeaderboardState.activeUrl=apiUrl;
-        renderRatCityLeaderboard();
-        return true;
-      }catch(err){
-        lastError=makeRatCityOnlineError('READ',apiUrl,err);
-        console.warn('[rat-city] online leaderboard read attempt failed:',lastError);
-      }
-    }
-    throw new Error(lastError||'all online leaderboard URLs failed');
+    const res=await fetch(apiUrl,{method:'GET',mode:'cors',credentials:'omit',headers:{'Accept':'application/json'},cache:'no-store'});
+    if(!res.ok)throw new Error(`GET ${res.status}`);
+    const data=await res.json();
+    const entries=extractRatCityLeaderboardEntriesPayload(data);
+    if(!Array.isArray(entries))throw new Error('Invalid leaderboard payload');
+    setRatCityLeaderboard(entries);
+    saveRatCityLeaderboard();
+    ratCityLeaderboardState.onlineReady=true;
+    ratCityLeaderboardState.lastError='';
+    ratCityLeaderboardState.activeUrl=apiUrl;
+    renderRatCityLeaderboard();
+    return true;
   }catch(err){
     ratCityLeaderboardState.lastError=err?.message||String(err);
     ratCityLeaderboardState.onlineReady=false;
-    console.warn('[rat-city] online leaderboard read failed; using localStorage fallback:',ratCityLeaderboardState.lastError);
+    console.warn('[rat-city] ONLINE leaderboard read failed:',ratCityLeaderboardState.lastError,'url=',apiUrl);
     renderRatCityLeaderboard();
     return false;
   }finally{
@@ -9169,107 +9125,50 @@ async function refreshRatCityOnlineLeaderboard(options={}){
   }
 }
 async function postRatCityOnlineScore(entry){
-  const apiUrls=getRatCityLeaderboardApiUrlCandidates();
-  if(!apiUrls.length)return false;
-  let lastError='';
-  for(const apiUrl of apiUrls){
-    try{
-      const res=await fetch(apiUrl,{
-        method:'POST',
-        headers:{'Accept':'application/json','Content-Type':'application/json'},
-        body:JSON.stringify(entry),
-        cache:'no-store'
-      });
-      if(!res.ok)throw new Error(`POST ${res.status}`);
-      const data=await res.json();
-      const entries=extractRatCityLeaderboardEntriesPayload(data);
-      if(Array.isArray(entries)){
-        setRatCityLeaderboard(entries);
-        saveRatCityLeaderboard();
-      }else{
-        // Some Workers return the inserted row instead of the whole leaderboard.
-        await refreshRatCityOnlineLeaderboard({force:true});
-      }
-      ratCityLeaderboardState.onlineReady=true;
-      ratCityLeaderboardState.lastError='';
-      ratCityLeaderboardState.activeUrl=apiUrl;
-      renderRatCityLeaderboard();
-      return true;
-    }catch(err){
-      lastError=makeRatCityOnlineError('WRITE',apiUrl,err);
-      console.warn('[rat-city] online leaderboard write attempt failed:',lastError);
-    }
+  const apiUrl=getRatCityLeaderboardApiUrl();
+  if(!apiUrl){
+    ratCityLeaderboardState.onlineReady=false;
+    ratCityLeaderboardState.lastError='NO_ONLINE_API_URL';
+    renderRatCityLeaderboard();
+    return false;
   }
-  ratCityLeaderboardState.lastError=lastError||'all online leaderboard URLs failed';
-  ratCityLeaderboardState.onlineReady=false;
-  console.warn('[rat-city] online leaderboard write failed; score kept in localStorage fallback:',ratCityLeaderboardState.lastError);
-  console.warn('[rat-city] run await ratCityLeaderboardDebug() in DevTools to see exact GET/CORS/404/500 status for every candidate URL.');
-  renderRatCityLeaderboard();
-  return false;
+  try{
+    // text/plain avoids a CORS preflight. Cloudflare Workers request.json()
+    // can still parse the JSON string body, and this prevents OPTIONS handling
+    // bugs from making cross-device leaderboard saves disappear.
+    const res=await fetch(apiUrl,{
+      method:'POST',mode:'cors',credentials:'omit',
+      headers:{'Accept':'application/json','Content-Type':'text/plain;charset=UTF-8'},
+      body:JSON.stringify(entry),
+      cache:'no-store'
+    });
+    if(!res.ok)throw new Error(`POST ${res.status}`);
+    const data=await res.json();
+    const entries=extractRatCityLeaderboardEntriesPayload(data);
+    if(Array.isArray(entries)){
+      setRatCityLeaderboard(entries);
+      saveRatCityLeaderboard();
+    }else{
+      await refreshRatCityOnlineLeaderboard({force:true});
+    }
+    ratCityLeaderboardState.onlineReady=true;
+    ratCityLeaderboardState.lastError='';
+    ratCityLeaderboardState.activeUrl=apiUrl;
+    renderRatCityLeaderboard();
+    return true;
+  }catch(err){
+    ratCityLeaderboardState.lastError=err?.message||String(err);
+    ratCityLeaderboardState.onlineReady=false;
+    console.warn('[rat-city] ONLINE leaderboard write failed; local fallback only:',ratCityLeaderboardState.lastError,'url=',apiUrl);
+    renderRatCityLeaderboard();
+    return false;
+  }
 }
 function setRatCityLeaderboardOnlineStatus(ok,error=''){
   ratCityLeaderboardState.onlineReady=!!ok;
   ratCityLeaderboardState.lastError=error||'';
   renderRatCityLeaderboard();
 }
-async function probeRatCityLeaderboardApiUrl(apiUrl,method='GET',sampleEntry=null){
-  const url=normaliseRatCityLeaderboardApiUrl(apiUrl);
-  if(!url) return {url,ok:false,error:'EMPTY_URL'};
-  const started=performance.now();
-  try{
-    const options=method==='POST'
-      ? {method:'POST',headers:{'Accept':'application/json','Content-Type':'application/json'},body:JSON.stringify(sampleEntry||{name:'DEBUG',score:1,chaos:1,rats:1}),cache:'no-store'}
-      : {method:'GET',headers:{'Accept':'application/json'},cache:'no-store'};
-    const res=await fetch(url,options);
-    const raw=await res.text();
-    let json=null;
-    try{json=raw?JSON.parse(raw):null;}catch(_){}
-    const entries=extractRatCityLeaderboardEntriesPayload(json);
-    return {
-      url,method,ok:res.ok,status:res.status,
-      elapsedMs:Math.round(performance.now()-started),
-      contentType:res.headers.get('content-type')||'',
-      payloadShape:Array.isArray(entries)?'leaderboard-array':(json&&typeof json==='object'?Object.keys(json).join(','):'non-json'),
-      bodyPreview:String(raw||'').slice(0,220)
-    };
-  }catch(err){
-    return {
-      url,method,ok:false,status:0,
-      elapsedMs:Math.round(performance.now()-started),
-      error:err?.message||String(err)
-    };
-  }
-}
-window.setRatCityLeaderboardApiUrl=function(){
-  console.warn('[rat-city] manual leaderboard API override is disabled in v19. The game always uses the bundled Cloudflare Worker endpoint:',RAT_CITY_LEADERBOARD_API_URL);
-  try{localStorage.removeItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY);}catch(_){}
-  refreshRatCityOnlineLeaderboard({force:true});
-  return RAT_CITY_LEADERBOARD_API_URL;
-};
-window.clearRatCityLeaderboardApiUrl=function(){
-  try{localStorage.removeItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY);}catch(_){}
-  refreshRatCityOnlineLeaderboard({force:true});
-};
-window.ratCityLeaderboardDebug=async function(){
-  const candidates=getRatCityLeaderboardApiUrlCandidates();
-  const sample={
-    name:'DEBUG',
-    score:getRatCityChaosValue(),
-    chaos:getRatCityChaosValue(),
-    rats:getRatCityRatValue()
-  };
-  const results=[];
-  for(const url of candidates){
-    results.push(await probeRatCityLeaderboardApiUrl(url,'GET'));
-  }
-  console.table(results);
-  console.info('[rat-city] configured default =',RAT_CITY_LEADERBOARD_API_URL);
-  console.info('[rat-city] stale override ignored =',(()=>{try{return localStorage.getItem(RAT_CITY_LEADERBOARD_API_OVERRIDE_KEY)||'';}catch(_){return ''}})());
-  console.info('[rat-city] sample POST payload =',sample);
-  console.info('[rat-city] if GET status is 404, the front-end URL/path is wrong; if status is 0 or Failed to fetch, CORS/worker-domain is blocking; if 500, Worker/D1 failed server-side.');
-  return results;
-};
-
 function makeProgressBar3D(width=1.12,height=0.18){
   const root=new THREE.Group();
   const bg=new THREE.Mesh(
@@ -14119,14 +14018,14 @@ function spawnBuildingFacadeFire(host,side,x,z){
   const smoke=[];
   const smokeTex=FX_TEX.smoke||FX_TEX.magentaSmoke||FX_TEX.fire;
   const smokePalette=[
-    '#ff2fd3','#ff7a2f','#ffe45a','#7cff6b','#55d9ff',
-    '#8d6bff','#ffffff','#ff5a76','#39ffcf','#b8ff4a'
+    '#111111','#1d160d','#35210b','#5a2508','#8b2309',
+    '#c54511','#f06a18','#ff9b1f','#ffd04a','#ffe26b'
   ];
-  for(let i=0;i<34;i++){
+  for(let i=0;i<42;i++){
     const smokeColor=pick(smokePalette);
-    const xScale=rand(0.48,2.85);
-    const yScale=rand(0.60,3.45);
-    const baseSize=rand(0.40,1.58);
+    const xScale=rand(0.28,0.92);
+    const yScale=rand(2.25,6.20);
+    const baseSize=rand(0.34,1.18);
     const sprite=new THREE.Sprite(new THREE.SpriteMaterial({
       map:smokeTex,transparent:true,depthWrite:false,fog:false,depthTest:false,
       blending:THREE.NormalBlending,color:smokeColor,opacity:rand(0.22,0.46)
@@ -14134,20 +14033,20 @@ function spawnBuildingFacadeFire(host,side,x,z){
     sprite.renderOrder=42;
     sprite.userData={
       baseX:rand(-scorchW*0.60,scorchW*0.60),
-      baseY:rand(-scorchH*0.04,scorchH*0.64),
+      baseY:rand(scorchH*0.08,scorchH*0.72),
       baseZ:side*0.145,
       phase:Math.random()*Math.PI*2,
       offset:rand(0,4.4),
       cycle:rand(2.25,5.10),
       size:baseSize,
-      sway:rand(0.10,0.80),
-      drift:rand(0.04,0.42),
-      spin:rand(-0.82,0.82),
+      sway:rand(0.05,0.42),
+      drift:rand(0.04,0.28),
+      spin:rand(-0.24,0.24),
       xScale,
       yScale,
-      riseHeight:rand(1.15,6.80),
-      opacityBase:rand(0.20,0.42),
-      opacityPulse:rand(0.04,0.18)
+      riseHeight:rand(2.80,8.80),
+      opacityBase:rand(0.18,0.38),
+      opacityPulse:rand(0.03,0.12)
     };
     sprite.position.set(sprite.userData.baseX,sprite.userData.baseY,sprite.userData.baseZ);
     sprite.scale.set(baseSize*xScale,baseSize*yScale,1);
