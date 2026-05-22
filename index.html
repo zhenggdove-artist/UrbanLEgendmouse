@@ -8769,6 +8769,10 @@ function ensureBrothFX(prop){
   prop.brothFX={group,blobs,active:false,progress:0,angle:0,intensity:1,origin:new THREE.Vector3()};
   return prop.brothFX;
 }
+function getPropGroundFXY(prop){
+  if(prop?.kind==='soup-pot' || prop?.kind==='stall' || prop?.kind==='falling-sign') return 0.035;
+  return Math.max(0.035,Math.min(prop?.root?.position?.y??0,0.12));
+}
 function activateBrothFX(prop,angle,intensity=1){
   const fx=ensureBrothFX(prop);
   activeProps.add(prop);
@@ -8777,6 +8781,9 @@ function activateBrothFX(prop,angle,intensity=1){
   fx.angle=angle;
   fx.intensity=intensity;
   fx.origin.copy(prop.root.position);
+  // Soup pots can sit on top of stalls before being kicked. The spill is a
+  // ground effect, so do not inherit the pot/table height or the broth floats.
+  fx.origin.y=getPropGroundFXY(prop);
   fx.group.visible=true;
 }
 function ensureFireFX(prop){
@@ -8839,6 +8846,9 @@ function clearPropFX(prop){
   }
 }
 function tickPropFX(prop,dt){
+  if(prop.spillMesh?.visible){
+    prop.spillMesh.position.y=getPropGroundFXY(prop)-(prop.root?.position?.y??0);
+  }
   if(prop.brothFX?.active){
     const fx=prop.brothFX;
     fx.progress=Math.min(1,fx.progress+dt*0.85);
@@ -13669,6 +13679,43 @@ function chooseHostAttackAction(host,requested='kick'){
     ? (actions.punchcombo?'punchcombo':'punch')
     : (actions.kick?'kick':null);
 }
+function spawnFallingBuildingSign(host){
+  if(!host?.root) return null;
+  if(Number.isFinite(host._lastBuildingSignDropAt) && gameTime-host._lastBuildingSignDropAt<0.65) return null;
+  const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
+  const origin=host.root.position;
+  const side=fz>=0?1:-1;
+  const facingSide=Math.abs(fz)>0.34 && Math.sign(fz)===side;
+  const frontZ=origin.z+fz*2.4;
+  if(!facingSide || Math.abs(frontZ)<4.8) return null;
+  const x=origin.x+fx*1.8+rand(-0.45,0.45);
+  const z=clamp(side*6.15,ALLEY_Z_MIN+0.8,ALLEY_Z_MAX-0.8);
+  if(pointInsideTempleZone(x,z,2.2)) return null;
+  const tex=pick([TEX.signRed,TEX.signBlue,TEX.signYellow,TEX.signGreen,TEX.signPink,TEX.signPurple,TEX.signWhite]);
+  const root=new THREE.Group();
+  root.position.set(x,3.45,z);
+  root.rotation.y=side>0?Math.PI:0;
+  const signMesh=new THREE.Mesh(
+    new THREE.BoxGeometry(rand(1.05,1.55),0.42,0.10),
+    new THREE.MeshBasicMaterial({map:tex||null,color:tex?0xffffff:'#d43a3a'})
+  );
+  root.add(signMesh);
+  const bracketMat=new THREE.MeshBasicMaterial({color:'#211817'});
+  for(const sx of [-0.38,0.38]){
+    const bracket=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.08,0.64),bracketMat);
+    bracket.position.set(sx,0,side*-0.28);
+    root.add(bracket);
+  }
+  const prop=registerProp(root,0.72,1.55);
+  prop.kind='falling-sign';
+  prop.tipOffset=0.72;
+  prop.spawnRatsOnTip=1;
+  prop.groundRestY=0.08;
+  host._lastBuildingSignDropAt=gameTime;
+  triggerPropTip(prop,host.yaw,1.0,'host');
+  spawnComicImpact(root.position,'SIGN!','#fff2a6',{yOffset:0.35,scaleX:1.45,scaleY:0.72});
+  return prop;
+}
 function getHostAttackTimeScale(actionName){
   if(actionName==='punch') return HOST_PUNCH_TIME_SCALE;
   if(actionName==='punchcombo') return HOST_PUNCHCOMBO_TIME_SCALE;
@@ -13771,7 +13818,11 @@ function doHostAttack(requested='kick',opts={}){
     }
   }
   if(bestProp){
-    triggerPropTip(bestProp,host.yaw,1.2,'host');
+    if(bestProp.tipTriggered){
+      playPropImpactFeedback(bestProp,host.yaw,{text:'CLANG!',volume:0.62});
+    }else{
+      triggerPropTip(bestProp,host.yaw,1.2,'host');
+    }
     struck=true;
   }
   for(const h of game.humans){
@@ -13786,6 +13837,10 @@ function doHostAttack(requested='kick',opts={}){
     if(Math.hypot(hitDx,hitDz)>0.96)continue;
     knockHumanDown(h,host.yaw);
     struck=true;
+  }
+  if(!struck){
+    const droppedSign=spawnFallingBuildingSign(host);
+    if(droppedSign) struck=true;
   }
   if(struck) showHint(actionName==='kick'?'Kick landed.':(actionName==='punchcombo'?'Combo landed.':'Punch landed.'),0.28);
 }
@@ -14877,8 +14932,21 @@ function addRatSwarm(count,origin=player?.root?.position||new THREE.Vector3()){
 function getPropBreakSFXKey(p){
   if(!p) return 'glassBreak';
   if(p.kind==='bin') return 'binFall';
-  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole') return 'vehicleBreak';
+  if(p.kind==='stall' || p.kind==='soup-pot' || p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter' || p.kind==='vending-machine' || p.kind==='power-pole' || p.kind==='falling-sign') return 'vehicleBreak';
   return 'glassBreak';
+}
+function getPropTipRestY(p){
+  if(!p) return 0.08;
+  if(Number.isFinite(p.groundRestY)) return Math.max(0.035,p.groundRestY);
+  if(p.kind==='soup-pot' || p.kind==='falling-sign') return 0.08;
+  return Math.max(0.08,(p.root?.userData?.baseY??p.basePosition?.y??0)*0.45);
+}
+function playPropImpactFeedback(p,angle=0,{text=null,volume=0.84}={}){
+  if(!p?.root) return;
+  spawnHitFlash(p.root.position);
+  playSFX(getPropBreakSFXKey(p),{volume,cooldown:0.08,source:p});
+  spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
+  spawnComicImpact(p.root.position,text||(p.kind==='stall'?'WHAM!':(p.kind==='falling-sign'?'CRASH!':'POW!')),p.kind==='stall'?'#fff2a6':'#fff7c2');
 }
 function findRingTwinProp(prop){
   if(!RESIDENT_RING_MODE || !prop?.root || !prop.basePosition || RING_SEAM_LENGTH<=0) return null;
@@ -14967,10 +15035,7 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     }
   }
   if(!silentSync){
-    spawnHitFlash(p.root.position);
-    playSFX(getPropBreakSFXKey(p),{volume:0.84,cooldown:0.08,source:p});
-    spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
-    spawnComicImpact(p.root.position,p.kind==='stall'?'WHAM!':'POW!',p.kind==='stall'?'#fff2a6':'#fff7c2');
+    playPropImpactFeedback(p,angle);
   }
   const fallDirX=Math.sin(angle);
   const fallDirZ=Math.cos(angle);
@@ -14983,7 +15048,7 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     startRot:p.root.rotation.clone(),
     endPos:new THREE.Vector3(
       p.root.position.x+fallDirX*fallDistance,
-      Math.max(0.08,p.root.userData.baseY*0.45),
+      getPropTipRestY(p),
       p.root.position.z+fallDirZ*fallDistance
     ),
     endRot:new THREE.Euler(
@@ -14999,6 +15064,7 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     p.spillMesh.visible=true;
     p.spillMesh.scale.set(1.9,1.3,1.9);
     p.spillMesh.position.x=Math.cos(angle)*0.48;
+    p.spillMesh.position.y=-Math.max(0,p.root.position.y-getPropGroundFXY(p));
     p.spillMesh.position.z=Math.sin(angle)*0.48;
   }
   if(p.kind==='soup-pot') activateBrothFX(p,angle,1.05);
@@ -17046,6 +17112,9 @@ window.__debugHooks={
   idolClearBlockingProp,
   findRingTwinProp,
   syncRingTwinPropTip,
+  spawnFallingBuildingSign,
+  getPropGroundFXY,
+  getPropTipRestY,
   syncRingSeamBloodMirrors,
   shiftEscortRatAcrossIdolWarp,
   ensureRingMirrorForEntity,
