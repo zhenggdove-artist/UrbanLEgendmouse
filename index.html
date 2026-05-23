@@ -143,7 +143,7 @@
   #rat-city-panel p{margin:0 0 18px;font:12px/1.55 "Courier New",monospace;color:#fff0c6;text-transform:uppercase}
   .rat-city-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;position:static}
   #rat-city-name{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,244,192,0.28);
-    background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em}
+    background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em;touch-action:manipulation}
   #rat-city-save,#rat-city-close,#rat-city-min{appearance:none;border:none;border-radius:10px;padding:10px 12px;cursor:pointer;
     font:700 11px/1 var(--ui-display-font);letter-spacing:0.14em;text-transform:uppercase}
   #rat-city-save{background:#ffd166;color:#2a1320;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -9099,6 +9099,19 @@ function sanitizeRatCityName(value){
     .trim();
   return [...(text||'ANON RAT')].slice(0,18).join('')||'ANON RAT';
 }
+function getRatCityPlaceholderText(){
+  return String(ratCityName?.getAttribute('placeholder')||'Rat King Name:').trim();
+}
+function getRatCityCandidateName(value){
+  const raw=String(value??'').trim();
+  const placeholder=getRatCityPlaceholderText();
+  if(!raw)return '';
+  if(raw.localeCompare(placeholder,undefined,{sensitivity:'accent'})===0)return '';
+  const sanitized=sanitizeRatCityName(raw);
+  if(!sanitized)return '';
+  if(sanitized.localeCompare(sanitizeRatCityName(placeholder),undefined,{sensitivity:'accent'})===0)return '';
+  return sanitized;
+}
 function normalizeRatCityEntry(entry){
   if(!entry||typeof entry!=='object')return null;
   const rawChaos=Number(entry.chaos ?? entry.chaosScore ?? entry.score ?? 0);
@@ -13953,6 +13966,14 @@ function renderRatCityLeaderboard(){
     });
     ratCityPager.append(pageLabel,next);
   }
+  updateRatCitySaveState();
+}
+function updateRatCitySaveState(){
+  if(!ratCitySave||!ratCityName)return;
+  const hasValidName=!!getRatCityCandidateName(ratCityName.value);
+  const disabled=ratCityScoreSavedThisRun||!hasValidName;
+  ratCitySave.disabled=disabled;
+  ratCitySave.setAttribute('aria-disabled',disabled?'true':'false');
 }
 function setRatCityMode(enabled){
   game.ratCityMode=enabled;
@@ -13967,6 +13988,7 @@ function setRatCityMode(enabled){
     ratCityZoom=26;
     ratCityAutoRotate=true;
     renderRatCityLeaderboard();
+    updateRatCitySaveState();
     refreshRatCityOnlineLeaderboard({force:true});
   }
 }
@@ -13975,10 +13997,16 @@ function submitRatCityScore(){
     renderRatCityLeaderboard();
     return;
   }
+  const playerName=getRatCityCandidateName(ratCityName.value);
+  if(!playerName){
+    updateRatCitySaveState();
+    ratCityName.focus?.({preventScroll:true});
+    return;
+  }
   const hudChaos=getRatCityChaosValue();
   const hudRats=getRatCityRatValue();
   const entry=normalizeRatCityEntry({
-    name:sanitizeRatCityName(ratCityName.value||'ANON RAT'),
+    name:playerName,
     chaos:hudChaos,
     score:hudChaos,
     rats:hudRats,
@@ -14033,6 +14061,17 @@ ratCityName.addEventListener('keydown',e=>{
     submitRatCityScore();
   }
 });
+ratCityName.addEventListener('input',updateRatCitySaveState);
+ratCityName.addEventListener('change',updateRatCitySaveState);
+ratCityName.addEventListener('focus',updateRatCitySaveState);
+ratCityName.addEventListener('click',e=>{
+  e.stopPropagation();
+  ratCityName.focus?.({preventScroll:true});
+});
+ratCityName.addEventListener('touchend',e=>{
+  e.stopPropagation();
+  ratCityName.focus?.({preventScroll:true});
+},{passive:true});
 function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
   let best=null,bestD=maxDist;
