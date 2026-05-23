@@ -494,6 +494,9 @@
   .ui-layout-guide.is-snap{background:rgba(124,248,255,0.90);box-shadow:0 0 12px rgba(124,248,255,0.45)}
   .ui-layout-guide.guide-v{top:0;bottom:0;width:1px}
   .ui-layout-guide.guide-h{left:0;right:0;height:1px}
+  .ui-layout-marquee{position:fixed;display:none;pointer-events:none;z-index:2100003;
+    border:1px solid rgba(124,248,255,0.95);background:rgba(124,248,255,0.14);
+    box-shadow:0 0 18px rgba(124,248,255,0.28),0 0 0 1px rgba(0,0,0,0.28) inset}
   .ui-layout-toolbar{position:fixed;top:16px;right:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
     max-width:min(92vw,760px);padding:10px 12px;border-radius:16px;border:1px solid rgba(255,245,208,0.45);
     background:rgba(17,11,28,0.92);box-shadow:0 18px 38px rgba(0,0,0,0.38);transition:max-width .15s ease;
@@ -10779,7 +10782,7 @@ function isLiveMobileDevice(){
 }
 const uiLayoutState={
   active:false,mode:null,config:null,selectedId:null,selectedIds:[],editor:null,
-  overlays:new Map(),drag:null,toastTimer:null,clipboard:null,forcedMode:null,
+  overlays:new Map(),drag:null,marquee:null,toastTimer:null,clipboard:null,forcedMode:null,
   adminZoom:1,listDrag:null,panelDrag:null,objectPanelCollapsed:false,
   stagePan:{x:0,y:0},stagePanDrag:null,
   objectPanelScrollTop:0,panelRect:{left:16,top:16,width:340,height:520},
@@ -11896,13 +11899,57 @@ function syncUILayoutSelectionStyles(){
     row.classList.toggle('is-selected',uiLayoutState.selectedIds.includes(row.dataset.targetId));
   });
 }
+function normalizeUILayoutScreenRect(a,b){
+  const left=Math.min(a.x,b.x);
+  const top=Math.min(a.y,b.y);
+  const right=Math.max(a.x,b.x);
+  const bottom=Math.max(a.y,b.y);
+  return {left,top,width:right-left,height:bottom-top,right,bottom};
+}
+function uiLayoutRectsIntersect(a,b){
+  return a.left < b.left+b.width && a.left+a.width > b.left && a.top < b.top+b.height && a.top+a.height > b.top;
+}
+function getUILayoutUnlockedSelectableDefs(){
+  return getUILayoutDefs().filter(def=>{
+    if(!defBelongsToScene(def) || isUILayoutPanelOnlyDef(def)) return false;
+    const metrics=ensureUILayoutMetrics(def);
+    if(!metrics || metrics.hidden || metrics.locked) return false;
+    if(def.isSkinArt && !metrics.src) return false;
+    return true;
+  });
+}
+function getUILayoutMarqueeSelectedIds(rect){
+  return getUILayoutUnlockedSelectableDefs()
+    .filter(def=>uiLayoutRectsIntersect(rect,measureUILayoutRect(def,ensureUILayoutMetrics(def))))
+    .map(def=>def.id);
+}
+function setUILayoutSelectionIds(ids){
+  const clean=[];
+  const seen=new Set();
+  for(const id of ids||[]){
+    if(seen.has(id)) continue;
+    const def=getUILayoutDef(id);
+    const metrics=def?ensureUILayoutMetrics(def):null;
+    if(!def || !metrics || metrics.hidden || metrics.locked || !defBelongsToScene(def)) continue;
+    seen.add(id);
+    clean.push(id);
+  }
+  uiLayoutState.selectedIds=clean;
+  uiLayoutState.selectedId=clean[clean.length-1]||null;
+  refreshLoadingTextPanel();
+  syncUILayoutSelectionStyles();
+  refreshUILayoutGuides();
+  syncUILayoutColorInput();
+  syncUILayoutButtonStyleInput();
+  syncUILayoutTextInput();
+}
 function refreshUILayoutOverlayBox(def){
   if(!uiLayoutState.active||!uiLayoutState.editor||!def) return;
   const box=ensureUILayoutOverlayBox(uiLayoutState.editor,def);
   const metrics=ensureUILayoutMetrics(def);
   if(!box||!metrics) return;
   const isSelected=uiLayoutState.selectedIds.includes(def.id);
-  const isActive=uiLayoutState.drag?.id===def.id;
+  const isActive=uiLayoutState.drag?.ids?.includes(def.id) || uiLayoutState.drag?.id===def.id;
   const panelOnly=isUILayoutPanelOnlyDef(def);
   const hideEmptyArt=def.isSkinArt && !metrics.src && !isSelected && !isActive;
   const wrongScene=!defBelongsToScene(def);
@@ -12012,7 +12059,7 @@ function refreshUILayoutEditor(){
     const metrics=ensureUILayoutMetrics(def);
     if(!box||!metrics) continue;
     const isSelected=uiLayoutState.selectedIds.includes(def.id);
-    const isActive=uiLayoutState.drag?.id===def.id;
+    const isActive=uiLayoutState.drag?.ids?.includes(def.id) || uiLayoutState.drag?.id===def.id;
     const panelOnly=isUILayoutPanelOnlyDef(def);
     const hideEmptyArt=def.isSkinArt && !metrics.src && !isSelected && !isActive;
     const wrongScene=!defBelongsToScene(def);
@@ -12139,19 +12186,129 @@ function beginUILayoutPointerDrag(defId,e,{mode='move',corner='se'}={}){
     showUILayoutToast(`${def.label} is locked`);
     return true;
   }
+  const keepExistingGroup=!e.shiftKey && uiLayoutState.selectedIds.length>1 && uiLayoutState.selectedIds.includes(def.id);
   if(e.shiftKey) setUILayoutSelection(def.id,{additive:true});
-  else setUILayoutSelection(def.id);
+  else if(!keepExistingGroup) setUILayoutSelection(def.id);
+  const ids=(uiLayoutState.selectedIds.length?uiLayoutState.selectedIds:[def.id]).filter(id=>{
+    const itemDef=getUILayoutDef(id);
+    const itemMetrics=itemDef?ensureUILayoutMetrics(itemDef):null;
+    return !!itemDef && !!itemMetrics && !itemMetrics.hidden && !itemMetrics.locked && defBelongsToScene(itemDef);
+  });
+  uiLayoutState.selectedIds=ids;
+  uiLayoutState.selectedId=def.id;
+  syncUILayoutSelectionStyles();
+  const startRects={};
+  for(const id of ids){
+    const itemDef=getUILayoutDef(id);
+    startRects[id]=getUILayoutBoxRect(itemDef,ensureUILayoutMetrics(itemDef));
+  }
+  const groupRect=getUILayoutGroupRect(startRects);
   pushUILayoutHistory(mode==='resize'?'resize':'move');
   uiLayoutState.drag={
     id:def.id,
+    ids,
     mode,
     corner,
     startX:e.clientX,
     startY:e.clientY,
     startRect:getUILayoutBoxRect(def,metrics),
+    startRects,
+    groupRect,
     pointerId:e.pointerId
   };
-  uiLayoutState.overlays.get(def.id)?.classList.add('active');
+  for(const id of ids) uiLayoutState.overlays.get(id)?.classList.add('active');
+  return true;
+}
+function getUILayoutGroupRect(rects){
+  const values=Object.values(rects||{}).filter(Boolean);
+  if(!values.length) return null;
+  const left=Math.min(...values.map(r=>r.left));
+  const top=Math.min(...values.map(r=>r.top));
+  const right=Math.max(...values.map(r=>r.left+r.width));
+  const bottom=Math.max(...values.map(r=>r.top+r.height));
+  return {left,top,width:right-left,height:bottom-top};
+}
+function resizeUILayoutDragRect(startRect,dx,dy,corner,minBox={width:4,height:4},keepAspect=false){
+  const next={...startRect};
+  const isCorner=corner.length===2;
+  if(keepAspect && isCorner){
+    const aspect=startRect.width/Math.max(1,startRect.height);
+    let width=startRect.width;
+    let height=startRect.height;
+    if(corner.includes('e')) width=Math.max(minBox.width,startRect.width+dx);
+    if(corner.includes('w')) width=Math.max(minBox.width,startRect.width-dx);
+    if(corner.includes('s')) height=Math.max(minBox.height,startRect.height+dy);
+    if(corner.includes('n')) height=Math.max(minBox.height,startRect.height-dy);
+    const widthScale=width/Math.max(1,startRect.width);
+    const heightScale=height/Math.max(1,startRect.height);
+    const scaleFactor=Math.max(widthScale,heightScale);
+    width=Math.max(minBox.width,startRect.width*scaleFactor);
+    height=Math.max(minBox.height,width/aspect);
+    if(corner.includes('w')) next.left=startRect.left+(startRect.width-width);
+    if(corner.includes('n')) next.top=startRect.top+(startRect.height-height);
+    next.width=width;
+    next.height=height;
+    return next;
+  }
+  if(corner.includes('e')) next.width=Math.max(minBox.width,startRect.width+dx);
+  if(corner.includes('s')) next.height=Math.max(minBox.height,startRect.height+dy);
+  if(corner.includes('w')){
+    next.left=startRect.left+dx;
+    next.width=Math.max(minBox.width,startRect.width-dx);
+  }
+  if(corner.includes('n')){
+    next.top=startRect.top+dy;
+    next.height=Math.max(minBox.height,startRect.height-dy);
+  }
+  return next;
+}
+function beginUILayoutMarquee(e){
+  if(!uiLayoutState.active || e.button!==0) return false;
+  const box=uiLayoutState.editor?.querySelector('.ui-layout-marquee');
+  if(!box) return false;
+  uiLayoutState.marquee={
+    pointerId:e.pointerId,
+    start:{x:e.clientX,y:e.clientY},
+    current:{x:e.clientX,y:e.clientY},
+    moved:false,
+    box
+  };
+  box.style.display='none';
+  e.preventDefault();
+  e.stopPropagation();
+  return true;
+}
+function updateUILayoutMarquee(e){
+  const marquee=uiLayoutState.marquee;
+  if(!marquee || marquee.pointerId!==e.pointerId) return false;
+  marquee.current={x:e.clientX,y:e.clientY};
+  const rect=normalizeUILayoutScreenRect(marquee.start,marquee.current);
+  marquee.moved=marquee.moved || rect.width>4 || rect.height>4;
+  if(marquee.moved){
+    const box=marquee.box;
+    box.style.display='block';
+    box.style.left=`${rect.left}px`;
+    box.style.top=`${rect.top}px`;
+    box.style.width=`${rect.width}px`;
+    box.style.height=`${rect.height}px`;
+  }
+  e.preventDefault();
+  return true;
+}
+function finishUILayoutMarquee(e){
+  const marquee=uiLayoutState.marquee;
+  if(!marquee || marquee.pointerId!==e.pointerId) return false;
+  const rect=normalizeUILayoutScreenRect(marquee.start,marquee.current);
+  marquee.box.style.display='none';
+  uiLayoutState.marquee=null;
+  if(marquee.moved){
+    const ids=getUILayoutMarqueeSelectedIds(rect);
+    setUILayoutSelectionIds(ids);
+    showUILayoutToast(ids.length?`Selected ${ids.length} unlocked item(s)`:'No unlocked items in box');
+  }else if(uiLayoutState.selectedId || uiLayoutState.selectedIds.length){
+    setUILayoutSelection(null);
+  }
+  e.preventDefault();
   return true;
 }
 function handleUILayoutDirectTargetPointerDown(e){
@@ -12181,6 +12338,7 @@ function handleUILayoutDirectTargetPointerDown(e){
   }
   if(!def || isUILayoutPanelOnlyDef(def)){
     if(beginAdminStagePan(e)) return;
+    if(beginUILayoutMarquee(e)) return;
     // Clicked on the empty admin-stage / game canvas / black workspace
     // with NOTHING selectable under the cursor — interpret as a
     // deselect gesture so the user can clear the current selection.
@@ -12363,56 +12521,74 @@ function handleUILayoutPointerMove(e){
     applyUILayoutObjectPanelRect();
     return;
   }
+  if(updateUILayoutMarquee(e)) return;
   const drag=uiLayoutState.drag;
   if(!drag||drag.pointerId!==e.pointerId) return;
   const def=getUILayoutDef(drag.id);
   if(!def) return;
   const dx=e.clientX-drag.startX;
   const dy=e.clientY-drag.startY;
-  let next={...drag.startRect};
-  const minBox=getUILayoutMinBoxSize(def);
-  if(drag.mode==='move'){
-    next.left+=dx;
-    next.top+=dy;
-  }else{
-    const isCorner=drag.corner.length===2;
-    const keepAspect=isCorner && def.isSkinArt;
-    if(keepAspect){
-      const aspect=drag.startRect.width/Math.max(1,drag.startRect.height);
-      let width=drag.startRect.width;
-      let height=drag.startRect.height;
-      if(drag.corner.includes('e')) width=Math.max(minBox.width,drag.startRect.width+dx);
-      if(drag.corner.includes('w')) width=Math.max(minBox.width,drag.startRect.width-dx);
-      if(drag.corner.includes('s')) height=Math.max(minBox.height,drag.startRect.height+dy);
-      if(drag.corner.includes('n')) height=Math.max(minBox.height,drag.startRect.height-dy);
-      const widthScale=width/Math.max(1,drag.startRect.width);
-      const heightScale=height/Math.max(1,drag.startRect.height);
-      const scaleFactor=Math.max(widthScale,heightScale);
-      width=Math.max(minBox.width,drag.startRect.width*scaleFactor);
-      height=Math.max(minBox.height,width/aspect);
-      if(drag.corner.includes('w')) next.left=drag.startRect.left+(drag.startRect.width-width);
-      if(drag.corner.includes('n')) next.top=drag.startRect.top+(drag.startRect.height-height);
-      next.width=width;
-      next.height=height;
-    }else{
-      if(drag.corner.includes('e')) next.width=Math.max(minBox.width,drag.startRect.width+dx);
-      if(drag.corner.includes('s')) next.height=Math.max(minBox.height,drag.startRect.height+dy);
-      if(drag.corner.includes('w')){
-        next.left=drag.startRect.left+dx;
-        next.width=Math.max(minBox.width,drag.startRect.width-dx);
+  const ids=(drag.ids&&drag.ids.length?drag.ids:[drag.id]).filter(id=>drag.startRects?.[id]);
+  if(ids.length>1){
+    if(drag.mode==='move'){
+      let moveDx=dx,moveDy=dy;
+      if(e.ctrlKey||e.metaKey){
+        const snapped=snapUILayoutRect({...drag.startRect,left:drag.startRect.left+dx,top:drag.startRect.top+dy},def,{snap:true});
+        moveDx=snapped.left-drag.startRect.left;
+        moveDy=snapped.top-drag.startRect.top;
       }
-      if(drag.corner.includes('n')){
-        next.top=drag.startRect.top+dy;
-        next.height=Math.max(minBox.height,drag.startRect.height-dy);
+      for(const id of ids){
+        const itemDef=getUILayoutDef(id);
+        if(!itemDef) continue;
+        const metrics={...ensureUILayoutMetrics(itemDef)};
+        if(metrics.locked) continue;
+        const base=drag.startRects[id];
+        const rect=snapUILayoutRect({...base,left:base.left+moveDx,top:base.top+moveDy},itemDef,{snap:false});
+        buildUILayoutMetricsFromRect(itemDef,metrics,rect);
+        setUILayoutMetrics(itemDef,metrics);
+        applyUILayoutMetrics(itemDef,metrics);
+        refreshUILayoutOverlayBox(itemDef);
+      }
+    }else if(drag.groupRect){
+      const nextGroup=resizeUILayoutDragRect(drag.groupRect,dx,dy,drag.corner,{width:8,height:8},false);
+      const scaleX=nextGroup.width/Math.max(1,drag.groupRect.width);
+      const scaleY=nextGroup.height/Math.max(1,drag.groupRect.height);
+      for(const id of ids){
+        const itemDef=getUILayoutDef(id);
+        if(!itemDef) continue;
+        const metrics={...ensureUILayoutMetrics(itemDef)};
+        if(metrics.locked) continue;
+        const base=drag.startRects[id];
+        const rect=snapUILayoutRect({
+          left:nextGroup.left+(base.left-drag.groupRect.left)*scaleX,
+          top:nextGroup.top+(base.top-drag.groupRect.top)*scaleY,
+          width:base.width*scaleX,
+          height:base.height*scaleY
+        },itemDef,{snap:false});
+        buildUILayoutMetricsFromRect(itemDef,metrics,rect);
+        setUILayoutMetrics(itemDef,metrics);
+        applyUILayoutMetrics(itemDef,metrics);
+        refreshUILayoutOverlayBox(itemDef);
       }
     }
+    saveUILayoutConfig();
+  }else{
+    const minBox=getUILayoutMinBoxSize(def);
+    let next={...drag.startRect};
+    if(drag.mode==='move'){
+      next.left+=dx;
+      next.top+=dy;
+    }else{
+      next=resizeUILayoutDragRect(drag.startRect,dx,dy,drag.corner,minBox,drag.corner.length===2 && def.isSkinArt);
+    }
+    next=snapUILayoutRect(next,def,{snap:e.ctrlKey||e.metaKey});
+    updateUILayoutMetricsFromRect(def,next);
+    refreshUILayoutOverlayBox(def);
   }
-  next=snapUILayoutRect(next,def,{snap:e.ctrlKey||e.metaKey});
-  updateUILayoutMetricsFromRect(def,next);
-  refreshUILayoutOverlayBox(def);
   refreshUILayoutGuides();
 }
 function handleUILayoutPointerUp(e){
+  if(finishUILayoutMarquee(e)) return;
   if(uiLayoutState.stagePanDrag && uiLayoutState.stagePanDrag.pointerId===e.pointerId){
     uiLayoutState.stagePanDrag=null;
     return;
@@ -12422,7 +12598,9 @@ function handleUILayoutPointerUp(e){
     return;
   }
   if(uiLayoutState.drag && uiLayoutState.drag.pointerId===e.pointerId){
-    uiLayoutState.overlays.get(uiLayoutState.drag.id)?.classList.remove('active');
+    for(const id of uiLayoutState.drag.ids||[uiLayoutState.drag.id]){
+      uiLayoutState.overlays.get(id)?.classList.remove('active');
+    }
     uiLayoutState.drag=null;
   }
 }
@@ -13056,7 +13234,7 @@ function ensureUILayoutOverlayBox(root,def){
 function buildUILayoutEditor(){
   const root=document.createElement('div');
   root.className='ui-layout-editor';
-  root.innerHTML=`<div class="ui-layout-guide guide-v base"></div><div class="ui-layout-guide guide-h base"></div><div class="ui-layout-guide guide-v pair is-pair"></div><div class="ui-layout-guide guide-h pair is-pair"></div>
+  root.innerHTML=`<div class="ui-layout-guide guide-v base"></div><div class="ui-layout-guide guide-h base"></div><div class="ui-layout-guide guide-v pair is-pair"></div><div class="ui-layout-guide guide-h pair is-pair"></div><div class="ui-layout-marquee"></div>
     <input type="file" accept="image/*" data-layout-frame-input hidden>
     <input type="file" accept="image/*" data-layout-art-input hidden>
     <div class="ui-layout-toolbar">
@@ -13080,7 +13258,7 @@ function buildUILayoutEditor(){
       <div class="ui-layout-object-panel-header">
         <div class="ui-layout-object-panel-title">
           <h3>Layout Objects</h3>
-          <p>Desktop / mobile bucket separated. Wheel or +/- zoom mobile preview. Drag is freeform; hold Ctrl/Cmd while dragging to snap. Arrow nudges 1px, Alt+Arrow 0.5px, Shift+Arrow 10px.</p>
+          <p>Desktop / mobile bucket separated. Wheel or +/- zoom mobile preview. Drag empty stage to box-select unlocked objects; Shift-drag pans preview. Drag is freeform; hold Ctrl/Cmd while dragging to snap. Arrow nudges 1px, Alt+Arrow 0.5px, Shift+Arrow 10px.</p>
         </div>
         <div class="ui-layout-object-panel-chrome">
           <button type="button" data-layout-action="collapse">_</button>
@@ -13315,6 +13493,7 @@ function disableUILayoutEditor(){
   uiLayoutState.editor=null;
   uiLayoutState.overlays.clear();
   uiLayoutState.drag=null;
+  uiLayoutState.marquee=null;
   uiLayoutState.selectedIds=[];
   uiLayoutState.forcedMode=null;
   uiLayoutState.adminZoom=1;
