@@ -99,11 +99,13 @@
   #chaos-box .bar,#rats-box .bar{display:none !important}
   #chaos-score,#rat-count{display:block;position:relative;z-index:41;font:700 22px/1 var(--ui-display-font);letter-spacing:0.08em;color:#fff7d6}
   #rat-city-btn{position:fixed;left:50%;top:8.4%;transform:translate(-50%,-50%);z-index:15;
-    appearance:none;border:none;border-radius:999px;padding:10px 22px;cursor:pointer;
+    appearance:none;border:none;border-radius:999px;padding:0;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;text-align:center;overflow:visible;touch-action:manipulation;
     background:transparent;
     color:#3b1420;font:700 18px/1 var(--ui-display-font);letter-spacing:0.28em;
     text-transform:uppercase;box-shadow:none}
   #rat-city-btn .ui-art-label{
+    display:flex;align-items:center;justify-content:center;width:100%;height:100%;text-align:center;pointer-events:none;
     color:#ffffaa;
     white-space:pre-wrap;
     text-shadow:0 0 3px #fff,0 0 8px #fff36a,0 0 18px #7cf8ff,0 0 34px #ff5af7,0 0 54px rgba(124,248,255,0.95);
@@ -143,7 +145,8 @@
   #rat-city-panel p{margin:0 0 18px;font:12px/1.55 "Courier New",monospace;color:#fff0c6;text-transform:uppercase}
   .rat-city-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;position:static}
   #rat-city-name{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,244,192,0.28);
-    background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em;touch-action:manipulation}
+    background:rgba(7,5,12,0.88);color:#fff7d3;font:12px/1 "Courier New",monospace;letter-spacing:0.08em;touch-action:manipulation;
+    pointer-events:auto;-webkit-user-select:text;user-select:text}
   #rat-city-save,#rat-city-close,#rat-city-min{appearance:none;border:none;border-radius:10px;padding:10px 12px;cursor:pointer;
     font:700 11px/1 var(--ui-display-font);letter-spacing:0.14em;text-transform:uppercase}
   #rat-city-save{background:#ffd166;color:#2a1320;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -167,6 +170,8 @@
     white-space:nowrap}
   #rat-city-pager button:disabled{opacity:0.45;cursor:not-allowed}
   #rat-city-save:disabled{opacity:0.52;filter:grayscale(0.35);cursor:not-allowed}
+  #rat-city-title,#rat-city-desc,#rat-city-score,#rat-city-list{pointer-events:none}
+  #rat-city-row,#rat-city-name,#rat-city-save,#rat-city-min,#rat-city-close,#rat-city-pager,#rat-city-pager button{pointer-events:auto}
 
   #intro{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:
@@ -601,7 +606,7 @@
     #mode-badge{display:none !important}
     #host-life-box{left:9%;top:52%;width:52px;height:188px}
     #host-life-box .bar{height:100%}
-    #rat-city-btn{left:16px;top:calc(env(safe-area-inset-top,0px) + 18px);transform:none;padding:10px 18px;font-size:13px;letter-spacing:0.18em;min-width:152px;max-width:none;border-radius:999px;
+    #rat-city-btn{left:16px;top:calc(env(safe-area-inset-top,0px) + 18px);transform:none;padding:0;font-size:13px;letter-spacing:0.18em;min-width:152px;max-width:none;border-radius:999px;
       background:linear-gradient(135deg,rgba(255,240,177,0.95) 0%,rgba(255,198,237,0.92) 48%,rgba(190,235,255,0.90) 100%);
       box-shadow:0 0 0 1px rgba(255,255,255,0.32) inset,0 14px 28px rgba(0,0,0,0.24),0 0 24px rgba(255,206,109,0.28),0 0 30px rgba(140,222,255,0.20)}
     #chaos-box{left:auto;right:16px;top:calc(env(safe-area-inset-top,0px) + 18px);transform:none;min-width:144px}
@@ -672,10 +677,10 @@
   #rat-city-panel.min p,#rat-city-panel.min #rat-city-list,#rat-city-panel.min #rat-city-name,#rat-city-panel.min #rat-city-save{display:revert !important;}
   #rat-city-panel.min #rat-city-list{display:flex !important;}
   #rat-city-panel.min .rat-city-row{display:grid !important;}
-  body.game-won.rat-city-mode #rat-city-btn,
+  body.game-won.rat-city-mode #rat-city-btn{display:flex !important;}
   body.game-won.rat-city-mode #rat-city-panel.show{display:block !important;}
   body.game-won.rat-city-mode #rats-win{display:none !important;}
-  body.admin-stage-active.scene-ending #rat-city-btn,
+  body.admin-stage-active.scene-ending #rat-city-btn{display:flex !important;}
   body.admin-stage-active.scene-ending #rat-city-panel{display:block !important;}
   body.admin-stage-active.scene-ending #rat-city-panel{pointer-events:auto;}
   body.admin-stage-active.scene-ending #rats-win{display:none !important;}
@@ -13362,17 +13367,22 @@ window.addEventListener('resize',()=>{
   }
 });
 
-// Block iOS Safari's pinch-zoom + double-tap-zoom gestures across the
-// whole page. The viewport meta + touch-action:manipulation CSS already
-// stop most cases, but iOS still fires gesturestart/gesturechange and
-// honours quick-successive taps as "zoom"; intercepting them ensures a
-// HUD button tap or rapid taps never zoom the page.
-const blockZoomEvent=(e)=>{ if(e.cancelable) e.preventDefault(); };
+// Keep browser zoom disabled while still allowing editable controls to
+// receive their native touch/caret behavior.
+function isEditableTouchTarget(target){
+  return !!target?.closest?.('input,textarea,select,[contenteditable="true"],[contenteditable=""]');
+}
+const blockZoomEvent=(e)=>{
+  if(isEditableTouchTarget(e.target)) return;
+  if(e.cancelable) e.preventDefault();
+};
 ['gesturestart','gesturechange','gestureend'].forEach(name=>{
   document.addEventListener(name,blockZoomEvent,{passive:false});
 });
 let __lastTouchEnd=0;
 document.addEventListener('touchend',(e)=>{
+  if(isEditableTouchTarget(e.target)) return;
+  if(e.changedTouches && e.changedTouches.length!==1) return;
   const now=performance.now();
   if(now-__lastTouchEnd<320 && e.cancelable){
     e.preventDefault();
@@ -13623,17 +13633,62 @@ window.addEventListener('keyup',e=>{
 let camYaw=Math.PI,camPitch=0.12,camDist=2.2;
 let ratCityPitch=0.58,ratCityZoom=26,ratCityAutoRotate=true;
 let dragging=false,dragPId=null,dx0=0,dy0=0,yaw0=0,pitch0=0;
+const canvasPointers=new Map();
+let pinchState=null;
+function getCanvasPointerPair(){
+  const points=[...canvasPointers.values()];
+  return points.length>=2?[points[0],points[1]]:null;
+}
+function getPointerPairDistance(pair){
+  if(!pair) return 0;
+  return Math.hypot(pair[0].x-pair[1].x,pair[0].y-pair[1].y);
+}
+function beginCanvasPinch(){
+  const distance=getPointerPairDistance(getCanvasPointerPair());
+  if(distance<=0) return;
+  pinchState={
+    distance,
+    camDist,
+    ratCityZoom,
+    ratCityMode:!!game.ratCityMode
+  };
+  dragging=false;
+  dragPId=null;
+}
+function updateCanvasPinchZoom(){
+  if(!pinchState) return;
+  const distance=getPointerPairDistance(getCanvasPointerPair());
+  if(distance<=0) return;
+  const scale=distance/Math.max(1,pinchState.distance);
+  if(game.ratCityMode){
+    ratCityAutoRotate=false;
+    ratCityZoom=clamp(pinchState.ratCityZoom/scale,10,42);
+  }else{
+    camDist=clamp(pinchState.camDist/scale,1.0,6);
+  }
+}
 canvas.addEventListener('pointerdown',e=>{
   if(e.target!==canvas)return;
   unlockSFX('canvas-pointerdown');
   e.preventDefault();
-  canvas.setPointerCapture?.(e.pointerId);
+  try{canvas.setPointerCapture?.(e.pointerId);}catch{}
+  canvasPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(canvasPointers.size>=2){
+    beginCanvasPinch();
+    return;
+  }
   dragging=true;dragPId=e.pointerId;
   dx0=e.clientX;dy0=e.clientY;
   yaw0=game.ratCityMode?game.ratCityAngle:camYaw;
   pitch0=game.ratCityMode?ratCityPitch:camPitch;
 });
 canvas.addEventListener('pointermove',e=>{
+  if(canvasPointers.has(e.pointerId)) canvasPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinchState&&canvasPointers.size>=2){
+    e.preventDefault();
+    updateCanvasPinchZoom();
+    return;
+  }
   if(!dragging||e.pointerId!==dragPId)return;
   if(game.ratCityMode){
     ratCityAutoRotate=false;
@@ -13644,8 +13699,23 @@ canvas.addEventListener('pointermove',e=>{
     camPitch=clamp(pitch0+(e.clientY-dy0)/H()*3,-0.10,1.10);
   }
 });
-const endDrag=e=>{if(e.pointerId===dragPId){dragging=false;canvas.releasePointerCapture?.(e.pointerId);dragPId=null}};
-canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);
+const endDrag=e=>{
+  canvasPointers.delete(e.pointerId);
+  if(pinchState&&canvasPointers.size<2){
+    pinchState=null;
+    dragging=false;
+    dragPId=null;
+  }
+  if(e.pointerId===dragPId){
+    dragging=false;
+    dragPId=null;
+  }
+  try{canvas.releasePointerCapture?.(e.pointerId);}catch{}
+};
+canvas.addEventListener('pointerup',endDrag);canvas.addEventListener('pointercancel',endDrag);canvas.addEventListener('pointerleave',endDrag);
+canvas.addEventListener('touchmove',e=>{
+  if(e.touches?.length>1&&e.cancelable) e.preventDefault();
+},{passive:false});
 canvas.addEventListener('wheel',e=>{
   e.preventDefault();
   if(game.ratCityMode){
@@ -14064,13 +14134,25 @@ ratCityName.addEventListener('keydown',e=>{
 ratCityName.addEventListener('input',updateRatCitySaveState);
 ratCityName.addEventListener('change',updateRatCitySaveState);
 ratCityName.addEventListener('focus',updateRatCitySaveState);
+function focusRatCityNameInput(){
+  ratCityName.focus?.({preventScroll:true});
+  updateRatCitySaveState();
+}
+ratCityName.addEventListener('pointerdown',e=>{
+  e.stopPropagation();
+  focusRatCityNameInput();
+},{passive:true});
+ratCityName.addEventListener('touchstart',e=>{
+  e.stopPropagation();
+  focusRatCityNameInput();
+},{passive:true});
 ratCityName.addEventListener('click',e=>{
   e.stopPropagation();
-  ratCityName.focus?.({preventScroll:true});
+  focusRatCityNameInput();
 });
 ratCityName.addEventListener('touchend',e=>{
   e.stopPropagation();
-  ratCityName.focus?.({preventScroll:true});
+  focusRatCityNameInput();
 },{passive:true});
 function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   const fx=Math.sin(host.yaw),fz=Math.cos(host.yaw);
@@ -17904,6 +17986,12 @@ window.__debugHooks={
   postRatCityOnlineScore,
   getRatCityLeaderboardApiUrl,
   getRatCityLeaderboardState:()=>({...ratCityLeaderboardState}),
+  getCameraState:()=>({
+    camDist,
+    ratCityZoom,
+    ratCityPitch,
+    ratCityMode:!!game.ratCityMode
+  }),
   playLayeredRatSwarmBurst,
   syncStreetAmbienceLayered,
   triggerRatsWin,
