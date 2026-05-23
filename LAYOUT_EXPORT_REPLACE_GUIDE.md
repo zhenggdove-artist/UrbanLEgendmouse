@@ -1,34 +1,86 @@
-# Layout 匯出與套用指南
+# Layout 匯出手動套用指南
 
-目標檔案：`index.html`
+目標檔案：
 
-## 先用新的 Export 流程
+- `index.html`
 
-這版開始，Layout Admin 的 `Export` 不只會複製 `UI_LAYOUT_DEFAULTS`，也會自動下載一份已套用目前 layout 的完整 HTML：
+這次要套用的匯出檔範例：
 
-```text
-index.layout-applied.html
-```
+- `index.layout-applied (1).html`
 
-這是為了避開編輯器「版本不一樣 / 檔案已在磁碟上變更」的警告。不要在舊分頁或舊 buffer 內直接覆蓋儲存，因為那會把舊版 `index.html` 寫回去。
+## 先理解這個匯出檔是什麼
 
-建議流程：
+`Export` 下載出的 `index.layout-applied (...).html` 是一份「已經把目前 Layout Admin 設定套進去」的完整 HTML。
 
-1. 重新整理瀏覽器中的遊戲，確定跑的是最新版本。
-2. 進入 Layout Admin 調整 UI。
-3. 按 `Export`。
-4. 優先使用下載出的 `index.layout-applied.html` 作為已套用 layout 的完整檔案。
-5. 若瀏覽器擋住完整 HTML 下載，才使用剪貼簿裡的 `const UI_LAYOUT_DEFAULTS={...};` 手動替換。
+也就是說，它不是只有一小段 JSON，而是一份完整的 `index.html` 副本。
 
-## 如果必須手動替換
+所以手動套用有兩種做法：
 
-不要用行號。請搜尋錨點：
+1. 直接用整份匯出檔覆蓋 `index.html`
+2. 只把裡面的 `UI_LAYOUT_DEFAULTS` 區塊貼回 `index.html`
+
+## 建議優先順序
+
+建議優先用這個判斷：
+
+1. 如果你剛匯出完，而且確定匯出後沒有再改過遊戲程式碼，直接整份覆蓋最快。
+2. 如果你不確定匯出後 AI、自己、或其他工具有沒有改過 `index.html` 其他地方，改用「只替換 `UI_LAYOUT_DEFAULTS`」最安全。
+
+## 做法 A：直接整份覆蓋 `index.html`
+
+適用情況：
+
+- 你剛剛才從最新版本的遊戲按下 `Export`
+- 匯出後沒有再改 `index.html` 其他程式碼
+- 你要的就是把目前版面完整套回去
+
+步驟：
+
+1. 關掉編輯器中舊的 `index.html` 分頁，或先重新載入磁碟版本。
+2. 開啟 `index.layout-applied (1).html`。
+3. 全選內容。
+4. 開啟 `index.html`。
+5. 全選 `index.html` 內容後貼上。
+6. 儲存 `index.html`。
+
+完成後建議至少檢查：
+
+- 遊戲能正常開啟
+- Layout Admin 調整過的位置有反映
+- `RAT CITY` ending 畫面沒有跑版
+
+## 做法 B：只替換 `UI_LAYOUT_DEFAULTS`
+
+這是比較安全的做法。
+
+適用情況：
+
+- 你懷疑 `index.html` 的其他程式碼已經又被改過
+- 你只想套用 UI 版面，不想碰其他邏輯
+- 你不想冒險把舊的完整 HTML 蓋回去
+
+步驟：
+
+1. 開啟 `index.layout-applied (1).html`。
+2. 搜尋：
 
 ```js
 const UI_LAYOUT_DEFAULTS={
 ```
 
-只替換這一整段物件，從 `const UI_LAYOUT_DEFAULTS={` 到它自己的配對 `};`。不要刪到後面的區段，例如：
+3. 從這一行開始，選到這個物件自己的結尾 `};`。
+4. 複製這整段。
+5. 開啟目前工作中的 `index.html`。
+6. 在 `index.html` 內搜尋同一個錨點：
+
+```js
+const UI_LAYOUT_DEFAULTS={
+```
+
+7. 只替換這一整段，從 `const UI_LAYOUT_DEFAULTS={` 到它自己的配對 `};`。
+8. 儲存 `index.html`。
+
+不要刪到後面的區段，例如：
 
 ```js
 // RESTORED constants & functions
@@ -40,15 +92,43 @@ const UI_LAYOUT_DEFAULTS={
 const UI_LAYOUT_TARGET_DEFS=[
 ```
 
-如果儲存時出現「版本不同」警告，請取消儲存，重新載入磁碟上的 `index.html` 後再貼一次。不要選覆蓋。
+## 什麼時候不要直接整份覆蓋
 
-## 版本檢查
+遇到下面情況，不要用做法 A，改用做法 B：
 
-這版匯出的 layout 應該包含：
+- `index.html` 這段時間還有其他功能修改
+- 你不確定匯出檔是不是從最新版本頁面產生的
+- 你同時在讓 AI 修改 `index.html`
+- 編輯器已經跳出「檔案已在磁碟上變更」或「版本不同」警告
+
+## 如果編輯器跳出版本衝突警告
+
+處理方式：
+
+1. 不要直接選覆蓋。
+2. 取消這次儲存。
+3. 重新載入磁碟上的 `index.html`。
+4. 再重新貼一次。
+
+這是為了避免把舊 buffer 的內容整份寫回去。
+
+## 套用前的快速檢查
+
+在 `index.layout-applied (1).html` 內至少確認這些欄位還在：
 
 - `desktop`
 - `mobile`
 - `rat-city-pager`
 - `__ratCityEndingCardV12`
 
-如果缺少這些欄位，代表瀏覽器還在跑舊版，請重新整理或清快取後再匯出。
+如果缺少這些欄位，通常代表你匯出時頁面不是最新版本。
+
+## 最穩的實務建議
+
+如果只是調 UI：
+
+- 平常優先用做法 B，只替換 `UI_LAYOUT_DEFAULTS`
+
+如果是你剛匯出、很確定沒有其他程式碼變動：
+
+- 才用做法 A，直接整份覆蓋 `index.html`
