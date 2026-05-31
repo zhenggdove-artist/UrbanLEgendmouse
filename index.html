@@ -2153,7 +2153,7 @@ function getSFXDistanceGain(source){
   const emitter=resolveSFXEmitterPosition(source);
   const listener=getSFXListenerPosition();
   if(!emitter || !listener) return 1;
-  const dx=emitter.x-listener.x;
+  const dx=nearestRingDelta(emitter.x,listener.x);
   const dz=emitter.z-listener.z;
   const dist=Math.hypot(dx,dz);
   if(dist<=SFX_DISTANCE_NEAR) return 1;
@@ -15980,12 +15980,26 @@ function getPropTipRestY(p){
   if(p.kind==='building-fire') return Math.max(0.08,p.root?.position?.y??0.08);
   return Math.max(0.08,(p.root?.userData?.baseY??p.basePosition?.y??0)*0.45);
 }
-function playPropImpactFeedback(p,angle=0,{text=null,volume=0.84}={}){
+function toFeedbackVector(pos,fallback=null){
+  const src=pos||fallback;
+  if(src?.isVector3) return src.clone();
+  const x=Number(src?.x);
+  const y=Number(src?.y);
+  const z=Number(src?.z);
+  if(Number.isFinite(x) && Number.isFinite(z)){
+    return new THREE.Vector3(x,Number.isFinite(y)?y:0,z);
+  }
+  if(fallback && fallback!==src) return toFeedbackVector(fallback,null);
+  return new THREE.Vector3();
+}
+function playPropImpactFeedback(p,angle=0,{text=null,volume=0.84,position=null,source=null}={}){
   if(!p?.root) return;
-  spawnHitFlash(p.root.position);
-  playSFX(getPropBreakSFXKey(p),{volume,cooldown:0.08,source:p});
-  spawnImpactDebris(p.root.position,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
-  spawnComicImpact(p.root.position,text||(p.kind==='stall'?'WHAM!':(p.kind==='falling-sign'?'CRASH!':(p.kind==='fire-stair'?'STAIRS!':(p.kind==='glass-window'?'GLASS!':'POW!')))),p.kind==='stall'?'#fff2a6':'#fff7c2');
+  const pos=toFeedbackVector(position,p.root.position);
+  const sfxSource=source||p;
+  spawnHitFlash(pos);
+  playSFX(getPropBreakSFXKey(p),{volume,cooldown:0.08,source:sfxSource});
+  spawnImpactDebris(pos,p.kind==='stall'?22:14,p.kind==='stall'?'#d4b08a':'#cfd2d5');
+  spawnComicImpact(pos,text||(p.kind==='stall'?'WHAM!':(p.kind==='falling-sign'?'CRASH!':(p.kind==='fire-stair'?'STAIRS!':(p.kind==='glass-window'?'GLASS!':'POW!')))),p.kind==='stall'?'#fff2a6':'#fff7c2');
 }
 function findRingTwinProp(prop){
   if(!RESIDENT_RING_MODE || !prop?.root || !prop.basePosition || RING_SEAM_LENGTH<=0) return null;
@@ -16054,15 +16068,23 @@ function syncRingTwinPropRestore(prop){
   }
   return twin;
 }
-function triggerPropTip(p,angle,chaosGain=1,source='impact'){
+function triggerPropTip(p,angle,chaosGain=1,source='impact',opts={}){
   if(p?.ringProxySource){
     // A seam-preview prop is a visual/collision proxy. Apply the actual
-    // destruction to the live source so its preview clone updates immediately.
-    return triggerPropTip(p.ringProxySource,angle,chaosGain,source);
+    // destruction to the live source so its preview clone updates immediately,
+    // but keep feedback at the proxy position the player actually hit.
+    const proxyPos=toFeedbackVector(p.root?.position,p.ringProxySource?.root?.position);
+    return triggerPropTip(p.ringProxySource,angle,chaosGain,source,{
+      ...opts,
+      feedbackPos:opts.feedbackPos||proxyPos,
+      feedbackSource:opts.feedbackSource||{x:proxyPos.x,y:proxyPos.y,z:proxyPos.z}
+    });
   }
   if(!p||p.tipTriggered)return;
   const silentSync=source==='ring-sync';
   const awardsChaos=source!=='idol' && !silentSync;
+  const feedbackPos=toFeedbackVector(opts.feedbackPos,p.root.position);
+  const feedbackSource=opts.feedbackSource||p;
   activeProps.add(p);
   p.tipTriggered=true;
   p.tipped=true;
@@ -16074,7 +16096,7 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     }
   }
   if(!silentSync){
-    playPropImpactFeedback(p,angle);
+    playPropImpactFeedback(p,angle,{position:feedbackPos,source:feedbackSource});
   }
   const fallDirX=Math.sin(angle);
   const fallDirZ=Math.cos(angle);
@@ -16110,12 +16132,12 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
   if(p.kind==='stall' && p.hasSoup && !silentSync && Math.random()<STALL_SOUP_CHANCE) activateBrothFX(p,angle,1.35);
   if(p.kind==='stall' && (source==='host' || source==='throw') && Math.random()<STALL_FIRE_CHANCE){
     activateFireFX(p,angle,source);
-    playSFX('stallFire',{volume:0.9,cooldown:0.05,source:p});
+    playSFX('stallFire',{volume:0.9,cooldown:0.05,source:feedbackSource});
   }
   if(!silentSync){
-    registerChaosSpot(p.root.position.x,p.root.position.z,1.2+(p.kind==='stall'?0.8:0.3),6.5);
-    if(!game.templeEvent.awakened && countNearbyGroundRats(p.root.position,5.4)>=3){
-      playLayeredRatSwarmBurst(p,{volume:0.78,stagger:0.15,priority:86});
+    registerChaosSpot(feedbackPos.x,feedbackPos.z,1.2+(p.kind==='stall'?0.8:0.3),6.5);
+    if(!game.templeEvent.awakened && countNearbyGroundRats(feedbackPos,5.4)>=3){
+      playLayeredRatSwarmBurst(feedbackSource,{volume:0.78,stagger:0.15,priority:86});
     }
     syncRingTwinPropTip(p,angle);
   }
@@ -16123,14 +16145,14 @@ function triggerPropTip(p,angle,chaosGain=1,source='impact'){
     ? p.spawnRatsOnTip
     : ((source==='host' || source==='throw' || source==='idol') ? ((p.kind==='car' || p.kind==='sedan' || p.kind==='mini-truck' || p.kind==='scooter') ? 3 : 2) : 0));
   if(spillRatCount>0){
-    summonSpillRats(p.root.position.x,p.root.position.z,spillRatCount,{
+    summonSpillRats(feedbackPos.x,feedbackPos.z,spillRatCount,{
       spawnFromPlayer:source==='host',
-      targetX:p.root.position.x,
-      targetZ:p.root.position.z
+      targetX:feedbackPos.x,
+      targetZ:feedbackPos.z
     });
-    if(awardsChaos) awardChaosScore(p.root.position,CHAOS_PER_TIP*0.8*spillRatCount,4.8);
+    if(awardsChaos) awardChaosScore(feedbackPos,CHAOS_PER_TIP*0.8*spillRatCount,4.8);
   }
-  if(awardsChaos && chaosGain>0) awardChaosScore(p.root.position,CHAOS_PER_TIP*p.chaosWeight*chaosGain,4.8);
+  if(awardsChaos && chaosGain>0) awardChaosScore(feedbackPos,CHAOS_PER_TIP*p.chaosWeight*chaosGain,4.8);
 }
 function tickProps(dt){
   const ent=game.controlled;if(!ent)return;
