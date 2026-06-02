@@ -1500,6 +1500,13 @@ function updatePropWorldAABB(p,minX,maxX,minZ,maxZ,baseY=null,topY=null){
   gridInsertAABB(propsGrid,p,a.minX,a.maxX,a.minZ,a.maxZ);
   return p;
 }
+function refreshPropGrid(p){
+  if(!p?.root) return p;
+  gridRemove(propsGrid,p);
+  const a=propAABB(p);
+  gridInsertAABB(propsGrid,p,a.minX,a.maxX,a.minZ,a.maxZ);
+  return p;
+}
 function propFootprintDistanceToPoint(p,x,z,pad=0){
   if(!p?.root) return Infinity;
   const a=propAABB(p);
@@ -14349,6 +14356,25 @@ function findNearestLooseProp(host,maxDist=HOST_PICKUP_RADIUS){
   }
   return best;
 }
+function materialiseRingPreviewPropForPickup(prop){
+  if(!prop?.ringProxySource) return prop;
+  const source=prop.ringProxySource;
+  if(!source?.root || source.heldBy || source.throwVel || source.noPickup || source.tipTriggered) return null;
+  const proxyPos=toFeedbackVector(prop.root?.position,source.root.position);
+  source.root.position.copy(proxyPos);
+  if(prop.root?.quaternion && source.root.quaternion){
+    source.root.quaternion.copy(prop.root.quaternion);
+  }else if(prop.root?.rotation && source.root.rotation){
+    source.root.rotation.copy(prop.root.rotation);
+  }
+  if(prop.root?.scale && source.root.scale) source.root.scale.copy(prop.root.scale);
+  source.root.visible=true;
+  source.root.updateMatrixWorld?.(true);
+  source._ringProxyMaterialisedAt=gameTime;
+  source._ringProxyMaterialisedShift=Number(prop.ringPreviewShift)||0;
+  refreshPropGrid(source);
+  return source;
+}
 function knockHumanDown(target,sourceYaw=0){
   if(!target||target.parasitised||target.controllable||target.dead)return;
   if(target.targetProp && target.targetProp.reservedBy===target) target.targetProp.reservedBy=null;
@@ -14359,6 +14385,8 @@ function knockHumanDown(target,sourceYaw=0){
 }
 function liftProp(host,prop){
   if(!host||!prop)return false;
+  prop=materialiseRingPreviewPropForPickup(prop);
+  if(!prop)return false;
   if(prop.reservedBy && prop.reservedBy!==host) prop.reservedBy.targetProp=null;
   prop.reservedBy=null;
   prop.heldBy=host;
@@ -14371,6 +14399,7 @@ function liftProp(host,prop){
   host.actionName='pickup';
   host.actionTimer=0.42;
   prop.root.rotation.set(0,host.yaw,0);
+  refreshPropGrid(prop);
   updateActionButtons();
   return true;
 }
@@ -14390,6 +14419,7 @@ function throwHeldProp(host,chargeRatio=0){
   host.throwCharging=false;
   game.chaos=Math.min(1,game.chaos+CHAOS_PER_TIP*0.35*prop.chaosWeight);
   playSFX(getPropBreakSFXKey(prop),{volume:0.74,cooldown:0.04,source:prop});
+  refreshPropGrid(prop);
   updateActionButtons();
   return true;
 }
@@ -16159,12 +16189,16 @@ function tickProps(dt){
   const propsToTick=activeProps.size?Array.from(activeProps):[];
   for(const p of propsToTick){
     tickPropFX(p,dt);
-    if(p.heldBy) continue;
+    if(p.heldBy){
+      refreshPropGrid(p);
+      continue;
+    }
     if(p.throwVel){
       p.root.position.addScaledVector(p.throwVel,dt);
       p.throwVel.y-=GRAVITY*0.92*dt;
       p.root.rotation.x+=p.throwSpin*dt;
       p.root.rotation.z+=p.throwSpin*0.65*dt;
+      refreshPropGrid(p);
       const nearHumans=getHumansNear(
         p.root.position.x,
         p.root.position.z,
@@ -16199,6 +16233,7 @@ function tickProps(dt){
       p.root.rotation.x=THREE.MathUtils.lerp(p.tipAnim.startRot.x,p.tipAnim.endRot.x,t);
       p.root.rotation.y=THREE.MathUtils.lerp(p.tipAnim.startRot.y,p.tipAnim.endRot.y,t);
       p.root.rotation.z=THREE.MathUtils.lerp(p.tipAnim.startRot.z,p.tipAnim.endRot.z,t);
+      refreshPropGrid(p);
       if(p.tipAnim.progress>=1) p.tipAnim=null;
     }
     const stillActive=!!(
